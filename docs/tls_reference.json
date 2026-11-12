@@ -1,0 +1,62 @@
+{
+  "chrome110": {
+    "ja3": [
+      "66e83d329a18dc70f6718998e39b08aa",
+      "a612d6298045d9dbfc3e0f284a673589",
+      "e941df3f8cd0b19656e27953c4b3ab6a",
+      "1383085d1db30f08fbb0677b2dded4d5"
+    ],
+    "ja4": [
+      "t13d1516h2_8daaf6152771_e5627efa2ab1"
+    ]
+  },
+  "chrome116": {
+    "ja3": [
+      "00f4178e148bda7254d6618064bee1a6",
+      "77ea49c190291dc458da2204ad094305",
+      "6f34d1596edf401ee9252c5ed5cc9816",
+      "1ac7b00e74a31f378b6c1ab304a6f30c"
+    ],
+    "ja4": [
+      "t13d1516h2_8daaf6152771_e5627efa2ab1"
+    ]
+  },
+  "chrome120": {
+    "ja3": [
+      "b5d95d445c473cd98d3a31604cbcc555",
+      "41c52b1bd14b1a8535bee6bc39112b0d",
+      "cae21e33bffacc0c3b601950c6995e47",
+      "d08d5ddac07018ecf913870cd1aeec01"
+    ],
+    "ja4": [
+      "t13d1517h2_8daaf6152771_b1ff8ab2d16f",
+      "t13d1516h2_8daaf6152771_02713d6af862"
+    ]
+  },
+  "chrome124": {
+    "ja3": [
+      "953f4f20c5a4d81eb3bf71b8ae3599b7",
+      "b5f3586dceab3cc1ae2b32fbf828b763",
+      "75eb2f73e3d18949f464c92b6d94184d"
+    ],
+    "ja4": [
+      "t13d1516h2_8daaf6152771_02713d6af862"
+    ]
+  },
+  "edge101": {
+    "ja3": [
+      "cd08e31494f9531f560d64c695473da9"
+    ],
+    "ja4": [
+      "t13d1516h2_8daaf6152771_e5627efa2ab1"
+    ]
+  },
+  "safari17_0": {
+    "ja3": [
+      "773906b0efdefa24a7f2b8eb6985bf37"
+    ],
+    "ja4": [
+      "t13d2014h2_a09f3c656075_14788d8d241b"
+    ]
+  }
+}

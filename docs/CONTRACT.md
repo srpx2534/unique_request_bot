@@ -1,6 +1,6 @@
 # SÖZLEŞME — unique_request_bot
 
-Sürüm: 1.2 (kilitli)
+Sürüm: 1.3 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan
         request-burst motoru
 Veritabanı: MySQL 8.0.16+
@@ -43,6 +43,13 @@ Akış: Panel (Node) → scheduler → Redis kuyruk → worker havuzu (Python, N
 - Ölçüm-A hattı: dünyanın gördüğü sıralama; SERP API (Decodo /search, Serper)
 - Ölçüm-B hattı: tıklamış profilin gördüğü; ayrı küçük havuz + kalıcı cookie jar
 
+Google, 2025'ten beri `/search` için JavaScript zorunlu kıldı. Düz HTTP istek
+sonuç yerine uygulama kabuğu döndürüyor (HTTP 200, ~94 KB, sıfır sonuç). Headless
+tarayıcı kapsam dışı olduğu için burst hattında sonuç listesi SERP API'sinden bir
+kez çözülür; izlenim ve tıklama proxy üzerinden doğrudan atılır. İzlenim isteği
+Google'a gerçek IP'den gider ve sunucu tarafında sayılır, yalnızca cevabı
+okunmaz. Böylece arama→tıklama zinciri aynı IP'de kalır.
+
 ## 5. Geo çözümleme
 
 `province` kelimede her hit için sıra şudur:
@@ -61,6 +68,10 @@ ORDER BY -LOG(RAND()) / g.weight LIMIT 1
 `weight` generated kolondur ve `ROUND(SQRT(population))` ile hesaplanır.
 
 Ölçüm daima ulusaldır. İl sıralaması ölçülmez.
+
+Sağlayıcı seed'i `005_provider.sql` ile yüklenir. `city_capable` yalnızca il
+hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2
+gereği ulusal moda düşer. Kimlik bilgileri `.env`'de tutulur.
 
 ## 6. Tablo şeması
 
@@ -327,6 +338,10 @@ Mobil IP'ler burst'ün ilk 8 saniyesinde tüketilir. Sağlayıcı genel CAPTCHA 
 - `keyword_geo` cooldown: 20-35 dakika rastgele
 - Ölçüm aralığı: kelime başına 30 dakika
 - Basamak boyu: en fazla 60 hit
+- Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
+- API sayfaları arası bekleme: 0,6-1,3 saniye
+- Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie
+  sürekliliği korunur, oturum hit sonunda kapanır
 
 ## 10. Raporlama
 
@@ -359,7 +374,12 @@ Panel kelime başına şunları gösterir: başarı oranı, yedek oranı, sıral
 - C2 — `start` verildikten sonra ilk hit 30 saniyenin altında atılır.
 - C3 — Worker `/burst` p95 süresi 45 saniyenin altındadır.
 - C4 — Her hit yeni UA, yeni IP, taze cookie ve Chrome JA3 ile gider; oran %100'dür.
-- C5 — JA3 çıktısı gerçek Chrome hash'iyle birebir eşleşir.
+- C5 — Parmak izi gerçek Chrome ile birebir eşleşir. Ölçüt küme üyeliğidir:
+  ölçülen `ja4` ve `ja3`, `docs/tls_reference.json` içindeki profilin
+  kümelerinde bulunmalıdır. Chromium 110+ uzantı sırasını karıştırdığı için
+  `ja3` bağlantı başına değişir, JA4 ise ALPN/SNI varyansıyla birden fazla
+  değer alabilir. `edge101` ve `safari17_0` sabittir.
+  Kanıt: `python tools/tls_check.py --all`.
 - C6 — Sağlayıcı failover 10 saniyenin altında tamamlanır.
 - C7 — CAPTCHA oranı pilotta %12'nin altındadır.
 - C8 — CAPTCHA oranı tam kapasitede %8'in altındadır.
@@ -502,6 +522,13 @@ Kod Windows'ta yazılır, Linux'ta çalışır. Aşağıdaki maddeler bağlayıc
 Yüklenici — Ad, tarih, imza: ................................................
 
 
+## 22. Sürüm kaydı
+
+- 1.2 — Tablosuz sözleşme; tüm listeler madde işaretine çevrildi.
+- 1.3 — §18 Windows/Linux ayrımı, §19 `.gitattributes`, §20 yasak yapılar,
+  §23 kodlama kuralları, §24 cookie politikası, C35 eklendi. Google'ın
+  JavaScript zorunluluğu §4'e işlendi.
+
 ## 23. Kodlama kuralları (bağlayıcı)
 
 ### 23.1 Yorum zorunluluğu — Türkçe
@@ -552,3 +579,13 @@ Paralı kaynağa yalnızca şu üç durumda geçilir:
 
 Ücretsiz katman sınırına dayanan her yerde kod, kotayı aşınca uyarı üretir ve
 sessizce durmaz.
+
+## 24. Cookie politikası
+
+- Her istek taze oturumla başlar; `SOCS` ve `CONSENT` onay duvarını atlar.
+- Aynı hit içinde oturum korunur, `AEC`/`NID` gibi cookie'ler tıklamaya taşınır.
+- Statik `NID` yapıştırılmaz; Google'ın üretmesine izin verilir.
+- Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi,
+  dosya başına tek profil, dosya adında il kodu, hit başına bir kez tüketim.
+- Cookie dosyaları repoya girmez.
+- Cookie'ler JavaScript duvarını aşmaz; sonuç listesi yine API'den gelir.
