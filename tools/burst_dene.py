@@ -27,12 +27,14 @@ def main() -> int:
     ayar.add_argument("--adet", type=int, default=3)
     ayar.add_argument("--proxy")
     ayar.add_argument("--uule")
+    ayar.add_argument("--geo", help="il slug'ı")
     secim = ayar.parse_args()
 
     proxy_secici = (lambda: secim.proxy) if secim.proxy else None
     sonuc = burst.burst_yap(
         secim.sorgu, secim.domain, secim.adet,
         proxy_secici=proxy_secici, uule=secim.uule,
+        geo_slug=secim.geo,
     )
 
     print(f"result={sonuc['result']} hedef={sonuc['hedef_url']} "

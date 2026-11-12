@@ -1,72 +1,52 @@
-"""Proxy dizesi üretimi (Decodo residential).
+"""Proxy dizesi biçimlendirme.
 
-Hedefleme kullanıcı adına eklenir: ülke ve gerekiyorsa il. Her hit yeni bir
-oturum kimliği alır; böylece IP hit başına değişir, ama hit içindeki üç
-istek (izlenim, tıklama, pogo) aynı IP'den çıkar. Bu bütünlük olmadan
-Google tıklamayı ayrı bir ziyaret sayar.
+Sağlayıcı satırındaki ağ geçidi ve kimlik bilgilerinden curl_cffi'nin
+anladığı dize üretilir. Hedefleme kullanıcı adına eklenir: ülke, gerekiyorsa
+il. Her hit yeni oturum kimliği alır; böylece IP hit başına değişir ama hit
+içindeki üç istek (izlenim, tıklama, pogo) aynı IP'den çıkar.
 
-Kimlik bilgileri .env'den okunur: DECODO_USER, DECODO_PASS, DECODO_GATEWAY.
-Bilgi yoksa None döner ve hat doğrudan bağlantıya düşer (§5 adım 2).
+Seçim burada değil, worker/havuz.py içinde yapılır; bu modül yalnızca
+biçimlendirir.
 
-Kullanım: worker/burst.py, tools/proxy_dene.py.
+Kullanım: worker/havuz.py, tools/proxy_dene.py.
 """
 
 from __future__ import annotations
 
 import secrets
 
-from worker import ayar
-
-VARSAYILAN_GATEWAY = "tr.decodo.com:10001"  # 10001 = oturum boyunca sabit IP
 OTURUM_UZUNLUK = 8  # karakter; çakışma olasılığı ihmal edilebilir
 
 
-def var_mi() -> bool:
-    """Proxy kimlik bilgileri tanımlı mı."""
-    return bool(ayar.oku("DECODO_USER") and ayar.oku("DECODO_PASS"))
-
-
-def _gateway() -> str:
-    """Ağ geçidini döndürür; tanımlı değilse varsayılanı kullanır."""
-    return ayar.oku("DECODO_GATEWAY", VARSAYILAN_GATEWAY) or VARSAYILAN_GATEWAY
-
-
-def proxy_uret(geo_slug: str | None = None, oturum: str | None = None) -> str | None:
-    """Tek kullanımlık proxy dizesi üretir.
+def dize(
+    gateway: str,
+    kullanici: str,
+    sifre: str,
+    geo_slug: str | None = None,
+    oturum: str | None = None,
+) -> str:
+    """Proxy dizesi kurar.
 
     Args:
-        geo_slug: İl slug'ı (ör. istanbul). None ise ülke hedeflenir.
-        oturum: Oturum kimliği. None ise rastgele üretilir.
+        gateway: host:port.
+        kullanici: Sağlayıcı kullanıcı adı (user- öneki hariç).
+        sifre: Sağlayıcı şifresi.
+        geo_slug: İl slug'ı; verilirse city hedeflemesi eklenir.
+        oturum: Oturum kimliği; verilmezse rastgele üretilir.
 
     Returns:
-        http://kullanici:sifre@host:port dizesi; kimlik yoksa None.
+        http://kullanici:sifre@host:port dizesi.
     """
-    if not var_mi():
-        return None
-
-    kullanici = f"user-{ayar.oku('DECODO_USER')}-country-tr"
+    ad = f"user-{kullanici}-country-tr"
     if geo_slug:
         # İl hedefleme yalnızca destekleyen sağlayıcıda anlamlı (§5 adım 1).
-        kullanici += f"-city-{geo_slug}"
-    kullanici += f"-session-{oturum or secrets.token_hex(OTURUM_UZUNLUK // 2)}"
-
-    return f"http://{kullanici}:{ayar.oku('DECODO_PASS')}@{_gateway()}"
-
-
-def varsayilan_secici(geo_slug: str | None = None):
-    """Her çağrıda yeni proxy üreten kapanış döndürür.
-
-    Args:
-        geo_slug: Sabitlenecek il slug'ı.
-
-    Returns:
-        Parametresiz çağrılabilir; proxy ya da None döndürür.
-    """
-    return lambda: proxy_uret(geo_slug)
+        ad += f"-city-{geo_slug}"
+    ad += f"-session-{oturum or secrets.token_hex(OTURUM_UZUNLUK // 2)}"
+    return f"http://{ad}:{sifre}@{gateway}"
 
 
 def maskele(proxy: str | None) -> str:
-    """Proxy dizesindeki şifreyi gizler.
+    """Şifreyi gizler.
 
     Args:
         proxy: Ham proxy dizesi.

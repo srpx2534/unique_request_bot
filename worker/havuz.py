@@ -1,0 +1,267 @@
+"""Sağlayıcı havuzu ve tür oranı.
+
+Oranlar `ayar` tablosundan okunur ve panelden düzenlenir. Önce tür kurası
+çekilir (residential / mobile / datacenter), sonra o türde uygun sağlayıcı
+arasından A-Res ile ağırlıklı seçim yapılır (§5). Seçilen tür boş kalırsa
+sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya
+düşülür; iş durmaz (C17).
+
+Mobil yalnızca burst'ün ilk saniyelerinde devreye girer, çağıran taraf
+`mobil_acik` ile bunu bildirir.
+
+Okuma amaçlı bağlantı açılır; worker veritabanına yazmaz (§3).
+
+Kullanım: worker/burst.py, tools/proxy_dene.py.
+"""
+
+from __future__ import annotations
+
+import random
+
+import pymysql
+
+from worker import ayar, proxy
+
+ORAN_ANAHTARLARI = ("oran_residential", "oran_mobil", "oran_datacenter")
+VARSAYILAN_ORAN = {"oran_residential": 100, "oran_mobil": 0, "oran_datacenter": 0}
+
+
+def oranlari_normalize(ham: dict[str, int]) -> dict[str, int]:
+    """Oranları 100'e tamamlar.
+
+    Panel yüzde girer ama toplam 100 tutmayabilir; eksik ya da fazla
+    değerler burada dengelenir ki seçim dağılımı bozulmasın.
+
+    Args:
+        ham: Anahtar -> ham değer.
+
+    Returns:
+        Toplamı 100 olan sözlük. Hepsi sıfırsa residential 100 olur.
+    """
+    temiz = {k: max(0, int(ham.get(k, 0))) for k in ORAN_ANAHTARLARI}
+    toplam = sum(temiz.values())
+    if toplam == 0:
+        return dict(VARSAYILAN_ORAN)
+    if toplam == 100:
+        return temiz
+    # En büyük kalana yuvarlama hatası yazılır, böylece toplam tam 100 olur.
+    olcekli = {k: v * 100 // toplam for k, v in temiz.items()}
+    kalan = 100 - sum(olcekli.values())
+    if kalan:
+        en_buyuk = max(temiz, key=lambda k: temiz[k])
+        olcekli[en_buyuk] += kalan
+    return olcekli
+
+
+def tur_sec(
+    oranlar: dict[str, int],
+    mobil_acik: bool,
+    rastgele: float | None = None,
+) -> str | None:
+    """Oranlara göre tür kurası çeker.
+
+    Args:
+        oranlar: normalize edilmiş oranlar.
+        mobil_acik: False ise mobil havuzu hiç katılmaz.
+        rastgele: 0-100 arası değer; test için verilebilir.
+
+    Returns:
+        Tür adı ya da hiçbiri uygunsa None.
+    """
+    agirliklar = {
+        "residential": oranlar.get("oran_residential", 0),
+        "mobile": oranlar.get("oran_mobil", 0) if mobil_acik else 0,
+        "datacenter": oranlar.get("oran_datacenter", 0),
+    }
+    toplam = sum(agirliklar.values())
+    if toplam <= 0:
+        return None
+
+    esik = random.uniform(0, toplam) if rastgele is None else rastgele * toplam / 100
+    birikim = 0.0
+    for tur, agirlik in agirliklar.items():
+        birikim += agirlik
+        if esik <= birikim:
+            return tur
+    return "residential"
+
+
+def _baglan() -> pymysql.connections.Connection:
+    """Salt okuma amaçlı bağlantı açar."""
+    return pymysql.connect(
+        host=ayar.oku("MYSQL_HOST", "127.0.0.1"),
+        port=int(ayar.oku("MYSQL_PORT", "3306")),
+        user=ayar.oku("MYSQL_USER", "request"),
+        password=ayar.oku("MYSQL_PASSWORD"),
+        database=ayar.oku("MYSQL_DATABASE", "unique_request_bot"),
+        charset="utf8mb4",
+        autocommit=True,
+    )
+
+
+def oranlari_oku() -> dict[str, int]:
+    """Oranları veritabanından okur.
+
+    Returns:
+        normalize edilmiş oran sözlüğü. Tablo okunamazsa varsayılan döner.
+    """
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return dict(VARSAYILAN_ORAN)
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT anahtar, deger FROM ayar WHERE anahtar IN (%s, %s, %s)",
+                ORAN_ANAHTARLARI,
+            )
+            ham = {k: int(v) for k, v in imlec.fetchall() if str(v).isdigit()}
+    except Exception:  # noqa: BLE001
+        return dict(VARSAYILAN_ORAN)
+    finally:
+        baglanti.close()
+    return oranlari_normalize(ham)
+
+
+def _aday_sorgusu(geo_kodu: int | None) -> str:
+    """Uygun sağlayıcıyı seçen sorguyu kurar.
+
+    A-Res: -LOG(RAND()) / weight sıralaması ağırlıklı tek seçim verir (§5).
+    Karantinadaki ve kimlik bilgisi eksik sağlayıcılar dışarıda kalır.
+    """
+    kosullar = [
+        "kind = %s",
+        "state = 'active'",
+        "kullanici IS NOT NULL",
+        "sifre IS NOT NULL",
+        "gateway IS NOT NULL",
+        "(quarantine_until IS NULL OR quarantine_until < NOW(3))",
+    ]
+    if geo_kodu is not None:
+        kosullar.append("city_capable = 1")
+        kosullar.append(
+            "NOT EXISTS (SELECT 1 FROM provider_geo pg WHERE pg.provider_id = provider.id"
+            " AND pg.geo_code = %s AND pg.exhausted_until > NOW(3))"
+        )
+    return (
+        "SELECT id, gateway, kullanici, sifre FROM provider WHERE "
+        + " AND ".join(kosullar)
+        + " ORDER BY -LOG(RAND()) / weight LIMIT 1"
+    )
+
+
+def sec(
+    geo_slug: str | None = None, mobil_acik: bool = True
+) -> tuple[int, str] | None:
+    """Bir sağlayıcı seçer ve proxy dizesi üretir.
+
+    Args:
+        geo_slug: İl slug'ı; verilirse yalnızca il hedefleyebilenler arasından
+            seçilir. Uygun yoksa ulusal seçime düşülür.
+        mobil_acik: Mobil havuzu katılsın mı.
+
+    Returns:
+        (sağlayıcı kimliği, proxy dizesi) ya da hiçbiri yoksa None.
+    """
+    oranlar = oranlari_oku()
+    istenen = tur_sec(oranlar, mobil_acik)
+
+    # Sıra: istenen tür, sonra residential, sonra datacenter. Boş tür atlanır.
+    sira = [t for t in (istenen, "residential", "datacenter") if t]
+    sira = list(dict.fromkeys(sira))
+
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return None
+
+    try:
+        with baglanti.cursor() as imlec:
+            geo_kodu = None
+            if geo_slug:
+                imlec.execute("SELECT code FROM geo WHERE slug = %s", (geo_slug,))
+                satir = imlec.fetchone()
+                geo_kodu = satir[0] if satir else None
+
+            for tur in sira:
+                # İl hedefli denemede kimse yoksa ulusal sorguya düşülür (C17).
+                for kod in (geo_kodu, None):
+                    sorgu = _aday_sorgusu(kod)
+                    parametreler = (tur, kod) if kod is not None else (tur,)
+                    imlec.execute(sorgu, parametreler)
+                    kayit = imlec.fetchone()
+                    if kayit:
+                        saglayici_id, gateway, kullanici, sifre = kayit
+                        return saglayici_id, proxy.dize(
+                            gateway, kullanici, sifre, geo_slug if kod else None
+                        )
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        baglanti.close()
+    return None
+
+def slug_bul(geo_kodu: int) -> str | None:
+    """İl kodundan slug üretir.
+
+    Args:
+        geo_kodu: Plaka kodu.
+
+    Returns:
+        Slug ya da bulunamazsa None.
+    """
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute("SELECT slug FROM geo WHERE code = %s", (geo_kodu,))
+            satir = imlec.fetchone()
+            return satir[0] if satir else None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        baglanti.close()
+
+def kod_bul(geo_slug: str) -> int | None:
+    """Slug'dan il kodu üretir.
+
+    Args:
+        geo_slug: İl slug'ı.
+
+    Returns:
+        Plaka kodu ya da bulunamazsa None.
+    """
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute("SELECT code FROM geo WHERE slug = %s", (geo_slug,))
+            satir = imlec.fetchone()
+            return int(satir[0]) if satir else None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        baglanti.close()
+
+def durum_sayaci() -> dict[str, int]:
+    """Sağlayıcıları duruma göre sayar.
+
+    Returns:
+        active, quarantine, disabled sayıları. Okunamazsa boş sözlük.
+    """
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return {}
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute("SELECT state, COUNT(*) FROM provider GROUP BY state")
+            return {satir[0]: int(satir[1]) for satir in imlec.fetchall()}
+    except Exception:  # noqa: BLE001
+        return {}
+    finally:
+        baglanti.close()

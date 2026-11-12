@@ -87,3 +87,22 @@ ama şu koşullarla:
 - Sözleşme toplu güncellenecek; M2 sonunda tek blok halinde verilecek.
 - Google'ın JavaScript zorunluluğu §4'e işlenecek: burst hattında SERP listesi API'den, tıklama proxy'den.
 - Cookie havuzu ve oturum sürekliliği §9'a işlenecek.
+
+## Uyarı takibi
+
+- Uyarılar `alert` tablosuna yazılıyor: `hedef_yok`, `failover`, `burst_hata`,
+  `captcha`, `quota`, `provider_down`. Okuma için `v_alert` view'i ve
+  `tools/alert_liste.py` var.
+- Panelde uyarı ekranı M4'te yapılacak: liste, yaş, kapatma, filtre.
+- Kapatılmayan uyarı birikimi için saklama süresi belirlenecek (`audit_log` 1 yıl,
+  `alert` için süre yok).
+- `queue_lag` türü henüz hiç yazılmıyor; kuyruk M4'te gelince bağlanacak.
+- Oran eşikleri (`GEO_ESIK=35`, `GENEL_ESIK=20`, `ASGARI_ORNEK=10`) sabit;
+  panelden ayarlanabilir hale getirilecek.
+
+## Sağlayıcı oranları
+
+- Oranlar `ayar` tablosunda, panelden düzenlenecek (M4).
+- `oran_mobil=0` mobil havuzunu tamamen kapatır; doğrulanacak.
+- Oranların toplamı 100 değilse okurken normalize edilir; panelde toplam uyarısı
+  gösterilecek.

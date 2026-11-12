@@ -43,6 +43,10 @@ def taklit(monkeypatch):
     monkeypatch.setattr(click, "tikla", sahte_tik)
     monkeypatch.setattr(click, "pogo", sahte_pogo)
     monkeypatch.setattr(burst.time, "sleep", lambda _s: None)
+    # Sağlık yazımı veritabanına gider; birim testi kirletmesin diye susturulur.
+    monkeypatch.setattr(burst.saglik, "uyari", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik, "kaydet", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik, "karantina_kontrol", lambda *_a, **_k: None)
     return sayac
 
 
@@ -85,3 +89,42 @@ def test_adet_ust_sinira_kirpilir(taklit) -> None:
     """Adet AZAMI_HIT'i geçemez."""
     sonuc = burst.burst_yap("a", "a.com", 500)
     assert sonuc["ok"] == burst.AZAMI_HIT
+
+def test_failover_yeni_saglayiciyla_tekrarlar(taklit, monkeypatch) -> None:
+    """İlk deneme düşerse hit yeni sağlayıcıyla bir kez daha denenir (C6)."""
+    sayac = {"n": 0}
+
+    def sahte_tik(*_a, **_k):
+        sayac["n"] += 1
+        if sayac["n"] == 1:
+            return {"result": "timeout", "http_status": None, "elapsed_ms": 1,
+                    "bytes": 0, "dwell_ms": 0, "profil": "chrome124", "url": None,
+                    "mesaj": "deneme"}
+        return {"result": "ok", "http_status": 200, "elapsed_ms": 1, "bytes": 1,
+                "dwell_ms": 0, "profil": "chrome124", "url": None, "mesaj": ""}
+
+    monkeypatch.setattr(click, "tikla", sahte_tik)
+    adresler = iter(["http://birinci:1", "http://ikinci:1"])
+
+    sonuc = burst.burst_yap("a", "a.com", 1, proxy_secici=lambda: next(adresler, None))
+
+    assert sonuc["ok"] == 1
+    assert sonuc["hits"][0].get("failover") is True
+    assert sayac["n"] == 2
+
+
+def test_ikinci_deneme_de_duserse_hata_sayilir(taklit, monkeypatch) -> None:
+    """İki deneme de düşerse hit hata olarak sayılır, üçüncü denenmez."""
+    sayac = {"n": 0}
+
+    def sahte_tik(*_a, **_k):
+        sayac["n"] += 1
+        return {"result": "error", "http_status": None, "elapsed_ms": 1,
+                "bytes": 0, "dwell_ms": 0, "profil": "chrome124", "url": None,
+                "mesaj": "düştü"}
+
+    monkeypatch.setattr(click, "tikla", sahte_tik)
+    sonuc = burst.burst_yap("a", "a.com", 1, proxy_secici=lambda: "http://p:1")
+
+    assert sonuc["error"] == 1
+    assert sayac["n"] == 2

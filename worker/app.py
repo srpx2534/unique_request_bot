@@ -9,6 +9,7 @@ kuyruğunda bekler, istek düşmez.
 
 Uçlar:
     GET  /health          → 200 {"durum":"ayakta"}
+    GET  /durum           → 200 {"sayac", "saglayici"}
     POST /worker/burst    → 200 {"ok","captcha","not_found","timeout","elapsed_ms"}
 
 Kullanım: python -m worker.app
@@ -21,7 +22,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from worker import ayar, burst
+from worker import ayar, burst, havuz
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -29,6 +30,10 @@ GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
 TOKEN = ayar.oku("WORKER_TOKEN")
 PORT = int(ayar.oku("WORKER_PORT", "8081"))
 _semafor = threading.BoundedSemaphore(ESZAMANLI)
+
+# Süreç ömrü boyunca biriken sayaçlar. Panel buradan nabız okur.
+_sayac = {"burst": 0, "ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
+_kilit = threading.Lock()
 
 
 class Isleyici(BaseHTTPRequestHandler):
@@ -68,10 +73,20 @@ class Isleyici(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib adlandırması)
         """Sağlık ucu."""
-        if self.path.split("?")[0] != "/health":
-            self._json(404, {"hata": "bilinmeyen uç"})
+        yol = self.path.split("?")[0]
+        if yol == "/health":
+            self._json(200, {"durum": "ayakta"})
             return
-        self._json(200, {"durum": "ayakta"})
+        if yol == "/durum":
+            self._durum()
+            return
+        self._json(404, {"hata": "bilinmeyen uç"})
+
+    def _durum(self) -> None:
+        """Sayaçları ve sağlayıcı durumlarını döndürür."""
+        with _kilit:
+            sayac = dict(_sayac)
+        self._json(200, {"sayac": sayac, "saglayici": havuz.durum_sayaci()})
 
     def do_POST(self) -> None:  # noqa: N802 (stdlib adlandırması)
         """/worker/burst ucunu işler."""
@@ -95,14 +110,23 @@ class Isleyici(BaseHTTPRequestHandler):
 
         adet = int(govde.get("size", 1))
         uule = govde.get("uule")
+        # İl slug'ı adresten ya da plaka kodundan çözülür; yoksa ulusal kalır.
+        geo_slug = govde.get("geo_slug")
+        if not geo_slug and govde.get("geo_code"):
+            geo_slug = havuz.slug_bul(int(govde["geo_code"]))
         # target_url verilmişse domain türetilir, çözüm için API'ye gidilmez.
         hedef_url = govde.get("target_url")
         domain = govde.get("target_domain") or ""
 
         with _semafor:
             sonuc = burst.burst_yap(
-                kelime, domain, adet, uule=uule, hedef_url=hedef_url
+                kelime, domain, adet, uule=uule, hedef_url=hedef_url, geo_slug=geo_slug
             )
+
+        with _kilit:
+            _sayac["burst"] += 1
+            for anahtar in ("ok", "captcha", "not_found", "timeout", "error"):
+                _sayac[anahtar] += sonuc[anahtar]
 
         self._json(200, {
             "ok": sonuc["ok"],
