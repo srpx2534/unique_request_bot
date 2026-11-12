@@ -1,0 +1,17 @@
+# Bağımlılıklar ve sanal ortamlar
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Sırlar
+.env
+
+# Üretilmiş dosyalar
+dist/
+build/
+db/init/004_uule.sql
+
+# Log ve geçici
+logs/
+*.log

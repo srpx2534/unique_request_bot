@@ -1,0 +1,9 @@
+﻿# Çalışma zamanı
+PyMySQL==1.1.1
+python-dotenv==1.0.1
+
+# Fetch katmanı (M2)
+curl_cffi==0.7.4
+
+# Test
+pytest==8.3.3
