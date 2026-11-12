@@ -1,5 +1,5 @@
-# M1 itibarıyla yalnızca iskelet: LF disiplini, Python derleme, uule üretimi.
-# Kural: iş hem Windows hem Ubuntu üzerinde yeşil olmak zorunda (C27).
+# M1 itibarÄ±yla yalnÄ±zca iskelet: LF disiplini, Python derleme, uule Ã¼retimi.
+# Kural: iÅŸ hem Windows hem Ubuntu Ã¼zerinde yeÅŸil olmak zorunda (C27).
 
 name: ci
 
@@ -22,19 +22,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Depoda CRLF var mı
+      - name: Depoda CRLF var mÄ±
         shell: bash
         run: |
-          # Windows'ta da bash var; CRLF yakalanırsa iş kırılır.
+          # Windows'ta da bash var; CRLF yakalanÄ±rsa iÅŸ kÄ±rÄ±lÄ±r.
           if git ls-files --eol | grep -q "i/crlf"; then
             echo "CRLF bulundu"; exit 1
           fi
 
-      - name: Python sözdizimi
+      - name: Python sÃ¶zdizimi
         run: python -m compileall -q tools
 
-      - name: uule üretimi ve doğrulama
+      - name: uule Ã¼retimi ve doÄŸrulama
         run: |
-          # Üretici 81 il için dosya yazmalı ve 81 UPDATE içermeli.
+          # Ãœretici 81 il iÃ§in dosya yazmalÄ± ve 81 UPDATE iÃ§ermeli.
           python tools/gen_uule.py
-          python -c "import pathlib;d=pathlib.Path('db/init/004_uule.sql').read_text(encoding='utf-8');assert d.count('UPDATE geo')==81,'uule satır sayısı 81 değil';print('uule OK')"
+          python -c "import pathlib;d=pathlib.Path('db/migrations/004_uule.sql').read_text(encoding='utf-8');assert d.count('UPDATE geo')==81,'uule satÄ±r sayÄ±sÄ± 81 deÄŸil';print('uule OK')"

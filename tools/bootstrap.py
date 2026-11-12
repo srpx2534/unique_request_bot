@@ -1,87 +1,108 @@
-"""Veritabanı, kullanıcı ve yetkileri .env'den okuyarak kurar.
+"""VeritabanÃ„Â±, kullanÃ„Â±cÃ„Â± ve yetkileri .env'den okuyarak kurar.
 
-Amaç: şifreyi iki yerde tutmamak. .env ne yazıyorsa o uygulanır.
-Idempotenttir; tekrar çalıştırıldığında şifreyi .env'e göre sabitler.
-Root bağlantısı gerektirir.
+AmaÃƒÂ§: Ã…Å¸ifreyi iki yerde tutmamak. .env ne yazÃ„Â±yorsa o uygulanÃ„Â±r.
+BaÃ„Å¸lantÃ„Â± sÃ„Â±rasÃ„Â±: root/.env -> root/boÃ…Å¸ -> uygulama kullanÃ„Â±cÃ„Â±sÃ„Â±/.env
+BÃƒÂ¶ylece root Ã…Å¸ifresi bilinmese de kurulum yÃƒÂ¼rÃƒÂ¼r.
+KullanÃ„Â±cÃ„Â± ve host deÃ„Å¸erleri %s ile geÃƒÂ§irilir; host '%' olduÃ„Å¸u iÃƒÂ§in
+sorguya gÃƒÂ¶mÃƒÂ¼lÃƒÂ¼rse PyMySQL biÃƒÂ§imlendirmesi kÃ„Â±rÃ„Â±lÃ„Â±r.
+FLUSH PRIVILEGES ÃƒÂ§aÃ„Å¸rÃ„Â±lmaz (Aria bozukluÃ„Å¸unda hata veriyor).
 
-Kullanım:
+KullanÃ„Â±m:
     python tools/bootstrap.py
 """
 
 from __future__ import annotations
 
-import os
 import sys
 
 import pymysql
-from dotenv import load_dotenv
 
-from db import KOK
+from db import COLLATION, ayar
 
-# .env zorunlu; yoksa hiçbir şey yapılmaz.
-load_dotenv(KOK / ".env")
+SEMA = ayar("MYSQL_DATABASE", "unique_request_bot")
+KULLANICI = ayar("MYSQL_USER", "request")
+SIFRE = ayar("MYSQL_PASSWORD")
+ROOT_SIFRE = ayar("MYSQL_ROOT_PASSWORD")
 
-SEMA = os.getenv("MYSQL_DATABASE", "unique_request_bot")
-KULLANICI = os.getenv("MYSQL_USER", "request")
-SIFRE = os.getenv("MYSQL_PASSWORD", "")
-ROOT_SIFRE = os.getenv("MYSQL_ROOT_PASSWORD", "")
+# UygulamanÃ„Â±n ihtiyaÃƒÂ§ duyduÃ„Å¸u yetkiler. REFERENCES foreign key iÃƒÂ§in gerekli.
+YETKILER = "ALL PRIVILEGES"
 
-# Uygulamanın ihtiyaç duyduğu yetkiler. REFERENCES foreign key için gerekli.
-YETKILER = "SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES"
-
-# Kullanıcı iki host için tanımlanır: uzak bağlantı ve yerel soket.
+# KullanÃ„Â±cÃ„Â± iki host iÃƒÂ§in tanÃ„Â±mlanÃ„Â±r: uzak baÃ„Å¸lantÃ„Â± ve yerel soket.
 HOSTLAR = ("%", "localhost")
 
 
-def root_baglan() -> pymysql.connections.Connection:
-    """Root ile, şema seçmeden bağlanır."""
+def _dene(kullanici: str, sifre: str) -> pymysql.connections.Connection:
+    """Tek hesap ile Ã…Å¸ema seÃƒÂ§meden baÃ„Å¸lanmayÃ„Â± dener."""
     return pymysql.connect(
-        host=os.getenv("MYSQL_HOST", "127.0.0.1"),
-        port=int(os.getenv("MYSQL_PORT", "3306")),
-        user="root",
-        password=ROOT_SIFRE,
+        host=ayar("MYSQL_HOST", "127.0.0.1"),
+        port=int(ayar("MYSQL_PORT", "3306")),
+        user=kullanici,
+        password=sifre,
         charset="utf8mb4",
         autocommit=True,
     )
 
 
+def deneme_baglan() -> pymysql.connections.Connection:
+    """HesaplarÃ„Â± sÃ„Â±rayla dener, ilk baÃ…Å¸arÃ„Â±lÃ„Â± baÃ„Å¸lantÃ„Â±yÃ„Â± dÃƒÂ¶ndÃƒÂ¼rÃƒÂ¼r."""
+    adaylar = [("root", ROOT_SIFRE), ("root", "")]
+    if SIFRE:
+        adaylar.append((KULLANICI, SIFRE))
+
+    hatalar: list[str] = []
+    for kullanici, sifre in adaylar:
+        try:
+            baglanti = _dene(kullanici, sifre)
+            print(f"[OK] baÃ„Å¸lantÃ„Â±: {kullanici} (Ã…Å¸ifre {'var' if sifre else 'boÃ…Å¸'})")
+            return baglanti
+        except Exception as hata:  # noqa: BLE001
+            hatalar.append(f"{kullanici}: {hata}")
+
+    print("HATA: hiÃƒÂ§bir hesap ile baÃ„Å¸lanÃ„Â±lamadÃ„Â±.")
+    print("      .env iÃƒÂ§indeki MYSQL_ROOT_PASSWORD veya MYSQL_PASSWORD alanÃ„Â±nÃ„Â± doldur.")
+    for satir in hatalar:
+        print(f"      - {satir}")
+    sys.exit(1)
+
+
 def main() -> int:
-    """Kurulumu uygular. Eksik değer veya hata varsa 1 döner."""
+    """Kurulumu uygular. DoÃ„Å¸rulama tutmazsa 1 dÃƒÂ¶ner."""
     if not SIFRE:
-        print("HATA: .env içinde MYSQL_PASSWORD boş.")
-        return 1
-    if not ROOT_SIFRE:
-        print("HATA: .env içinde MYSQL_ROOT_PASSWORD boş.")
+        print("HATA: .env iÃƒÂ§inde MYSQL_PASSWORD boÃ…Å¸.")
         return 1
 
-    baglanti = root_baglan()
+    baglanti = deneme_baglan()
     try:
         with baglanti.cursor() as imlec:
-            # 1. Şema: utf8mb4 + Türkçe collation, yoksa oluşturulur.
+            # 1. Ã…Âema: utf8mb4 + TÃƒÂ¼rkÃƒÂ§e collation, yoksa oluÃ…Å¸turulur.
             imlec.execute(
                 f"CREATE DATABASE IF NOT EXISTS `{SEMA}` "
-                "CHARACTER SET utf8mb4 COLLATE utf8mb4_turkish_ci"
+                f"CHARACTER SET utf8mb4 COLLATE {COLLATION}"
+            )
+            # 1b. Ãƒâ€“nceden yanlÃ„Â±Ã…Å¸ collation ile aÃƒÂ§Ã„Â±lmÃ„Â±Ã…Å¸sa dÃƒÂ¼zeltilir.
+            imlec.execute(
+                f"ALTER DATABASE `{SEMA}` CHARACTER SET utf8mb4 COLLATE {COLLATION}"
             )
 
-            # 2. Kullanıcı: yoksa oluşturulur, varsa şifresi .env'e çekilir.
+            # 2. KullanÃ„Â±cÃ„Â±: yoksa oluÃ…Å¸turulur, varsa Ã…Å¸ifresi .env'e ÃƒÂ§ekilir.
             for host in HOSTLAR:
                 imlec.execute(
-                    f"CREATE USER IF NOT EXISTS '{KULLANICI}'@'{host}' "
-                    "IDENTIFIED BY %s",
-                    (SIFRE,),
+                    "CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
+                    (KULLANICI, host, SIFRE),
                 )
                 imlec.execute(
-                    f"ALTER USER '{KULLANICI}'@'{host}' IDENTIFIED BY %s",
-                    (SIFRE,),
+                    "ALTER USER %s@%s IDENTIFIED BY %s",
+                    (KULLANICI, host, SIFRE),
                 )
 
-            # 3. Yetki: yalnızca bu şemada, global yetki verilmez.
+            # 3. Yetki: yalnÃ„Â±zca bu Ã…Å¸emada, global yetki verilmez.
             for host in HOSTLAR:
                 imlec.execute(
-                    f"GRANT {YETKILER} ON `{SEMA}`.* TO '{KULLANICI}'@'{host}'"
+                    f"GRANT {YETKILER} ON `{SEMA}`.* TO %s@%s",
+                    (KULLANICI, host),
                 )
 
-        # 4. Doğrulama: şema ve collation gerçekten yerinde mi.
+        # 4. DoÃ„Å¸rulama: Ã…Å¸ema ve collation gerÃƒÂ§ekten yerinde mi.
         with baglanti.cursor() as imlec:
             imlec.execute(
                 "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
@@ -91,16 +112,16 @@ def main() -> int:
             satir = imlec.fetchone()
 
         if not satir:
-            print("HATA: şema oluşmadı.")
+            print("HATA: Ã…Å¸ema oluÃ…Å¸madÃ„Â±.")
             return 1
 
         karakter, collation = satir
-        print(f"şema: {SEMA} · {karakter} · {collation}")
-        if karakter != "utf8mb4" or collation != "utf8mb4_turkish_ci":
-            print("HATA: karakter seti veya collation beklendiği gibi değil.")
+        print(f"Ã…Å¸ema: {SEMA} Ã‚Â· {karakter} Ã‚Â· {collation}")
+        if karakter != "utf8mb4" or collation != COLLATION:
+            print("HATA: karakter seti veya collation beklendiÃ„Å¸i gibi deÃ„Å¸il.")
             return 1
 
-        print(f"kullanıcı: {KULLANICI} · yetki verildi: {', '.join(HOSTLAR)}")
+        print(f"kullanÃ„Â±cÃ„Â±: {KULLANICI} Ã‚Â· yetki verildi: {', '.join(HOSTLAR)}")
         return 0
     finally:
         baglanti.close()

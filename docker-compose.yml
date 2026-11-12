@@ -1,6 +1,6 @@
-# Yerel geliştirme ortamı. Windows'ta WSL2 arkasında, sunucuda birebir aynı.
-# init klasörü bağımlılığı kaldırıldı; şema ve seed tools/ üzerinden uygulanır.
-# Tüm imajlar linux/amd64 olarak sabitlenir.
+# Yerel geliÅŸtirme ortamÄ±. Windows'ta WSL2 arkasÄ±nda, sunucuda birebir aynÄ±.
+# init klasÃ¶rÃ¼ baÄŸÄ±mlÄ±lÄ±ÄŸÄ± kaldÄ±rÄ±ldÄ±; ÅŸema ve seed tools/ Ã¼zerinden uygulanÄ±r.
+# TÃ¼m imajlar linux/amd64 olarak sabitlenir.
 
 services:
   mysql:
@@ -13,10 +13,10 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     command:
       - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_0900_ai_ci
+      - --collation-server=utf8mb4_turkish_ci
       - --default-time-zone=+00:00
     ports:
-      # Yalnızca yerel makineye açılır
+      # YalnÄ±zca yerel makineye aÃ§Ä±lÄ±r
       - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql

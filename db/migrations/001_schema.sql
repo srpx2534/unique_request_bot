@@ -1,12 +1,12 @@
--- Şema kurulumu. Sıra 001'dir; view ve seed bunun ardından gelir.
--- Tüm zaman damgaları UTC'dir; oturum saat dilimi burada sabitlenir.
+-- Åema kurulumu. SÄ±ra 001'dir; view ve seed bunun ardÄ±ndan gelir.
+-- TÃ¼m zaman damgalarÄ± UTC'dir; oturum saat dilimi burada sabitlenir.
 -- Motor daima InnoDB, karakter seti utf8mb4.
 
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
--- İl referansı: 81 kayıt, plaka kodu anahtar.
--- weight nüfustan türetilir, ağırlıklı seçimde kullanılır.
+-- Ä°l referansÄ±: 81 kayÄ±t, plaka kodu anahtar.
+-- weight nÃ¼fustan tÃ¼retilir, aÄŸÄ±rlÄ±klÄ± seÃ§imde kullanÄ±lÄ±r.
 CREATE TABLE geo (
   code        TINYINT UNSIGNED PRIMARY KEY,
   name        VARCHAR(64)  NOT NULL UNIQUE,
@@ -29,7 +29,7 @@ CREATE TABLE site (
 ) ENGINE=InnoDB;
 
 -- Kelime: geo_scope zorunlu.
--- province ise home_geo şart, national ise boş olmak zorunda (CHECK).
+-- province ise home_geo ÅŸart, national ise boÅŸ olmak zorunda (CHECK).
 CREATE TABLE keyword (
   id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   site_id    BIGINT UNSIGNED NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE keyword (
 ) ENGINE=InnoDB;
 
 -- Rotasyon defteri: kelime x il.
--- Ölçüm birimi değil; sadece trafik dağıtımı ve cooldown takibi taşır.
+-- Ã–lÃ§Ã¼m birimi deÄŸil; sadece trafik daÄŸÄ±tÄ±mÄ± ve cooldown takibi taÅŸÄ±r.
 CREATE TABLE keyword_geo (
   id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   keyword_id     BIGINT UNSIGNED NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE keyword_geo (
   CONSTRAINT fk_kg_geo FOREIGN KEY (geo_code)   REFERENCES geo(code)
 ) ENGINE=InnoDB;
 
--- Proxy sağlayıcı. city_capable=1 olanlar il hedefleyebilir.
+-- Proxy saÄŸlayÄ±cÄ±. city_capable=1 olanlar il hedefleyebilir.
 CREATE TABLE provider (
   id               SMALLINT UNSIGNED PRIMARY KEY,
   name             VARCHAR(64) NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE provider (
   quarantine_until DATETIME(3) NULL
 ) ENGINE=InnoDB;
 
--- Sağlayıcı x il sağlığı. Şehir havuzunun tükendiğini buradan anlarız.
+-- SaÄŸlayÄ±cÄ± x il saÄŸlÄ±ÄŸÄ±. Åehir havuzunun tÃ¼kendiÄŸini buradan anlarÄ±z.
 CREATE TABLE provider_geo (
   provider_id     SMALLINT UNSIGNED NOT NULL,
   geo_code        TINYINT UNSIGNED NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE provider_geo (
   CONSTRAINT fk_pg_geo  FOREIGN KEY (geo_code)    REFERENCES geo(code)
 ) ENGINE=InnoDB;
 
--- SERP API sağlayıcı: sadece ölçüm hattında kullanılır.
+-- SERP API saÄŸlayÄ±cÄ±: sadece Ã¶lÃ§Ã¼m hattÄ±nda kullanÄ±lÄ±r.
 CREATE TABLE serp_provider (
   id          SMALLINT UNSIGNED PRIMARY KEY,
   name        VARCHAR(64) NOT NULL,
@@ -106,7 +106,7 @@ CREATE TABLE serp_provider (
   used_month  INT UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=InnoDB;
 
--- Profil: kalıcı cookie jar, ölçüm-B kanalı için.
+-- Profil: kalÄ±cÄ± cookie jar, Ã¶lÃ§Ã¼m-B kanalÄ± iÃ§in.
 CREATE TABLE profile (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ua          VARCHAR(255) NOT NULL,
@@ -120,7 +120,7 @@ CREATE TABLE profile (
   CONSTRAINT fk_pf_prov FOREIGN KEY (provider_id) REFERENCES provider(id)
 ) ENGINE=InnoDB;
 
--- Kampanya: start/stop kaydı, hangi ayarla çalıştığı saklanır.
+-- Kampanya: start/stop kaydÄ±, hangi ayarla Ã§alÄ±ÅŸtÄ±ÄŸÄ± saklanÄ±r.
 CREATE TABLE campaign (
   id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   keyword_id BIGINT UNSIGNED NOT NULL,
@@ -131,7 +131,7 @@ CREATE TABLE campaign (
   CONSTRAINT fk_cp_kw FOREIGN KEY (keyword_id) REFERENCES keyword(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Burst: tek bir basamak. phase core ise büyük iller, broad ise yayılmış.
+-- Burst: tek bir basamak. phase core ise bÃ¼yÃ¼k iller, broad ise yayÄ±lmÄ±ÅŸ.
 CREATE TABLE burst (
   id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   campaign_id    BIGINT UNSIGNED NOT NULL,
@@ -147,7 +147,7 @@ CREATE TABLE burst (
   CONSTRAINT fk_bs_kg FOREIGN KEY (keyword_geo_id) REFERENCES keyword_geo(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Hit: tek istek telemetrisi. Hacim yüksek olduğu için FK konmaz.
+-- Hit: tek istek telemetrisi. Hacim yÃ¼ksek olduÄŸu iÃ§in FK konmaz.
 CREATE TABLE hit (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   burst_id    BIGINT UNSIGNED NOT NULL,
@@ -171,14 +171,14 @@ CREATE TABLE position (
   id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   keyword_id    BIGINT UNSIGNED NOT NULL,
   channel       ENUM('clean','post_click') NOT NULL,
-  rank          SMALLINT UNSIGNED NULL,
+  `rank`          SMALLINT UNSIGNED NULL,
   serp_provider SMALLINT UNSIGNED NULL,
   checked_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   KEY idx_read (keyword_id, channel, checked_at DESC),
   CONSTRAINT fk_ps_kw FOREIGN KEY (keyword_id) REFERENCES keyword(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Günlük trafik özeti: rapor hit taramasın diye.
+-- GÃ¼nlÃ¼k trafik Ã¶zeti: rapor hit taramasÄ±n diye.
 CREATE TABLE traffic_daily (
   day            DATE NOT NULL,
   keyword_geo_id BIGINT UNSIGNED NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE traffic_daily (
   CONSTRAINT fk_td_kg FOREIGN KEY (keyword_geo_id) REFERENCES keyword_geo(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Uyarı kaydı.
+-- UyarÄ± kaydÄ±.
 CREATE TABLE alert (
   id           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   kind         ENUM('captcha','provider_down','queue_lag','quota','fallback_high') NOT NULL,

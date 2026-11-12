@@ -1,12 +1,13 @@
 # Geliştirme makinesi kurulumu (Windows).
 # Şifreler .env'den okunur, bu dosyada gizli değer yoktur.
 # Yorumlayıcı yoksa veya bir adım düşerse betik durur.
+# Docker varsa servisler ayağa kaldırılır, yoksa yerel MySQL kullanılır.
 
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 # 1. Zorunlu ortam değişkenleri dolu mu
-$gerekli = @("MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD", "WORKER_TOKEN")
+$gerekli = @("MYSQL_PASSWORD", "WORKER_TOKEN")
 if (-not (Test-Path .env)) {
   Copy-Item .env.example .env
   Write-Host ".env oluşturuldu. Şu alanları doldur, sonra betiği tekrar çalıştır:"
@@ -61,28 +62,31 @@ if (-not (Test-Path $Py)) { Write-Error "Sanal ortam bulunamadı: $Py"; exit 1 }
 & $Py -m pip install -r requirements.txt; if ($LASTEXITCODE -ne 0) { exit 1 }
 npm install; if ($LASTEXITCODE -ne 0) { exit 1 }
 
-# 5. Servisler
-docker compose up -d; if ($LASTEXITCODE -ne 0) { exit 1 }
-
-# 6. MySQL sağlıklı olana kadar bekle
-Write-Host "MySQL bekleniyor..."
-$kimlik = (docker compose ps -q mysql).Trim()
-$durum = "yok"
-for ($i = 0; $i -lt 60; $i++) {
-  $durum = docker inspect --format "{{.State.Health.Status}}" $kimlik 2>$null
-  if ($durum -eq "healthy") { break }
-  Start-Sleep -Seconds 2
+# 5. Servisler: Docker varsa ayağa kaldırılır, yoksa yerel MySQL kullanılır.
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+  docker compose up -d; if ($LASTEXITCODE -ne 0) { exit 1 }
+  Write-Host "MySQL bekleniyor..."
+  $kimlik = (docker compose ps -q mysql).Trim()
+  $durum = "yok"
+  for ($i = 0; $i -lt 60; $i++) {
+    $durum = docker inspect --format "{{.State.Health.Status}}" $kimlik 2>$null
+    if ($durum -eq "healthy") { break }
+    Start-Sleep -Seconds 2
+  }
+  if ($durum -ne "healthy") { Write-Error "MySQL sağlıklı duruma gelmedi."; exit 1 }
+} else {
+  Write-Host "Docker yok, yerel MySQL kullanılacak."
 }
-if ($durum -ne "healthy") { Write-Error "MySQL sağlıklı duruma gelmedi."; exit 1 }
 
-# 7. Şema, kullanıcı, yetki
+# 6. uule dosyası, şema, kullanıcı, yetki
+& $Py tools/gen_uule.py; if ($LASTEXITCODE -ne 0) { exit 1 }
 & $Py tools/bootstrap.py; if ($LASTEXITCODE -ne 0) { exit 1 }
 
-# 8. Tablolar ve seed
+# 7. Tablolar ve seed
 & $Py tools/migrate.py --status; if ($LASTEXITCODE -ne 0) { exit 1 }
 & $Py tools/migrate.py;          if ($LASTEXITCODE -ne 0) { exit 1 }
 & $Py tools/seed.py;             if ($LASTEXITCODE -ne 0) { exit 1 }
 
-# 9. Doğrulama
-docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) AS il, COUNT(uule) AS uule_dolu FROM geo;"'
+# 8. Doğrulama
+& $Py -c "from db import baglan; c=baglan(); k=c.cursor(); k.execute('SELECT COUNT(*), COUNT(uule) FROM geo'); print('geo dogrulama:', k.fetchone()); c.close()"
 Write-Host "Kurulum bitti."
