@@ -26,6 +26,7 @@ const eklemeSemasi = z.object({
 });
 
 const guncellemeSemasi = z.object({
+  domain: alanAdi.optional(),
   label: z.string().trim().max(191).nullable().optional(),
   active: z.boolean().optional(),
 });
@@ -35,12 +36,15 @@ function kimlik(deger: string | undefined): number | null {
   return Number.isInteger(sayi) && sayi > 0 ? sayi : null;
 }
 
-yonlendirici.get("/site", async (_istek, yanit) => {
+yonlendirici.get("/site", async (istek, yanit) => {
+  const ara = (istek.query.q as string | undefined)?.trim();
   const satirlar = await sorgu(
     `SELECT s.id, s.domain, s.label, s.active, s.created_at,
             (SELECT COUNT(*) FROM keyword k WHERE k.site_id = s.id) AS kelime_adet
        FROM site s
+      ${ara ? "WHERE s.domain LIKE ? OR s.label LIKE ?" : ""}
       ORDER BY s.id DESC`,
+    ara ? [`%${ara}%`, `%${ara}%`] : [],
   );
   yanit.json(satirlar);
 });
@@ -76,6 +80,10 @@ yonlendirici.patch("/site/:id", async (istek, yanit) => {
 
   const alanlar: string[] = [];
   const degerler: unknown[] = [];
+  if (govde.domain !== undefined) {
+    alanlar.push("domain = ?");
+    degerler.push(govde.domain.toLowerCase());
+  }
   if (govde.label !== undefined) {
     alanlar.push("label = ?");
     degerler.push(govde.label);

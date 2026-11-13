@@ -13,10 +13,13 @@ import { cn } from "@/lib/sinif";
 
 const basliklar: Record<string, string> = {
   "/": "Genel bakış",
+  "/siteler": "Siteler",
   "/kelimeler": "Kelimeler",
   "/saglayicilar": "Sağlayıcılar",
+  "/sunucular": "Sunucular",
   "/uyarilar": "Uyarılar",
   "/loglar": "Loglar",
+  "/rapor": "Rapor",
   "/ayarlar": "Ayarlar",
 };
 

@@ -11,18 +11,24 @@ import {
   ChevronsRight,
   LayoutDashboard,
   Network,
+  Server,
   ScrollText,
+  BarChart3,
   Search,
+  Globe,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/sinif";
 
 const maddeler = [
   { yol: "/", ad: "Genel bakış", Ikon: LayoutDashboard },
+  { yol: "/siteler", ad: "Siteler", Ikon: Globe },
   { yol: "/kelimeler", ad: "Kelimeler", Ikon: Search },
   { yol: "/saglayicilar", ad: "Sağlayıcılar", Ikon: Network },
+  { yol: "/sunucular", ad: "Sunucular", Ikon: Server },
   { yol: "/uyarilar", ad: "Uyarılar", Ikon: Bell },
   { yol: "/loglar", ad: "Loglar", Ikon: ScrollText },
+  { yol: "/rapor", ad: "Rapor", Ikon: BarChart3 },
   { yol: "/ayarlar", ad: "Ayarlar", Ikon: Settings },
 ];
 

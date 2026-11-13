@@ -189,10 +189,10 @@ def serp_getir(
     sonuc = _bos_sonuc()
     sonuc["kaynak"] = "api"
 
-    anahtar = ayar.oku("DECODO_SERP_KEY")
+    anahtar = ayar.serp_anahtari()
     if not anahtar:
         sonuc["result"] = "anahtar_yok"
-        sonuc["mesaj"] = ".env içinde DECODO_SERP_KEY boş"
+        sonuc["mesaj"] = "ayar tablosunda serp_decodo boş"
         return sonuc
 
     aranan = _kok(hedef_domain) if hedef_domain else ""

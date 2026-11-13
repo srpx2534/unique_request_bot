@@ -94,17 +94,44 @@ def _kapat(baglanti) -> None:
         pass
 
 
-def uyari(kind: str, ref_id: int | None, mesaj: str) -> None:
-    """`alert` tablosuna kayıt düşer."""
+def uyari(
+    kind: str,
+    ref_id: int | None,
+    mesaj: str,
+    kelime: str | None = None,
+    domain: str | None = None,
+) -> None:
+    """`alert` tablosuna kayıt düşer.
+
+    Args:
+        kind: Uyarı türü.
+        ref_id: İlgili kayıt kimliği (sağlayıcı, burst).
+        mesaj: Okunur açıklama.
+        kelime: Sorunun çıktığı kelime; bağlam çözümü için.
+        domain: Kelimenin sitesi.
+    """
     try:
         baglanti = _baglan()
     except Exception:  # noqa: BLE001
         return
     try:
         with baglanti.cursor() as imlec:
+            # Bağlam kimlikleri metinden çözülür; bulunamazsa boş kalır.
+            kelime_id = site_id = None
+            if kelime:
+                imlec.execute(
+                    "SELECT k.id, k.site_id FROM keyword k"
+                    " JOIN site s ON s.id = k.site_id"
+                    " WHERE k.text = %s AND s.domain = %s LIMIT 1",
+                    (kelime, domain),
+                )
+                satir = imlec.fetchone()
+                if satir:
+                    kelime_id, site_id = satir
             imlec.execute(
-                "INSERT INTO alert (kind, ref_id, message) VALUES (%s, %s, %s)",
-                (kind, ref_id, mesaj[:500]),
+                "INSERT INTO alert (kind, ref_id, keyword_id, site_id, message)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (kind, ref_id, kelime_id, site_id, mesaj[:500]),
             )
     except Exception as hata:  # noqa: BLE001
         print(f"[saglik] {hata}")

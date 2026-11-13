@@ -16,6 +16,9 @@ import { csrf, tokenVer } from "./csrf.js";
 import girisYonlendirici from "./giris.js";
 import siteYonlendirici from "./site.js";
 import kelimeYonlendirici from "./kelime.js";
+import panelYonlendirici from "./panel.js";
+import raporYonlendirici from "./rapor.js";
+import dugumYonlendirici, { kalpIsleyici } from "./dugum.js";
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -35,6 +38,9 @@ uygulama.get("/saglik", (_istek, yanit) => {
 });
 
 uygulama.use(oturum);
+// Kalp ucu oturum ve CSRF istemez; worker''ın çerezi yok.
+uygulama.post("/api/worker/kalp", kalpIsleyici);
+
 uygulama.use("/api", csrf);
 
 // CSRF doğrulaması düşerse hata yakalayıcıya gitmeden 403 döner.
@@ -53,6 +59,9 @@ uygulama.use("/api", boslukDenetimi);
 uygulama.use("/api", gerekli);
 uygulama.use("/api", siteYonlendirici);
 uygulama.use("/api", kelimeYonlendirici);
+uygulama.use("/api", panelYonlendirici);
+uygulama.use("/api", raporYonlendirici);
+uygulama.use("/api", dugumYonlendirici);
 
 uygulama.use(express.static(path.join(KOK, "dist", "web")));
 

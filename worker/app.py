@@ -22,7 +22,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from worker import ayar, burst, havuz
+from worker import ayar, burst, kalp, havuz
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -30,6 +30,7 @@ GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
 TOKEN = ayar.oku("WORKER_TOKEN")
 PORT = int(ayar.oku("WORKER_PORT", "8081"))
 _semafor = threading.BoundedSemaphore(ESZAMANLI)
+kalp.yuk_kaynagi = lambda: ESZAMANLI - _semafor._value  # doluluk
 
 # Süreç ömrü boyunca biriken sayaçlar. Panel buradan nabız okur.
 _sayac = {"burst": 0, "ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
@@ -97,6 +98,10 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(401, {"hata": "token geçersiz"})
             return
 
+        if kalp.duraklatildi():
+            self._json(503, {"hata": "düğüm durduruldu"})
+            return
+
         govde = self._govde_oku()
         if govde is None:
             self._json(400, {"hata": "gövde okunamadı"})
@@ -143,6 +148,7 @@ def main() -> int:
     if not TOKEN:
         print("HATA: .env içinde WORKER_TOKEN boş.")
         return 1
+    kalp.baslat()
     sunucu = ThreadingHTTPServer(("0.0.0.0", PORT), Isleyici)
     print(f"worker dinliyor: 0.0.0.0:{PORT} · eşzamanlı sınır {ESZAMANLI}")
     try:
@@ -150,6 +156,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("kapatılıyor.")
     finally:
+        kalp.durdur()
         sunucu.server_close()
     return 0
 

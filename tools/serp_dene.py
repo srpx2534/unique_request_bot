@@ -1,7 +1,7 @@
 """SERP isteÄŸini elle dener.
 
 API yolunu ve HTML yedeÄŸini ayrÄ± ayrÄ± Ã§alÄ±ÅŸtÄ±rÄ±r, sonuÃ§ sayÄ±sÄ±nÄ± ve ilk
-beÅŸ adresi yazar. Anahtar .env iÃ§indeki DECODO_SERP_KEY alanÄ±ndan okunur.
+bes adresi yazar. Anahtar ayar tablosundaki serp_decodo alanindan okunur.
 
 KullanÄ±m:
     python tools/serp_dene.py --sorgu "veteriner" --domain petlebi.com

@@ -9,9 +9,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { BildirimSaglayici } from "@/bilesen/ui/bildirim";
-import YerTutucu from "@/bilesen/yer-tutucu";
 import Kabuk from "@/kabuk/kabuk";
 import Giris from "@/sayfa/giris";
+import Panel from "@/sayfa/panel";
+import Siteler from "@/sayfa/siteler";
+import Kelimeler from "@/sayfa/kelimeler";
+import Saglayicilar from "@/sayfa/saglayicilar";
+import Sunucular from "@/sayfa/sunucular";
+import Uyarilar from "@/sayfa/uyarilar";
+import Loglar from "@/sayfa/loglar";
+import Rapor from "@/sayfa/rapor";
+import Ayarlar from "@/sayfa/ayarlar";
 import { oturumKullan } from "@/lib/oturum";
 import { temaBaslat } from "@/lib/tema";
 
@@ -50,12 +58,15 @@ export default function Uygulama() {
                 </KorumaliRota>
               }
             >
-              <Route index element={<YerTutucu baslik="Genel bakış" aciklama="Sıralama özeti, sağlık ve kota göstergeleri." />} />
-              <Route path="kelimeler" element={<YerTutucu baslik="Kelimeler" aciklama="Kelime listesi ve sıralama eğrisi." />} />
-              <Route path="saglayicilar" element={<YerTutucu baslik="Sağlayıcılar" aciklama="Havuz, tür oranı, devre kesici." />} />
-              <Route path="uyarilar" element={<YerTutucu baslik="Uyarılar" aciklama="Coğrafi ve genel eşik uyarıları." />} />
-              <Route path="loglar" element={<YerTutucu baslik="Loglar" aciklama="Canlı hit akışı." />} />
-              <Route path="ayarlar" element={<YerTutucu baslik="Ayarlar" aciklama="Ölçüm aralığı, kuyruk ve oturum ayarları." />} />
+              <Route index element={<Panel />} />
+              <Route path="siteler" element={<Siteler />} />
+              <Route path="kelimeler" element={<Kelimeler />} />
+              <Route path="saglayicilar" element={<Saglayicilar />} />
+              <Route path="sunucular" element={<Sunucular />} />
+              <Route path="uyarilar" element={<Uyarilar />} />
+              <Route path="loglar" element={<Loglar />} />
+              <Route path="rapor" element={<Rapor />} />
+              <Route path="ayarlar" element={<Ayarlar />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

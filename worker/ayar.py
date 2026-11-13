@@ -50,3 +50,16 @@ def zorunlu(anahtar: str) -> str:
     if not deger:
         raise RuntimeError(f".env içinde {anahtar} boş")
     return deger
+
+def serp_anahtari() -> str:
+    """Aktif SERP anahtarını verir.
+
+    Önce ayar tablosu, sonra .env okunur. ayar_db, ayar modülünü içe aktardığı
+    için burada gecikmeli içe aktarma yapılır.
+
+    Returns:
+        Anahtar; tanımlı değilse boş dize.
+    """
+    from worker import ayar_db
+
+    return ayar_db.oku("serp_decodo")

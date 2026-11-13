@@ -30,7 +30,7 @@ def dene(etiket: str, ek: dict) -> None:
     try:
         yanit = requests.post(
             API, json=govde,
-            headers={"authorization": f"Bearer {ayar.oku('DECODO_SERP_KEY')}"},
+            headers={"authorization": f"Bearer {ayar.serp_anahtari()}"},
             impersonate="chrome", timeout=30,
         )
     except Exception as hata:  # noqa: BLE001
