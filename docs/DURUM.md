@@ -1,6 +1,3 @@
-cd C:\Users\developer\Desktop\App\unique_request_bot
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$m = @'
 # DURUM — devir notu
 
 Son güncelleme: 2026-11-13
@@ -62,7 +59,3 @@ kontrol düzlemi, MySQL. Proje kökü: `C:\Users\developer\Desktop\App\unique_re
 - Git commit'lerini kullanıcı atar.
 - Dosyalar Türkçe yorum taşır, 250 satırı geçmez.
 - Cevaplar kısa; sandbox yok, düz metin.
-'@
-[System.IO.File]::WriteAllText((Join-Path (Get-Location) "docs\DURUM.md"), ($m -replace "`r`n","`n"), (New-Object System.Text.UTF8Encoding($false)))
-Write-Host "[YAZILDI] docs\DURUM.md"
-(Get-Content "docs\DURUM.md").Count
