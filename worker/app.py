@@ -22,7 +22,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from worker import ayar, burst, kalp, havuz
+from worker import ayar, burst, durum, kalp, havuz
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -127,7 +127,8 @@ class Isleyici(BaseHTTPRequestHandler):
 
         with _semafor:
             sonuc = burst.burst_yap(
-                kelime, domain, adet, uule=uule, hedef_url=hedef_url, geo_slug=geo_slug
+                kelime, domain, adet, uule=uule, hedef_url=hedef_url,
+                geo_slug=geo_slug, devam=lambda: durum.keyword_aktif_mi(kelime),
             )
 
         with _kilit:
@@ -144,6 +145,7 @@ class Isleyici(BaseHTTPRequestHandler):
             "timeout": sonuc["timeout"],
             "error": sonuc["error"],
             "elapsed_ms": sonuc["elapsed_ms"],
+            "durduruldu": sonuc["durduruldu"],
         })
 
 

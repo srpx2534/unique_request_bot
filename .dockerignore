@@ -1,0 +1,10 @@
+# Imaja girmeyen dosyalar.
+.git
+.github
+.venv
+node_modules
+dist
+docs
+db
+*.log
+.env

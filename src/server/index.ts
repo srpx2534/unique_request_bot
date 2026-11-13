@@ -7,6 +7,8 @@
 import "dotenv/config";
 import uygulama from "./uygulama.js";
 import { redis } from "./redis.js";
+import { isci } from "./isci.js";
+import { zamanlayiciBaslat, zamanlayiciDurdur } from "./zamanlayici.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
@@ -18,4 +20,18 @@ uygulama.listen(PORT, HOST, () => {
     .ping()
     .then(() => console.log("[redis] oturum deposu hazır"))
     .catch(() => console.error("[redis] erişilemiyor: giriş 500 verir"));
+
+  // Zamanlayıcı ve kuyruk tüketicisi yalnızca sunucu sürecinde başlar;
+  // testler uygulamayı doğrudan yüklediği için ikisi de dışarıda kalır.
+  zamanlayiciBaslat();
 });
+
+/** Kapanışta zamanlayıcı ve kuyruk tüketicisi düzgün kapatılır. */
+async function kapat(): Promise<void> {
+  zamanlayiciDurdur();
+  await isci.close();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => void kapat());
+process.on("SIGTERM", () => void kapat());

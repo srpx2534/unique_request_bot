@@ -1,0 +1,208 @@
+"""Saglayici sagliginin veritabani tarafi.
+
+Her hit sonrasi saglayici sayaci artirilir; il hedefli hit'te ayrica
+provider_geo satiri islenir. Esik asilirsa il cifti tuketilir (C18), saglayici
+geneli asirsa saglayici karantinaya alinir ve agirligi yedege alinir (§8).
+
+Worker normalde veritabanina yazmaz (§3); provider, provider_geo ve alert
+toplu tablolar oldugu icin burada istisna uygulanir.
+
+Uyari baglami metinle degil kimlikle cozulur: cagiran taraf kelime ve domain
+verir, burada kelime_id/site_id bulunur. Bulunamazsa bos kalir.
+
+Kullanim: worker/burst.py, tools/saglik_dene.py.
+"""
+
+from __future__ import annotations
+
+import pymysql
+
+from worker import ayar, ayar_db, saglik
+
+
+def _baglan() -> pymysql.connections.Connection:
+    """Yazma amacli baglanti acar."""
+    return pymysql.connect(
+        host=ayar.oku("MYSQL_HOST", "127.0.0.1"),
+        port=int(ayar.oku("MYSQL_PORT", "3306")),
+        user=ayar.oku("MYSQL_USER", "request"),
+        password=ayar.oku("MYSQL_PASSWORD"),
+        database=ayar.oku("MYSQL_DATABASE", "unique_request_bot"),
+        charset="utf8mb4",
+        autocommit=True,
+    )
+
+
+def _kapat(baglanti) -> None:
+    """Baglantiyi kapatir; zaten kapaliysa hata vermez."""
+    if baglanti is None:
+        return
+    try:
+        baglanti.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def uyari(
+    kind: str,
+    ref_id: int | None,
+    mesaj: str,
+    kelime: str | None = None,
+    domain: str | None = None,
+) -> None:
+    """`alert` tablosuna baglamli kayit dusurur.
+
+    Args:
+        kind: Uyari turu.
+        ref_id: Ilgili kayit kimligi (saglayici, burst).
+        mesaj: Okunur aciklama.
+        kelime: Sorunun ciktigi kelime.
+        domain: Kelimenin sitesi.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            kelime_id = site_id = None
+            if kelime:
+                imlec.execute(
+                    "SELECT k.id, k.site_id FROM keyword k"
+                    " JOIN site s ON s.id = k.site_id"
+                    " WHERE k.text = %s AND s.domain = %s LIMIT 1",
+                    (kelime, domain),
+                )
+                satir = imlec.fetchone()
+                if satir:
+                    kelime_id, site_id = satir
+            imlec.execute(
+                "INSERT INTO alert (kind, ref_id, keyword_id, site_id, message)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (kind, ref_id, kelime_id, site_id, mesaj[:500]),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)
+
+
+def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
+    """Hit sonucunu saglayiciya, il varsa il ciftine isler.
+
+    Args:
+        saglayici_id: Saglayici kimligi.
+        geo_kodu: Il kodu; ulusal hit'te None.
+        sonuc: hit sonucu (ok, captcha, ...).
+    """
+    captcha = 1 if sonuc == "captcha" else 0
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            # Sayac her hit'te artar; ulusal trafik de devre kesiciye girer.
+            imlec.execute(
+                "UPDATE provider SET hits_1h = hits_1h + 1, captcha_1h = captcha_1h + %s"
+                " WHERE id = %s",
+                (captcha, saglayici_id),
+            )
+            imlec.execute(
+                "UPDATE provider SET captcha_pct = ROUND(captcha_1h * 100 / hits_1h, 2)"
+                " WHERE id = %s AND hits_1h > 0",
+                (saglayici_id,),
+            )
+
+            # Il cifti yalnizca il hedefli hit'te tutulur; anahtar il kodudur.
+            if geo_kodu is None:
+                return
+            imlec.execute(
+                "INSERT INTO provider_geo (provider_id, geo_code, hits_1h, captcha_1h)"
+                " VALUES (%s, %s, 1, %s) ON DUPLICATE KEY UPDATE"
+                " hits_1h = hits_1h + 1, captcha_1h = captcha_1h + VALUES(captcha_1h)",
+                (saglayici_id, geo_kodu, captcha),
+            )
+            imlec.execute(
+                "UPDATE provider_geo SET captcha_pct = ROUND(captcha_1h * 100 / hits_1h, 2)"
+                " WHERE provider_id = %s AND geo_code = %s AND hits_1h > 0",
+                (saglayici_id, geo_kodu),
+            )
+            imlec.execute(
+                "SELECT captcha_1h, hits_1h, captcha_pct FROM provider_geo"
+                " WHERE provider_id = %s AND geo_code = %s",
+                (saglayici_id, geo_kodu),
+            )
+            satir = imlec.fetchone()
+            if satir and saglik.esik_asildi_mi(float(satir[2]), int(satir[1]), saglik.GEO_ESIK):
+                imlec.execute(
+                    "UPDATE provider_geo SET exhausted_until = NOW(3) + INTERVAL %s MINUTE"
+                    " WHERE provider_id = %s AND geo_code = %s"
+                    " AND (exhausted_until IS NULL OR exhausted_until < NOW(3))",
+                    (saglik.GEO_SURE_DK, saglayici_id, geo_kodu),
+                )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)
+
+
+def karantina_kontrol(saglayici_id: int) -> None:
+    """Saglayici genel oranini denetler, esikte karantinaya alir.
+
+    Args:
+        saglayici_id: Denetlenecek saglayici.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT captcha_pct, hits_1h, state,"
+                " (quarantine_until IS NOT NULL AND NOW(3) > quarantine_until)"
+                " FROM provider WHERE id = %s",
+                (saglayici_id,),
+            )
+            satir = imlec.fetchone()
+            if not satir:
+                return
+            oran = float(satir[0])
+            ornek = int(satir[1])
+            durum = satir[2]
+            suresi_doldu = bool(satir[3])
+
+            # Esik panelden gelir; okunamazsa sozlesme degeri (20) gecerli.
+            esik = int(ayar_db.oku("esik_captcha", str(saglik.GENEL_ESIK)) or saglik.GENEL_ESIK)
+            karar = saglik.karantina_karari(oran, durum, suresi_doldu)
+            # Ornek esigin altindaysa yalnizca karantinaya alma ertelenir;
+            # suresi dolmus karantina her halukarda acilir.
+            if durum == "active" and not saglik.esik_asildi_mi(oran, ornek, esik):
+                karar = "yok"
+
+            if karar == "karantina":
+                imlec.execute(
+                    "UPDATE provider SET weight_yedek = weight, state = 'quarantine',"
+                    " weight = %s, quarantine_until = NOW(3) + INTERVAL %s HOUR"
+                    " WHERE id = %s",
+                    (saglik.KARANTINA_AGIRLIK, saglik.KARANTINA_SAAT, saglayici_id),
+                )
+                uyari("provider_down", saglayici_id,
+                      f"saglayici {saglayici_id} karantinada · captcha %{oran}")
+            elif karar == "ac":
+                # Karantina doldu: agirlik yedekten doner, sayaclar sifirlanir.
+                imlec.execute(
+                    "UPDATE provider SET state = 'active',"
+                    " weight = COALESCE(weight_yedek, %s), weight_yedek = NULL,"
+                    " quarantine_until = NULL, captcha_pct = 0, hits_1h = 0,"
+                    " captcha_1h = 0 WHERE id = %s",
+                    (saglik.VARSAYILAN_AGIRLIK, saglayici_id),
+                )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)

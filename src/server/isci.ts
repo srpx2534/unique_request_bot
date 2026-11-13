@@ -13,7 +13,7 @@ import { tek, yaz } from "./veritabani.js";
 import { dugumSec } from "./dugum_sec.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
-const ZAMAN_ASIMI_MS = 120_000;
+const ZAMAN_ASIMI_MS = 300_000; // burst dwell ve pogo ile 100 saniyeyi aşabiliyor
 
 
 
@@ -28,6 +28,10 @@ type MotorHiti = {
 
 type MotorCevabi = {
   ok?: number;
+  captcha?: number;
+  not_found?: number;
+  timeout?: number;
+  error?: number;
   stats?: Record<string, number>;
   hits?: MotorHiti[];
 };
@@ -91,6 +95,10 @@ async function hedefDenetle(keywordId: number): Promise<void> {
 }
 
 async function calistir(is: Is): Promise<void> {
+  // Govdenin tamami korunur: dugumSec ve DB adimlari da try icinde kalsin ki
+  // hata alan satir sonsuza dek 'running' kalmasin.
+  let burstId: number | null = null;
+  try {
   const satir = await tek<{
     burst_count: number;
     uule: string | null;
@@ -122,9 +130,25 @@ async function calistir(is: Is): Promise<void> {
     [is.keywordGeoId],
   );
   if (!burst) return;
+  burstId = burst.id;
+
+  // Aynı iş iki kez düşerse ikinci turda satır 'running' olur; burst tekrarlanmaz.
+  const sahiplen = await yaz(
+    "UPDATE keyword_geo SET state = 'running' WHERE id = ? AND state = 'running'",
+    [is.keywordGeoId],
+  );
+  if (sahiplen === 0) {
+    await yaz("DELETE FROM burst WHERE id = ?", [burst.id]);
+    return;
+  }
 
   const adres = await dugumSec();
   if (!adres) {
+    // Burst açık kalmasın; panelde "sürüyor" görünüp kaybolmasın.
+    await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
+      JSON.stringify({ hata: "aktif düğüm yok" }),
+      burst.id,
+    ]);
     await geriAl(is.keywordGeoId, "aktif düğüm yok");
     return;
   }
@@ -146,8 +170,16 @@ async function calistir(is: Is): Promise<void> {
 
     const govde = (await yanit.json()) as MotorCevabi;
     await hitYaz(burst.id, satir.geo_code, govde.hits ?? []);
-    await yaz("UPDATE burst SET ended_at = NOW(3), stats = ? WHERE id = ?", [
-      JSON.stringify(govde.stats ?? {}),
+    // Sayaçlar burst satırına yazılır; log ve rapor buradan okur.
+    const sayac = {
+      ok: govde.ok ?? 0,
+      captcha: govde.captcha ?? 0,
+      not_found: govde.not_found ?? 0,
+      timeout: govde.timeout ?? 0,
+      error: govde.error ?? 0,
+    };
+    await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
+      JSON.stringify(sayac),
       burst.id,
     ]);
     await yaz(
@@ -156,11 +188,22 @@ async function calistir(is: Is): Promise<void> {
     );
     await hedefDenetle(is.keywordId);
   } catch (hata) {
-    await yaz("UPDATE burst SET ended_at = NOW(3), stats = ? WHERE id = ?", [
+    await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
       JSON.stringify({ hata: (hata as Error).message }),
       burst.id,
     ]);
     await geriAl(is.keywordGeoId, `burst ${burst.id}: ${(hata as Error).message}`);
+  }
+  } catch (hata) {
+    // Burst acilmadan once dusen hata: satiri yine de serbest birak.
+    const mesaj = (hata as Error).message;
+    if (burstId !== null) {
+      await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
+        JSON.stringify({ hata: mesaj }),
+        burstId,
+      ]).catch(() => {});
+    }
+    await geriAl(is.keywordGeoId, `burst ${burstId ?? "-"}: ${mesaj}`).catch(() => {});
   }
 }
 

@@ -1,0 +1,42 @@
+# Yerel geliÅŸtirme ortamÄ±. Windows'ta WSL2 arkasÄ±nda, sunucuda birebir aynÄ±.
+# init klasÃ¶rÃ¼ baÄŸÄ±mlÄ±lÄ±ÄŸÄ± kaldÄ±rÄ±ldÄ±; ÅŸema ve seed tools/ Ã¼zerinden uygulanÄ±r.
+# TÃ¼m imajlar linux/amd64 olarak sabitlenir.
+
+services:
+  mysql:
+    image: mysql:8.0.36
+    platform: linux/amd64
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_turkish_ci
+      - --default-time-zone=+00:00
+    ports:
+      # YalnÄ±zca yerel makineye aÃ§Ä±lÄ±r
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql_data:

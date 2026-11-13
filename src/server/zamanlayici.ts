@@ -48,15 +48,6 @@ async function tara(): Promise<void> {
   calisiyor = true;
   try {
     // Günlük özet her turda tazelenir; geç gelen hit de yakalanır.
-    await toparla();
-    // Kalbi kesilen düğüm deftere düşer; panelde zaman çizelgesi görünür.
-    await kalpKaybiYaz();
-    // Sıralama ölçümü burst'ten ayrı yürür; aralığı kendi içinde sınırlar.
-    await olcumYap();
-    // Kuyruk birikmesi ve yedek oranı eşiği uyarıya dönüşür.
-    await esikDenetle();
-    // Süresi geçen satırlar saatte bir temizlenir.
-    await saklamaDenetle();
     // Ölçüm aralığı ayardan okunur; 0 ise yalnızca cooldown sırası geçerli.
     const aralik = Number(await ayarOku("olcum_araligi_dk", "0")) || 0;
 
@@ -85,10 +76,12 @@ async function tara(): Promise<void> {
 
       sayac.set(aday.keyword_id, kullanilan + 1);
 
-      await yaz(
-        "UPDATE keyword_geo SET state = 'running', cooldown_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE) WHERE id = ?",
+      // Koşullu güncelleme: satır iki turda birden seçilirse ikincisi düşer (C16).
+      const alindi = await yaz(
+        "UPDATE keyword_geo SET state = 'running', cooldown_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE) WHERE id = ? AND state <> 'running'",
         [rastgeleCooldown(), aday.keyword_geo_id],
       );
+      if (alindi === 0) continue;
       const is: Is = {
         campaignId: aday.campaign_id,
         keywordId: aday.keyword_id,
@@ -102,6 +95,13 @@ async function tara(): Promise<void> {
     }
 
     if (atilan > 0) console.log(`[zamanlayici] ${atilan} iş kuyruğa atıldı`);
+
+    // Bakım adımları tur işinden sonra koşar: yavaş ölçüm kuyruğu geciktirmez.
+    await toparla();
+    await kalpKaybiYaz();
+    await esikDenetle();
+    await saklamaDenetle();
+    await olcumYap();
   } catch (hata) {
     console.error("[zamanlayici]", (hata as Error).message);
   } finally {

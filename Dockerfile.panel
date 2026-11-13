@@ -1,0 +1,36 @@
+# Panel imaji. Iki asamali: derleme ve calisma ayri.
+#
+# Calisma asamasi yalnizca uretim bagimliliklarini tasir, derleyici ve vite
+# disarida kalir. Kok dosya sistemi salt okunur, kullanici root degil.
+
+FROM node:20-bookworm-slim AS derleme
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.base.json tsconfig.json tsconfig.server.json tsconfig.web.json ./
+COPY vite.config.ts index.html ./
+COPY src ./src
+RUN npm run build
+
+FROM node:20-bookworm-slim
+
+ENV NODE_ENV=production \
+    TZ=UTC
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tzdata \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --from=derleme /app/dist ./dist
+
+RUN useradd --system --uid 10001 uygulama && chown -R uygulama:uygulama /app
+USER uygulama
+
+EXPOSE 8080
+CMD ["node", "dist/server/index.js"]
