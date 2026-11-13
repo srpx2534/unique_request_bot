@@ -22,7 +22,7 @@ from urllib.parse import unquote, urlparse
 
 from curl_cffi import requests
 
-from worker import ayar, fingerprint, saglik
+from worker import ayar, fingerprint, saglik_db
 
 API_URL = "https://data.decodo.com/v1/search"
 ZAMAN_ASIMI = 25  # saniye; üstü burst'ü geciktirir
@@ -139,7 +139,7 @@ def _sayfa_cek(sorgu: str, sayfa: int, anahtar: str, dil: str, ulke: str,
     if yanit.status_code == 429:
         bilgi["durum"], bilgi["mesaj"] = "captcha", "kota veya hız sınırı"
         # Kota sessizce tükenmesin: panel uyarıyı görsün.
-        saglik.uyari("quota", None, "SERP kotası veya hız sınırı: 429")
+        saglik_db.uyari("quota", None, "SERP kotası veya hız sınırı: 429")
         return [], bilgi
     if yanit.status_code != 200:
         bilgi["durum"], bilgi["mesaj"] = "error", yanit.text[:200]

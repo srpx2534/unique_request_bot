@@ -7,6 +7,7 @@
  */
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { redis } from "./redis.js";
 import { tek, yaz } from "./veritabani.js";
@@ -32,7 +33,17 @@ type Kullanici = {
 
 const yonlendirici = Router();
 
-yonlendirici.post("/giris", async (istek, yanit) => {
+// IP basina sinir: hesap kilidi e-postaya bagli oldugu icin rastgele
+// e-postalarla kilit tablosu sisirilebiliyordu. Ayni IP'den deneme de sinirlanir.
+const girisSiniri = rateLimit({
+  windowMs: KILIT_SN * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (istek) => istek.ip ?? "bilinmeyen",
+});
+
+yonlendirici.post("/giris", girisSiniri, async (istek, yanit) => {
   const cozum = govdeSemasi.safeParse(istek.body);
   if (!cozum.success) {
     yanit.status(400).json({ hata: "e-posta veya şifre biçimi hatalı" });

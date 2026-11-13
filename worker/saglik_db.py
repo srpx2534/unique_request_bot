@@ -29,6 +29,7 @@ def _baglan() -> pymysql.connections.Connection:
         password=ayar.oku("MYSQL_PASSWORD"),
         database=ayar.oku("MYSQL_DATABASE", "unique_request_bot"),
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
         autocommit=True,
     )
 

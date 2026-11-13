@@ -34,6 +34,7 @@ def yonetici() -> pymysql.connections.Connection:
         user="root",
         password=ayar.oku("MYSQL_ROOT_PASSWORD"),
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
         autocommit=True,
     )
 
@@ -75,6 +76,7 @@ def main() -> int:
         password=SIFRE,
         database=VERITABANI,
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
     )
     with deneme.cursor() as d:
         d.execute("SELECT COUNT(*) FROM geo")

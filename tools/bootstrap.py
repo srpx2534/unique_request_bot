@@ -39,6 +39,7 @@ def _dene(kullanici: str, sifre: str) -> pymysql.connections.Connection:
         user=kullanici,
         password=sifre,
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
         autocommit=True,
     )
 

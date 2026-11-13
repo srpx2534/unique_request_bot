@@ -18,6 +18,13 @@ export const havuz = mysql.createPool({
   timezone: "Z",
 });
 
+// Oturum saat dilimi UTC'ye sabitlenir: NOW() ile UTC_TIMESTAMP() ayni degeri
+// verir, burst suresi negatife dusmez, saklama hesaplari kaymaz. Sunucunun
+// kendi saat dilimi ne olursa olsun gecerlidir.
+havuz.on("connection", (baglanti) => {
+  void baglanti.query("SET time_zone = '+00:00'");
+});
+
 /** Sorgu çalıştırır ve satırları döndürür. */
 export async function sorgu<T>(sql: string, parametreler: unknown[] = []): Promise<T[]> {
   const [satirlar] = await havuz.query(sql, parametreler);

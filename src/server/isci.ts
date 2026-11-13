@@ -7,13 +7,15 @@
  *
  * Hacim hedefi doluysa kelime kendiliğinden durur ve kampanya kapanır.
  */
+import { createHmac } from "node:crypto";
 import { Worker } from "bullmq";
 import { baglanti, type Is } from "./kuyruk.js";
 import { tek, yaz } from "./veritabani.js";
 import { dugumSec } from "./dugum_sec.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
-const ZAMAN_ASIMI_MS = 300_000; // burst dwell ve pogo ile 100 saniyeyi aşabiliyor
+// 60 hit'lik burst dwell ve pogo ile dakikalar sürebilir; kısa sınır işi ortada keser.
+const ZAMAN_ASIMI_MS = 900_000;
 
 
 
@@ -41,20 +43,18 @@ const HIT_PARCASI = 500;
 /**
  * Hit dizisini toplu yazar.
  *
- * Saglayicisi olmayan satir atlanir; hit.provider_id zorunludur. Parca
- * boyu 500'u gecmez, tek INSERT fazla parametreye carpmaz.
+ * Saglayicisiz hit de yazilir; provider_id NULL olabilir. Parca boyu 500'u
+ * gecmez, tek INSERT fazla parametreye carpmaz.
  */
 async function hitYaz(
   burstId: number,
   geoKodu: number,
   hits: MotorHiti[],
 ): Promise<void> {
-  const satirlar = hits
-    .filter((h) => h.saglayici_id !== null)
-    .map((h) => [
-      burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback",
-      h.result, h.http_status, h.latency_ms, h.bytes,
-    ]);
+  const satirlar = hits.map((h) => [
+    burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback",
+    h.result, h.http_status, h.latency_ms, h.bytes,
+  ]);
   for (let i = 0; i < satirlar.length; i += HIT_PARCASI) {
     const parca = satirlar.slice(i, i + HIT_PARCASI);
     const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
@@ -97,7 +97,7 @@ async function hedefDenetle(keywordId: number): Promise<void> {
 async function calistir(is: Is): Promise<void> {
   // Govdenin tamami korunur: dugumSec ve DB adimlari da try icinde kalsin ki
   // hata alan satir sonsuza dek 'running' kalmasin.
-  let burstId: number | null = null;
+  let burstId = 0;
   try {
   const satir = await tek<{
     burst_count: number;
@@ -121,25 +121,44 @@ async function calistir(is: Is): Promise<void> {
   const adim = satir.burst_count + 1;
   const tavan = Math.min(satir.step_size, 60);
   const adet = Math.min(adim * 5, tavan);
-  await yaz(
-    "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count, phase, stats) VALUES (?, ?, ?, ?, ?, ?)",
-    [is.campaignId, is.keywordGeoId, adim, adet, satir.burst_count < 3 ? "core" : "broad", "{}"],
-  );
-  const burst = await tek<{ id: number }>(
-    "SELECT id FROM burst WHERE keyword_geo_id = ? ORDER BY id DESC LIMIT 1",
+  // Yeniden denemede aynı iş için açık burst varsa yenisi açılmaz; hedef sayısı
+  // iki kez sayılmaz ve kota tekrar yakılmaz.
+  const acik = await tek<{ id: number }>(
+    `SELECT id FROM burst
+      WHERE keyword_geo_id = ? AND ended_at IS NULL
+        AND started_at > UTC_TIMESTAMP(3) - INTERVAL 10 MINUTE
+      ORDER BY id DESC LIMIT 1`,
     [is.keywordGeoId],
   );
-  if (!burst) return;
-  burstId = burst.id;
+  let yeniden = false;
+  if (acik) {
+    burstId = acik.id;
+    yeniden = true;
+  } else {
+    await yaz(
+      "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count, phase, stats) VALUES (?, ?, ?, ?, ?, ?)",
+      [is.campaignId, is.keywordGeoId, adim, adet, satir.burst_count < 3 ? "core" : "broad", "{}"],
+    );
+    const burst = await tek<{ id: number }>(
+      "SELECT id FROM burst WHERE keyword_geo_id = ? ORDER BY id DESC LIMIT 1",
+      [is.keywordGeoId],
+    );
+    if (!burst) return;
+    burstId = burst.id;
+  }
 
-  // Aynı iş iki kez düşerse ikinci turda satır 'running' olur; burst tekrarlanmaz.
+  // Aynı iş iki kez düşerse satır sahiplenilemez: taze burst silinir, açık burst
+  // yeniden sahiplenilir.
   const sahiplen = await yaz(
     "UPDATE keyword_geo SET state = 'running' WHERE id = ? AND state = 'running'",
     [is.keywordGeoId],
   );
   if (sahiplen === 0) {
-    await yaz("DELETE FROM burst WHERE id = ?", [burst.id]);
-    return;
+    if (!yeniden) {
+      await yaz("DELETE FROM burst WHERE id = ?", [burstId]);
+      return;
+    }
+    await yaz("UPDATE keyword_geo SET state = 'running' WHERE id = ?", [is.keywordGeoId]);
   }
 
   const adres = await dugumSec();
@@ -147,29 +166,38 @@ async function calistir(is: Is): Promise<void> {
     // Burst açık kalmasın; panelde "sürüyor" görünüp kaybolmasın.
     await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
       JSON.stringify({ hata: "aktif düğüm yok" }),
-      burst.id,
+      burstId,
     ]);
     await geriAl(is.keywordGeoId, "aktif düğüm yok");
     return;
   }
 
   try {
+    // Gövde ham metin olarak imzalanır; worker aynı baytlar üzerinden doğrular.
+    const govdeMetni = JSON.stringify({
+      burst_id: burstId,
+      keyword: is.kelime,
+      geo_code: satir.geo_code,
+      uule: satir.uule,
+      target_domain: satir.domain,
+      size: adet,
+      ts: Math.floor(Date.now() / 1000),
+    });
+    const imza = createHmac("sha256", TOKEN).update(govdeMetni).digest("hex");
     const yanit = await fetch(`${adres}/worker/burst`, {
       method: "POST",
-      headers: { "content-type": "application/json", Authorization: `Bearer ${TOKEN}` },
-      body: JSON.stringify({
-        burst_id: burst.id,
-        keyword: is.kelime,
-        geo_code: satir.geo_code,
-        uule: satir.uule,
-        target_domain: satir.domain,
-        size: adet,
-      }),      signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${TOKEN}`,
+        "x-imza": imza,
+      },
+      body: govdeMetni,
+      signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
     });
     if (!yanit.ok) throw new Error(`motor ${yanit.status}`);
 
     const govde = (await yanit.json()) as MotorCevabi;
-    await hitYaz(burst.id, satir.geo_code, govde.hits ?? []);
+    await hitYaz(burstId, satir.geo_code, govde.hits ?? []);
     // Sayaçlar burst satırına yazılır; log ve rapor buradan okur.
     const sayac = {
       ok: govde.ok ?? 0,
@@ -180,7 +208,7 @@ async function calistir(is: Is): Promise<void> {
     };
     await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
       JSON.stringify(sayac),
-      burst.id,
+      burstId,
     ]);
     await yaz(
       "UPDATE keyword_geo SET state = 'pending', burst_count = burst_count + 1, last_burst_at = NOW(3) WHERE id = ?",
@@ -190,26 +218,31 @@ async function calistir(is: Is): Promise<void> {
   } catch (hata) {
     await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
       JSON.stringify({ hata: (hata as Error).message }),
-      burst.id,
+      burstId,
     ]);
-    await geriAl(is.keywordGeoId, `burst ${burst.id}: ${(hata as Error).message}`);
+    await geriAl(is.keywordGeoId, `burst ${burstId || "-"}: ${(hata as Error).message}`);
   }
   } catch (hata) {
     // Burst acilmadan once dusen hata: satiri yine de serbest birak.
     const mesaj = (hata as Error).message;
-    if (burstId !== null) {
+    if (burstId) {
       await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
         JSON.stringify({ hata: mesaj }),
         burstId,
       ]).catch(() => {});
     }
-    await geriAl(is.keywordGeoId, `burst ${burstId ?? "-"}: ${mesaj}`).catch(() => {});
+    await geriAl(is.keywordGeoId, `burst ${burstId || "-"}: ${mesaj}`).catch(() => {});
   }
 }
 
 export const isci = new Worker<Is>("olcum", (is) => calistir(is.data), {
   connection: baglanti,
   concurrency: 4,
+  // Kilit, en uzun burst'ten uzun tutulur: süreç yeniden başlarsa iş "stalled"
+  // sayılıp bir kez daha denenir, sonsuz döngüye girmez.
+  lockDuration: 1_200_000,
+  stalledInterval: 30_000,
+  maxStalledCount: 2,
 });
 
 isci.on("failed", (is, hata) => {

@@ -17,18 +17,23 @@ Kullanım: python -m worker.app
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from worker import ayar, burst, durum, kalp, havuz
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
+PENCERE_SN = 120  # imza tekrar penceresi; ts bu kadar sapabilir
 
 TOKEN = ayar.oku("WORKER_TOKEN")
 PORT = int(ayar.oku("WORKER_PORT", "8081"))
+# Konteynerde 0.0.0.0 sart; tek makinede 127.0.0.1 ile disariya kapanir.
+HOST = ayar.oku("WORKER_HOST", "0.0.0.0")
 _semafor = threading.BoundedSemaphore(ESZAMANLI)
 kalp.yuk_kaynagi = lambda: ESZAMANLI - _semafor._value  # doluluk
 
@@ -62,15 +67,23 @@ class Isleyici(BaseHTTPRequestHandler):
             return False
         return hmac.compare_digest(gelen[7:].strip(), TOKEN)
 
-    def _govde_oku(self) -> dict | None:
-        """Gövdeyi okur ve JSON çözer. Bozuksa None döner."""
+    def _ham_oku(self) -> bytes | None:
+        """Gövdeyi ham bayt olarak okur. Boş veya aşırı büyükse None döner."""
         uzunluk = int(self.headers.get("Content-Length", "0"))
         if uzunluk <= 0 or uzunluk > GOVDE_TAVANI:
             return None
-        try:
-            return json.loads(self.rfile.read(uzunluk).decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
-            return None
+        return self.rfile.read(uzunluk)
+
+    def _imza_dogrula(self, ham: bytes) -> bool:
+        """x-imza başlığını ham gövde üzerinden doğrular.
+
+        Gövde ham bayt imzalanır; sayı biçimi farkı uyuşmazlık yaratmaz.
+        """
+        gelen = self.headers.get("x-imza", "")
+        if not gelen:
+            return False
+        beklenen = hmac.new(TOKEN.encode("utf-8"), ham, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(gelen, beklenen)
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib adlandırması)
         """Sağlık ucu."""
@@ -102,9 +115,20 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(503, {"hata": "düğüm durduruldu"})
             return
 
-        govde = self._govde_oku()
-        if govde is None:
+        ham = self._ham_oku()
+        if ham is None:
             self._json(400, {"hata": "gövde okunamadı"})
+            return
+        if not self._imza_dogrula(ham):
+            self._json(401, {"hata": "imza geçersiz"})
+            return
+        try:
+            govde = json.loads(ham.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self._json(400, {"hata": "gövde okunamadı"})
+            return
+        if abs(time.time() - int(govde.get("ts") or 0)) > PENCERE_SN:
+            self._json(401, {"hata": "ts penceresi dışında"})
             return
 
         # Sozlesme adlari esastir; eski isci kelime/domain/adet gonderiyordu.
@@ -155,8 +179,8 @@ def main() -> int:
         print("HATA: .env içinde WORKER_TOKEN boş.")
         return 1
     kalp.baslat()
-    sunucu = ThreadingHTTPServer(("0.0.0.0", PORT), Isleyici)
-    print(f"worker dinliyor: 0.0.0.0:{PORT} · eşzamanlı sınır {ESZAMANLI}")
+    sunucu = ThreadingHTTPServer((HOST, PORT), Isleyici)
+    print(f"worker dinliyor: {HOST}:{PORT} · eşzamanlı sınır {ESZAMANLI}")
     try:
         sunucu.serve_forever()
     except KeyboardInterrupt:

@@ -14,7 +14,7 @@ const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
 const HOST = process.env.PANEL_HOST ?? "127.0.0.1";
 
-uygulama.listen(PORT, HOST, () => {
+const sunucu = uygulama.listen(PORT, HOST, () => {
   console.log(`panel dinliyor: ${HOST}:${PORT}`);
   redis
     .ping()
@@ -24,6 +24,16 @@ uygulama.listen(PORT, HOST, () => {
   // Zamanlayıcı ve kuyruk tüketicisi yalnızca sunucu sürecinde başlar;
   // testler uygulamayı doğrudan yüklediği için ikisi de dışarıda kalır.
   zamanlayiciBaslat();
+});
+
+// Port doluysa ikinci süreç sessizce ölmesin: hangi sürecin çalıştığı belli olsun.
+sunucu.on("error", (hata: NodeJS.ErrnoException) => {
+  if (hata.code === "EADDRINUSE") {
+    console.error(`[panel] ${HOST}:${PORT} dolu, başka bir panel süreci çalışıyor`);
+  } else {
+    console.error(`[panel] dinleme hatası: ${hata.message}`);
+  }
+  process.exit(1);
 });
 
 /** Kapanışta zamanlayıcı ve kuyruk tüketicisi düzgün kapatılır. */

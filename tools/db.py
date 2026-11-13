@@ -38,6 +38,7 @@ def _ham_baglan(sifre: str, kullanici: str) -> pymysql.connections.Connection:
         user=kullanici,
         password=sifre,
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
         autocommit=True,
     )
 
@@ -66,6 +67,7 @@ def baglan(veritabani: str | None = None) -> pymysql.connections.Connection:
         password=ayar("MYSQL_PASSWORD"),
         database=veritabani or ayar("MYSQL_DATABASE", "unique_request_bot"),
         charset="utf8mb4",
+        init_command="SET time_zone = '+00:00'",
         autocommit=True,
         cursorclass=pymysql.cursors.Cursor,
     )
@@ -87,6 +89,7 @@ def baglan_yonetici() -> pymysql.connections.Connection:
                 password=sifre,
                 database=ayar("MYSQL_DATABASE", "unique_request_bot"),
                 charset="utf8mb4",
+                init_command="SET time_zone = '+00:00'",
                 autocommit=True,
             )
             print(f"[OK] yönetici bağlantısı: {kullanici}")
