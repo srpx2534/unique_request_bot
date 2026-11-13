@@ -1,11 +1,11 @@
-# SÖZLEŞME — unique_request_bot
+# SÖZLEŞME — Unique Request Bot
 
-Sürüm: 1.4 (kilitli)
+Sürüm: 1.5 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan
         request-burst motoru
 Veritabanı: MySQL 8.0.16+
 Diller: Python 3.12 (fetch engine) + Node 20 / TypeScript (control plane)
-Geliştirme: Windows 10/11 + WSL2
+Geliştirme: Windows 10/11
 Çalışma: Debian 12 x86_64
 Not: Bu sürümde markdown tablo kullanılmaz; tüm listeler madde işaretlidir.
 
@@ -31,12 +31,15 @@ Control plane katmanı Node 20 + TypeScript'tir; sorumluluğu panel, orkestrasyo
 
 Worker'lar durumsuzdur ve DB'ye yazmaz. Tüm durum control plane'de tutulur. Worker endpoint'i paylaşılan token ile kimlik doğrular ve dışarıya kapalıdır.
 
-Worker kuralına iki istisna vardır:
+Worker kuralına üç istisna vardır:
 
-- Sağlayıcı seçimi için `provider`, `provider_geo`, `geo` ve `ayar` tabloları salt okunur.
+- Sağlayıcı seçimi için `provider`, `provider_geo`, `geo` tabloları salt okunur.
+- Ayar okuma için `ayar` tablosu salt okunur; SERP anahtarı ve pencere değerleri buradan gelir.
 - Hit sonrası yalnızca `provider_geo` ve `alert` toplu tablolarına yazılır.
 
 Bunun dışındaki tüm durum control plane'de kalır.
+
+Ayar okuması `worker/ayar_db.py` üzerinden yapılır: 60 saniye önbellek, tablo okunamazsa `.env`, o da yoksa varsayılan. Panelde yapılan değişiklik en geç bir dakika içinde etkili olur.
 
 ## 4. Mimari
 
@@ -50,46 +53,41 @@ Akış: Panel (Node) → scheduler → Redis kuyruk → worker havuzu (Python, N
 - Ölçüm-A hattı: dünyanın gördüğü sıralama; SERP API (Decodo /search, Serper)
 - Ölçüm-B hattı: tıklamış profilin gördüğü; ayrı küçük havuz + kalıcı cookie jar
 
-Google, 2025'ten beri `/search` için JavaScript zorunlu kıldı. Düz HTTP istek
-sonuç yerine uygulama kabuğu döndürüyor (HTTP 200, ~94 KB, sıfır sonuç). Headless
-tarayıcı kapsam dışı olduğu için burst hattında sonuç listesi SERP API'sinden bir
-kez çözülür; izlenim ve tıklama proxy üzerinden doğrudan atılır. İzlenim isteği
-Google'a gerçek IP'den gider ve sunucu tarafında sayılır, yalnızca cevabı
-okunmaz. Böylece arama→tıklama zinciri aynı IP'de kalır.
+Google, 2025'ten beri `/search` için JavaScript zorunlu kıldı. Düz HTTP istek sonuç yerine uygulama kabuğu döndürüyor (HTTP 200, ~94 KB, sıfır sonuç). Headless tarayıcı kapsam dışı olduğu için burst hattında sonuç listesi SERP API'sinden bir kez çözülür; izlenim ve tıklama proxy üzerinden doğrudan atılır. İzlenim isteği Google'a gerçek IP'den gider ve sunucu tarafında sayılır, yalnızca cevabı okunmaz. Böylece arama→tıklama zinciri aynı IP'de kalır.
+
+Dağıtıcı işi düğüm kayıt defterinden seçer: yalnızca `durum='aktif'` ve kalbi 45 saniyeden taze düğümler arasından en az yüklüsü. Kayıt defteri tamamen boşsa yerel varsayılana (`127.0.0.1:WORKER_PORT`) düşer, böylece tek makine kurulumu bozulmaz. Uygun düğüm yoksa iş `aktif düğüm yok` ile geri bırakılır.
 
 ## 5. Geo çözümleme
 
-`province` kelimede her hit için sıra şudur:
+`geo_mode` üç değerlidir: `city`, `tr_fallback`, `yabanci`. `province` kelimede her hit için sıra şudur:
 
 1. İlde `city_capable=1`, `state='active'`, `exhausted_until` geçmiş sağlayıcı aranır. Varsa `geo_mode='city'` ve proxy kullanıcı adına `city-<slug>` eklenir.
-2. Yoksa `geo_mode='national'`, `geo.uule` kullanılır ve herhangi bir aktif sağlayıcı seçilir. İş durmaz.
-3. Sonuç `provider_geo` tablosuna yazılır.
-4. Aynı sağlayıcı ve il çiftinde CAPTCHA oranı %35'i geçerse o çift 60 dakika `exhausted_until` alır.
+2. Yoksa `geo_mode='tr_fallback'`, `geo.uule` kullanılır ve Türkiye IP'si veren herhangi bir aktif sağlayıcı seçilir. İş durmaz.
+3. Türkiye IP'si veren sağlayıcı hiç yoksa `geo_mode='yabanci'` ve yabancı çıkış kullanılır; sıralama yine uule ile Türkiye'ye sabitlenir.
+4. Sonuç `provider_geo` tablosuna ve `hit.geo_mode` alanına yazılır.
+5. Aynı sağlayıcı ve il çiftinde CAPTCHA oranı %35'i geçerse o çift 60 dakika `exhausted_until` alır.
 
 `national` kelimede il seçimi: `burst_count` 3'ün altındayken core tier (nüfusa göre ilk 10 il) ağırlıklı, sonrasında 81 il arasında ağırlıklı rastgele. Seçim A-Res ile yapılır:
 
 ```sql
 ORDER BY -LOG(RAND()) / g.weight LIMIT 1
+```
 
-weight generated kolondur ve ROUND(SQRT(population)) ile hesaplanır.
+`weight` generated kolondur ve `ROUND(SQRT(population))` ile hesaplanır.
 
 Ölçüm daima ulusaldır. İl sıralaması ölçülmez.
 
-Sağlayıcı seed'i 005_provider.sql ile yüklenir. city_capable yalnızca il
-hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2
-gereği ulusal moda düşer.
+Sağlayıcı seed'i `005_provider.sql` ile yüklenir. `city_capable` yalnızca il hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2 gereği ulusal moda düşer.
 
-Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır
-(oran_residential, oran_mobil, oran_datacenter) ve panelden düzenlenir.
-Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o
-türde state='active', karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar
-arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve
-datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP
-yalnızca burst'ün ilk 8 saniyesinde devreye girer.
+Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır (`oran_residential`, `oran_mobil`, `oran_datacenter`) ve panelden düzenlenir. Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o türde `state='active'`, karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP yalnızca burst'ün ilk 8 saniyesinde devreye girer.
 
-Decodo residential ve mobile ayrı ürünlerdir; kimlik bilgileri sağlayıcı
-satırında tutulur, .env'de tek değer yetmez.
+Sağlayıcı satırı `ulke` taşır; Türkiye IP'si veren sağlayıcılar `ulke='TR'` ile işaretlenir ve `tr_fallback` adımında yalnızca bunlar aranır.
 
+Decodo residential ve mobile ayrı ürünlerdir; kimlik bilgileri sağlayıcı satırında tutulur, `.env`'de tek değer yetmez.
+
+## 6. Şema
+
+```sql
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
@@ -152,6 +150,7 @@ CREATE TABLE provider (
   id               SMALLINT UNSIGNED PRIMARY KEY,
   name             VARCHAR(64) NOT NULL,
   kind             ENUM('residential','mobile','datacenter') NOT NULL,
+  ulke             CHAR(2) NOT NULL DEFAULT 'TR',
   gateway          VARCHAR(128) NULL,
   kullanici        VARCHAR(128) NULL,
   sifre            VARCHAR(128) NULL,
@@ -232,7 +231,7 @@ CREATE TABLE hit (
   provider_id SMALLINT UNSIGNED NOT NULL,
   profile_id  BIGINT UNSIGNED NULL,
   geo_code    TINYINT UNSIGNED NULL,
-  geo_mode    ENUM('city','national') NOT NULL DEFAULT 'national',
+  geo_mode    ENUM('city','tr_fallback','yabanci') NOT NULL DEFAULT 'tr_fallback',
   result      ENUM('ok','captcha','not_found','timeout','error') NOT NULL,
   http_status SMALLINT UNSIGNED NULL,
   latency_ms  INT UNSIGNED NULL,
@@ -271,10 +270,16 @@ CREATE TABLE alert (
   kind         ENUM('captcha','provider_down','queue_lag','quota','fallback_high',
                     'hedef_yok','failover','burst_hata') NOT NULL,
   ref_id       BIGINT UNSIGNED NULL,
+  keyword_id   BIGINT UNSIGNED NULL,
+  site_id      BIGINT UNSIGNED NULL,
   message      VARCHAR(500) NOT NULL,
   acknowledged TINYINT(1) NOT NULL DEFAULT 0,
   created_at   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  KEY idx_open (acknowledged, created_at)
+  KEY idx_open (acknowledged, created_at),
+  KEY idx_kw (keyword_id, created_at),
+  KEY idx_site (site_id, created_at),
+  CONSTRAINT fk_al_kw   FOREIGN KEY (keyword_id) REFERENCES keyword(id) ON DELETE SET NULL,
+  CONSTRAINT fk_al_site FOREIGN KEY (site_id)    REFERENCES site(id)    ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE audit_log (
@@ -288,94 +293,158 @@ CREATE TABLE audit_log (
   KEY idx_ent (entity, entity_id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE dugum (
+  id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ad          VARCHAR(64) NOT NULL,
+  ip          VARCHAR(45) NOT NULL UNIQUE,
+  durum       ENUM('aktif','durduruldu') NOT NULL DEFAULT 'aktif',
+  yuk         SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  cpu         DECIMAL(5,2) NOT NULL DEFAULT 0,
+  ram         DECIMAL(5,2) NOT NULL DEFAULT 0,
+  surum       VARCHAR(32) NULL,
+  son_kalp_at DATETIME(3) NULL,
+  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_secim (durum, son_kalp_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE dugum_olay (
+  id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  dugum_id   BIGINT UNSIGNED NOT NULL,
+  tur        ENUM('kayit','kalp_kaybi','durdur','baslat','sil') NOT NULL,
+  message    VARCHAR(255) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_dugum (dugum_id, created_at),
+  CONSTRAINT fk_do_dugum FOREIGN KEY (dugum_id) REFERENCES dugum(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE ayar (
   anahtar        VARCHAR(64)  NOT NULL PRIMARY KEY,
   deger          VARCHAR(255) NOT NULL,
   guncellendi_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
                  ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB;
+```
 
-6.1 Tasarım gerekçeleri
-keyword_geo ölçüm birimi değil, rotasyon defteridir; il ölçümü yapılmadığı için sadece trafik dağıtımı ve cooldown takibi taşır.
-position tablosu keyword_id ile bağlanır; ölçüm kelime bazlıdır, iş birimi bazlı değildir.
-chk_geo_consistency kısıtı, province seçilip il verilmemesini veritabanı seviyesinde reddeder.
-provider_geo ayrı tablodur; şehir havuzunun tükendiğini sağlayıcı API'sine sormadan tespit etmenin tek yolu budur.
-hit tablosunda foreign key yoktur; hacim yüksektir, FK maliyeti gereksizdir.
-position append-only'dir; sıralama geçmişi korunur ve eğri çizilebilir.
-rank alanı NULL olabilir; "ilk 100'de yok" ile "ölçüm başarısız" ayrı durumlardır.
-weight generated kolondur; nüfus güncellenince otomatik yenilenir.
-provider kimlik bilgilerini taşır, çünkü Decodo residential ve mobile ayrı ürünlerdir ve tek .env değeri ikisini birlikte çalıştıramaz.
-weight_yedek karantina sırasında ağırlığı saklar; sağlayıcı sabit bir değere değil kendi ağırlığına döner.
-ayar tablosu oranları taşır; panelden düzenlendiği için .env'de tutulamaz.
-alert türleri geniştir; panelde takip ekranı bu türleri filtreleyerek gösterir.
-6.2 Seed zorunluluğu
-geo tablosu 81 kayıtla seed edilir: code, name, slug, population, lat, lon. Core tier nüfusa göre ilk 10 ildir: 34, 6, 35, 16, 7, 42, 1, 63, 27, 41. uule her il için bir kez üretilip yazılır. Nüfus değerleri TÜİK güncel verisiyle değiştirilebilir, yaklaşık değer kabul edilir. ayar tablosu oran ve pencere varsayılanlarıyla seed edilir.
+### 6.1 Tasarım gerekçeleri
 
-6.3 Saklama süreleri
-hit: 30 gün, sonra silinir
-burst: 90 gün
-position: süresiz
-traffic_daily: süresiz
-audit_log: 1 yıl
-alert: 90 gün
-Partition, hit tablosu 10 milyon satırı geçince eklenir.
+- `keyword_geo` ölçüm birimi değil, rotasyon defteridir; il ölçümü yapılmadığı için sadece trafik dağıtımı ve cooldown takibi taşır.
+- `position` tablosu `keyword_id` ile bağlanır; ölçüm kelime bazlıdır, iş birimi bazlı değildir.
+- `chk_geo_consistency` kısıtı, `province` seçilip il verilmemesini veritabanı seviyesinde reddeder.
+- `provider_geo` ayrı tablodur; şehir havuzunun tükendiğini sağlayıcı API'sine sormadan tespit etmenin tek yolu budur.
+- `hit` tablosunda foreign key yoktur; hacim yüksektir, FK maliyeti gereksizdir.
+- `position` append-only'dir; sıralama geçmişi korunur ve eğri çizilebilir.
+- `rank` alanı NULL olabilir; "ilk 100'de yok" ile "ölçüm başarısız" ayrı durumlardır.
+- `weight` generated kolondur; nüfus güncellenince otomatik yenilenir.
+- `provider` kimlik bilgilerini taşır, çünkü Decodo residential ve mobile ayrı ürünlerdir ve tek `.env` değeri ikisini birlikte çalıştıramaz.
+- `weight_yedek` karantina sırasında ağırlığı saklar; sağlayıcı sabit bir değere değil kendi ağırlığına döner.
+- `ayar` tablosu oranları, pencereyi, ölçüm aralığını ve SERP anahtarlarını taşır; panelden düzenlendiği için `.env`'de tutulamaz.
+- `alert` türleri geniştir; panelde takip ekranı bu türleri filtreleyerek gösterir.
+- `alert` satırı `keyword_id` ve `site_id` taşır; uyarının hangi site ve kelimeden çıktığı görünmeden takip mümkün değildir.
+- `dugum` ayrı tablodur; dağıtıcı `.env` listesine değil kayıt defterine bakar, ölü sunucuyu ayırt eder ve düğüm bazlı durdurma uygulanabilir.
+- `dugum_olay` kalp kaybını ve durdur/başlat geçmişini tutar; durum değişiminin ne zaman olduğu sonradan okunabilmelidir.
 
-7. API sözleşmesi
-POST /api/sites                    { domain, label }
-POST /api/keywords                 { site_id, text, geo_scope, home_geo?, volume? }
-POST /api/keywords/:id/start       → 202 { campaign_id }
-POST /api/keywords/:id/stop        → 204
-GET  /api/keywords/:id/curve?h=24  → [{ t, channel, rank }]
-GET  /api/live                     → v_live
-GET  /api/ayarlar                  → { oran_residential, oran_mobil, oran_datacenter }
-PUT  /api/ayarlar                  { oran_residential, oran_mobil, oran_datacenter }
-GET  /api/uyarilar?acik=1          → v_alert
-POST /api/uyarilar/:id/kapat       → 204
+### 6.2 Seed zorunluluğu
 
-POST /worker/burst   Authorization: Bearer <worker_token>
-  { keyword, target_url, geo_code?, geo_slug?, geo_mode, uule?, size }
-  → { ok, captcha, not_found, timeout, error, elapsed_ms }
+- `geo` tablosu 81 kayıtla seed edilir: code, name, slug, population, lat, lon. Core tier nüfusa göre ilk 10 ildir: 34, 6, 35, 16, 7, 42, 1, 63, 27, 41. `uule` her il için bir kez üretilip yazılır.
+- Nüfus değerleri TÜİK güncel verisiyle değiştirilebilir, yaklaşık değer kabul edilir.
+- `ayar` tablosu şu anahtarlarla seed edilir: `oran_residential`, `oran_mobil`, `oran_datacenter`, `mobil_pencere_sn`, `olcum_araligi_dk`, `serp_decodo`, `serp_serper`, `serp_searchapi`. SERP anahtarları boş başlar, panelden doldurulur.
 
-  keyword oluşturulunca keyword_geo otomatik üretilir. province için 1 satır (core), national için 81 satır (10 core, 30 normal, 41 passive).
+### 6.3 Saklama süreleri
 
-8. Sağlayıcı politikası
+- `hit`: 30 gün, sonra silinir
+- `burst`: 90 gün
+- `position`: süresiz
+- `traffic_daily`: süresiz
+- `audit_log`: 1 yıl
+- `alert`: 90 gün
+- `dugum_olay`: 90 gün
+- Partition, `hit` tablosu 10 milyon satırı geçince eklenir.
+
+## 7. API sözleşmesi
+
+Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
+
+### 7.1 Panel uçları
+
+- `POST /api/giris` `{ eposta, parola }` → 200, yeni CSRF token
+- `POST /api/cikis` → 204
+- `GET  /api/ben` → oturum sahibi
+- `GET  /api/ozet` → sayaçlar
+- `GET  /api/site?q=` → `{ satirlar }`, her satırda `kelime_adet`
+- `POST /api/site` `{ domain, label }`
+- `PATCH /api/site/:id` `{ domain?, label?, active? }`
+- `DELETE /api/site/:id` → 204
+- `GET  /api/kelime?...&sayfa=&adet=` → `{ satirlar, toplam, sayfa, adet }`
+- `POST /api/kelime` `{ site_id, text, geo_scope, home_geo?, volume? }`
+- `PATCH /api/kelime/:id`
+- `DELETE /api/kelime/:id` → 204
+- `POST /api/kelime/:id/geo-yenile` → `{ geo_adet }`
+- `POST /api/kelime/:id/baslat` → `{ id, state }`
+- `POST /api/kelime/:id/durdur` → 204
+- `GET  /api/provider?q=` → sağlayıcı listesi
+- `POST /api/provider` / `PATCH /api/provider/:id` / `DELETE /api/provider/:id`
+- `GET  /api/geo` → 81 il
+- `GET  /api/uyari?...&sayfa=&adet=` → `{ satirlar, ozet, toplam, sayfa, adet }`
+- `POST /api/uyari/:id/kapat` → 204
+- `POST /api/uyari/tumunu-kapat` → `{ kapatilan }`
+- `GET  /api/log?...&sayfa=&adet=` → `{ satirlar, toplam, sayfa, adet }`
+- `GET  /api/rapor?...` → özet, site ve kelime kırılımı, günlük seri
+- `GET  /api/dugum?...&durum=&kalp=` → düğüm listesi
+- `POST /api/dugum` `{ ad, ip }`
+- `PATCH /api/dugum/:id` `{ ad?, durum? }`
+- `DELETE /api/dugum/:id` → 204
+- `GET  /api/ayar` → ayar listesi; `serp_*` değerleri `••••` + son 4 hane olarak maskelenir
+- `PATCH /api/ayar` → gövdedeki anahtarları yazar; maskeli değer geri gönderilirse atlanır
+- `POST /api/ayar/serp-dene` `{ anahtar }` → `{ ok, organik?, kod?, sure_ms }`
+
+Liste uçlarında `sayfa` 1'den başlar, `adet` 1-500 arasıdır ve varsayılanı 50'dir.
+
+### 7.2 Worker uçları
+
+- `GET  /worker/saglik` → sürüm ve doluluk
+- `POST /worker/burst` `{ keyword, target_url, geo_code?, geo_slug?, geo_mode, uule?, size }` → `{ ok, captcha, not_found, timeout, error, elapsed_ms }`
+- `POST /api/worker/kalp` `{ ip, yuk, cpu, ram, surum }` → `{ durum }`. CSRF ve oturum denetiminin dışındadır; düğüm kaydı IP ile eşleşir, eşleşmezse 404.
+- `POST /api/worker/kalp` cevabındaki `durum`, worker'ın iş alıp almayacağını belirler; `durduruldu` iken burst ucu 503 döner.
+
+`keyword` oluşturulunca `keyword_geo` otomatik üretilir. `province` için 1 satır (core), `national` için 81 satır (10 core, 30 normal, 41 passive).
+
+## 8. Sağlayıcı politikası
+
 Proxy sağlayıcıları, ağırlık ve şehir hedefleme durumu:
 
-Decodo, residential, ağırlık 25, şehir hedefleme kısmi
-Bright Data, residential, ağırlık 20, şehir hedefleme var
-Oxylabs, residential, ağırlık 15, şehir hedefleme var
-Decodo, mobile, ağırlık 25, şehir hedefleme kısmi
-SOAX, mobile, ağırlık 10, şehir hedefleme var
-IPRoyal, residential, ağırlık 5, şehir hedefleme kısmi
-Webshare, datacenter, sadece smoke test
-SERP API sağlayıcıları: Decodo /search birincil, Serper yedek, SearchApi.io yedek.
+- Decodo, residential, ağırlık 25, şehir hedefleme kısmi
+- Bright Data, residential, ağırlık 20, şehir hedefleme var
+- Oxylabs, residential, ağırlık 15, şehir hedefleme var
+- Decodo, mobile, ağırlık 25, şehir hedefleme kısmi
+- SOAX, mobile, ağırlık 10, şehir hedefleme var
+- IPRoyal, residential, ağırlık 5, şehir hedefleme kısmi
+- Webshare, datacenter, sadece smoke test
+
+SERP API sağlayıcıları: Decodo /search birincil, Serper yedek, SearchApi.io yedek. Anahtarlar `ayar` tablosundadır, panelden girilir ve maskeli gösterilir.
 
 Mobil IP'ler burst'ün ilk 8 saniyesinde tüketilir. Sağlayıcı anahtarları kullanıcıya aittir, yazılım yalnızca tüketir.
 
-Devre kesici iki seviyelidir. Sağlayıcı/il çiftinde CAPTCHA %35'i geçerse çift
-60 dakika tükenir (C18). Sağlayıcı genelinde oran %20'yi geçerse sağlayıcı 2
-saat karantinaya alınır, ağırlığı yedeğe alınıp sıfırlanır. Karantina dolunca
-ağırlık yedekten geri verilir ve oran sıfırlanır. Oranlar en az 10 örnek
-toplanmadan değerlendirilmez.
+Devre kesici iki seviyelidir. Sağlayıcı/il çiftinde CAPTCHA %35'i geçerse çift 60 dakika tükenir (C18). Sağlayıcı genelinde oran %20'yi geçerse sağlayıcı 2 saat karantinaya alınır, ağırlığı yedeğe alınıp sıfırlanır. Karantina dolunca ağırlık yedekten geri verilir ve oran sıfırlanır. Oranlar en az 10 örnek toplanmadan değerlendirilmez.
 
-Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlanır
-(C6). Üçüncü deneme yapılmaz.
+Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlanır (C6). Üçüncü deneme yapılmaz.
 
-9. Hız sabitleri
-Dwell: 5-12 saniye
-Pogo: 1 istek, 3-6 saniye sonra
-Alt kaynak: yok
-Eşzamanlılık: sunucu başına 12
-Tur aralığı: 25-40 dakika
-keyword_geo cooldown: 20-35 dakika rastgele
-Ölçüm aralığı: kelime başına 30 dakika
-Basamak boyu: en fazla 60 hit
-Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
-API sayfaları arası bekleme: 0,6-1,3 saniye
-Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie
-sürekliliği korunur, oturum hit sonunda kapanır
-10. Raporlama
+## 9. Hız sabitleri
 
+- Dwell: 5-12 saniye
+- Pogo: 1 istek, 3-6 saniye sonra
+- Alt kaynak: yok
+- Eşzamanlılık: sunucu başına 12
+- Tur aralığı: 25-40 dakika
+- `keyword_geo` cooldown: 20-35 dakika rastgele
+- Ölçüm aralığı: `ayar.olcum_araligi_dk` (varsayılan 0 = yalnızca cooldown sırası)
+- Basamak boyu: en fazla 60 hit
+- Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
+- API sayfaları arası bekleme: 0,6-1,3 saniye
+- Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie sürekliliği korunur, oturum hit sonunda kapanır
+
+## 10. Raporlama
+
+```sql
 CREATE VIEW v_live AS
 SELECT k.id, k.text, k.geo_scope, COALESCE(g.name,'—') AS geo, k.state,
   (SELECT rank FROM position p WHERE p.keyword_id=k.id AND p.channel='clean'
@@ -394,116 +463,146 @@ SELECT k.id, k.text, k.geo_scope, COALESCE(g.name,'—') AS geo, k.state,
        ELSE 'sabit' END AS trend
 FROM keyword k LEFT JOIN geo g ON g.code=k.home_geo
 WHERE k.state IN ('active','paused');
+```
 
-Panel kelime başına şunları gösterir: başarı oranı, yedek oranı, sıralama eğrisi, trend. Yedek oranı %30'u geçerse uyarı üretilir.
+Panel kelime başına şunları gösterir: başarı oranı, yedek oranı, sıralama eğrisi, trend. Yedek oranı %30'u geçerse uyarı üretilir. Rapor ve log ekranları CSV indirir.
 
-11. Kabul kriterleri
-C1 — Panelde site ve kelime CRUD, start/stop, canlı log çalışır.
-C2 — start verildikten sonra ilk hit 30 saniyenin altında atılır.
-C3 — Worker /burst p95 süresi 45 saniyenin altındadır.
-C4 — Her hit yeni UA, yeni IP, taze cookie ve Chrome JA3 ile gider; oran %100'dür.
-C5 — Parmak izi gerçek Chrome ile birebir eşleşir. Ölçüt küme üyeliğidir:
-ölçülen ja4 ve ja3, docs/tls_reference.json içindeki profilin
-kümelerinde bulunmalıdır. Chromium 110+ uzantı sırasını karıştırdığı için
-ja3 bağlantı başına değişir, JA4 ise ALPN/SNI varyansıyla birden fazla
-değer alabilir. edge101 ve safari17_0 sabittir.
-Kanıt: python tools/tls_check.py --all.
-C6 — Sağlayıcı failover 10 saniyenin altında tamamlanır.
-C7 — CAPTCHA oranı pilotta %12'nin altındadır.
-C8 — CAPTCHA oranı tam kapasitede %8'in altındadır.
-C9 — not_found oranı %5'in altındadır.
-C10 — Burst tamamlanma oranı %95'in üstündedir.
-C11 — Veri kaybı sıfırdır.
-C12 — Ölçüm boşluğu 15 dakikayı geçmez.
-C13 — province kelime, il verilmeden kaydedilemez; veritabanı reddeder.
-C14 — national kelime kaydı 81 keyword_geo satırı üretir; tier dağılımı 10/30/41'dir.
-C15 — v_live görünümü 3.300 iş biriminde p95 400 ms'nin altında yanıt verir.
-C16 — Aynı keyword_geo üzerinde çakışan burst sayısı sıfırdır.
-C17 — Şehir hedefleyen sağlayıcı yokken iş durmaz, national moduna düşer.
-C18 — Sağlayıcı ve il çiftinde CAPTCHA %35'i geçerse 60 dakika exhausted_until uygulanır.
-C19 — burst_count 3'ün altındayken core tier, sonrasında broad faz kullanılır.
-C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür.
-C21 — stop sonrası yeni hit atılmaz.
-C22 — Tüm DATETIME değerleri UTC'dir; oran %100'dür.
-C23 — uule 81 ilin tamamında doludur.
-C24 — Sırlar repoda değil, ortam değişkeninde veya veritabanındadır; repoda düz metin yoktur.
-C25 — Aynı burst'ün tekrar işlenmesi idempotenttir, aynı sonucu verir.
-C26 — pytest ve vitest hem Windows hem Linux'ta geçer.
-C27 — CI matrisi windows-latest ve ubuntu-22.04 içerir; ikisi de yeşildir.
-C28 — Depoda CRLF yoktur; git ls-files --eol temiz döner.
-C29 — Hiçbir modülde sabit os.sep veya \\ yolu yoktur; lint kuralı geçer.
-C30 — Docker imajı linux/amd64 üzerinde Debian 12'dir.
-C31 — Aynı hit içindeki üç adım tek oturum kullanır; oran %100'dür.
-Kanıt: pytest worker/test_oturum.py.
-C32 — Sağlayıcı düşerse hit yeni sağlayıcıyla en fazla bir kez tekrarlanır.
-Kanıt: pytest worker/test_burst.py.
-C33 — Karantina ağırlığı yedekten geri verir, sabit değere dönmez.
-Kanıt: python tools/saglik_dene.py.
-C34 — Oranlar toplamı 100 değilse normalize edilir; oran_mobil=0 mobil
-havuzunu tamamen kapatır. Kanıt: pytest worker/test_havuz.py.
+## 11. Kabul kriterleri
+
+- C1 — Panelde site ve kelime CRUD, start/stop, canlı log çalışır.
+- C2 — `start` verildikten sonra ilk hit 30 saniyenin altında atılır.
+- C3 — Worker `/burst` p95 süresi 45 saniyenin altındadır.
+- C4 — Her hit yeni UA, yeni IP, taze cookie ve Chrome JA3 ile gider; oran %100'dür.
+- C5 — Parmak izi gerçek Chrome ile birebir eşleşir. Ölçüt küme üyeliğidir: ölçülen ja4 ve ja3, `docs/tls_reference.json` içindeki profilin kümelerinde bulunmalıdır. Chromium 110+ uzantı sırasını karıştırdığı için ja3 bağlantı başına değişir, JA4 ise ALPN/SNI varyansıyla birden fazla değer alabilir. edge101 ve safari17_0 sabittir. Kanıt: `python tools/tls_check.py --all`.
+- C6 — Sağlayıcı failover 10 saniyenin altında tamamlanır.
+- C7 — CAPTCHA oranı pilotta %12'nin altındadır.
+- C8 — CAPTCHA oranı tam kapasitede %8'in altındadır.
+- C9 — `not_found` oranı %5'in altındadır.
+- C10 — Burst tamamlanma oranı %95'in üstündedir.
+- C11 — Veri kaybı sıfırdır.
+- C12 — Ölçüm boşluğu 15 dakikayı geçmez.
+- C13 — `province` kelime, il verilmeden kaydedilemez; veritabanı reddeder.
+- C14 — `national` kelime kaydı 81 `keyword_geo` satırı üretir; tier dağılımı 10/30/41'dir.
+- C15 — `v_live` görünümü 3.300 iş biriminde p95 400 ms'nin altında yanıt verir.
+- C16 — Aynı `keyword_geo` üzerinde çakışan burst sayısı sıfırdır.
+- C17 — Şehir hedefleyen sağlayıcı yokken iş durmaz, ulusal moda düşer.
+- C18 — Sağlayıcı ve il çiftinde CAPTCHA %35'i geçerse 60 dakika `exhausted_until` uygulanır.
+- C19 — `burst_count` 3'ün altındayken core tier, sonrasında broad faz kullanılır.
+- C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür.
+- C21 — `stop` sonrası yeni hit atılmaz.
+- C22 — Tüm `DATETIME` değerleri UTC'dir; oran %100'dür.
+- C23 — `uule` 81 ilin tamamında doludur.
+- C24 — Sırlar repoda değil, ortam değişkeninde veya veritabanındadır; repoda düz metin yoktur.
+- C25 — Aynı burst'ün tekrar işlenmesi idempotenttir, aynı sonucu verir.
+- C26 — pytest ve vitest hem Windows hem Linux'ta geçer.
+- C27 — CI matrisi windows-latest ve ubuntu-22.04 içerir; ikisi de yeşildir.
+- C28 — Depoda CRLF yoktur; `git ls-files --eol` temiz döner.
+- C29 — Hiçbir modülde sabit `os.sep` veya `\\` yolu yoktur; lint kuralı geçer.
+- C30 — Docker imajı linux/amd64 üzerinde Debian 12'dir.
+- C31 — Aynı hit içindeki üç adım tek oturum kullanır; oran %100'dür. Kanıt: `pytest worker/test_oturum.py`.
+- C32 — Sağlayıcı düşerse hit yeni sağlayıcıyla en fazla bir kez tekrarlanır. Kanıt: `pytest worker/test_burst.py`.
+- C33 — Karantina ağırlığı yedekten geri verir, sabit değere dönmez. Kanıt: `python tools/saglik_dene.py`.
+- C34 — Oranlar toplamı 100 değilse normalize edilir; `oran_mobil=0` mobil havuzunu tamamen kapatır. Kanıt: `pytest worker/test_havuz.py`.
+- C35 — `.env` yalnızca önyükleme sırlarını taşır: `MYSQL_*`, `REDIS_URL`, `SESSION_SECRET`, `WORKER_TOKEN`. Proxy kimliği, SERP anahtarı ve ölçüm aralığı `.env`'de bulunmaz.
+- C36 — SERP anahtarları veritabanındadır, panelde maskeli gösterilir ve maskeli değer geri yazıldığında gerçek değer korunur.
+- C37 — Kayıtlı ve aktif düğüm varken dağıtıcı işi yalnızca kalbi 45 saniyeden taze düğüme atar.
+- C38 — Panelde durdurulan düğüm yeni iş almaz, iş diğer düğüme kayar.
+- C39 — Liste uçları `sayfa` ve `adet` alır, `toplam` döner; `adet` üst sınırı 500'dür.
+- C40 — `geo_mode` üç değerlidir; `yabanci` yalnızca Türkiye IP'si veren sağlayıcı kalmadığında kullanılır.
+- C41 — Her uyarı satırı `keyword_id` ve `site_id` taşır; liste site ve kelimeyi gösterir.
+- C42 — Yıkıcı işlemler (silme, toplu kapatma) onay ister; bilinmeyen yol 404 ekranına düşer.
+- C43 — `ayar` okuması worker'da önbelleklidir; tablo okunamazsa `.env`, o da yoksa varsayılan devreye girer ve iş durmaz.
+
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 
-12. Kilometre taşları
-M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
-M2 — Python worker, curl_cffi, JA3 doğrulama, 100 hit testi (1 hafta)
-M3 — Sağlayıcı havuzu, circuit breaker, gözlemlenebilirlik (1 hafta)
-M4 — Node control plane, panel, kuyruk (1 hafta)
-M5 — Ölçüm A/B hattı, rapor (1 hafta)
-M6 — 5 sunucu pilot, 20 kelime, 2 hafta saha testi (2 hafta)
-M7 — 20 sunucuya ölçekleme ve devir (1 hafta)
-13. Devir kriteri
-M6 sonunda C7, C8, C9, C10, C11, C12, C15 ve C26-C30 sağlanıyorsa proje kabul edilir. Sağlanmıyorsa M3-M5 iyileştirme turu tekrarlanır. Devir kapsamı: kod, migration dosyaları, seed scripti, README, .env.example, docker-compose, .gitattributes.
+## 12. Kilometre taşları
 
-14. Bakım
-not_found oranı %5'i geçerse 24 saat içinde SERP regex revizyonu yapılır. curl_cffi sürüm takibi aylıktır. Sağlayıcı anahtar ve ağırlık güncellemesi süreklidir.
+- M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
+- M2 — Python worker, curl_cffi, JA3 doğrulama, 100 hit testi (1 hafta)
+- M3 — Sağlayıcı havuzu, circuit breaker, gözlemlenebilirlik (1 hafta)
+- M4 — Node control plane, panel, kuyruk (1 hafta)
+- M5 — Ölçüm A/B hattı, rapor (1 hafta)
+- M6 — 5 sunucu pilot, 20 kelime, 2 hafta saha testi (2 hafta)
+- M7 — 20 sunucuya ölçekleme ve devir (1 hafta)
 
-15. Varsayımlar
+## 13. Devir kriteri
+
+M6 sonunda C7, C8, C9, C10, C11, C12, C15 ve C26-C30 sağlanıyorsa proje kabul edilir. Sağlanmıyorsa M3-M5 iyileştirme turu tekrarlanır. Devir kapsamı: kod, migration dosyaları, seed scripti, README, `.env.example`, docker-compose, `.gitattributes`.
+
+## 14. Bakım
+
+`not_found` oranı %5'i geçerse 24 saat içinde SERP regex revizyonu yapılır. `curl_cffi` sürüm takibi aylıktır. Sağlayıcı anahtar ve ağırlık güncellemesi süreklidir. SERP anahtarı değişimi panelden yapılır, kod dağıtımı gerekmez.
+
+## 15. Varsayımlar
+
 Kullanıcıda hazır bileşen yoktur; geo seed, uule üretici, migration seti, docker-compose ve README yüklenici tarafından üretilir. Hedef kelime sayısı 100'ü geçmez. Şehir hedefleme sağlayıcı sözleşmelerine bağlıdır; sağlanamazsa C17 devreye girer, sistem çalışır ancak il bazlı IP sinyali üretmez.
 
-16. Değişiklik kontrolü
+## 16. Değişiklik kontrolü
+
 §3, §4, §5, §6, §11 ve §18 maddeleri M4 tamamlandıktan sonra değişirse ayrı kapsam sayılır. Diğer maddeler mutabakatla güncellenir.
 
-17. Altyapı
-17.1 — Tüm sunucular Debian 12 x86_64'dir. Windows yalnızca geliştirme makinesidir.
-17.2 — Her bileşen Docker imajıdır. İmajlar digest ile pinlenir. curl-impersonate sürümü imaj içinde sabittir, host'a kurulmaz.
-17.3 — Sertleştirme: root olmayan kullanıcı, read_only rootfs, cap_drop: ALL, restart: always.
-17.4 — Bulut bağımsızlığı: kod hiçbir bulut sağlayıcısının API'sine bağlı değildir.
-17.5 — Worker'lar public alt ağda çalışır; NAT Gateway maliyeti doğmaz.
-17.6 — MySQL günlük mysqldump ile yedeklenir, 7 gün saklanır, offsite kopya alınır. Geri yükleme aylık test edilir.
-17.7 — Sırlar ortam değişkeninde veya secret store'da tutulur; repoda düz metin yoktur.
-18. Geliştirme ortamı — Windows'ta yaz, Linux'ta çalıştır
+## 17. Altyapı
+
+- 17.1 — Tüm sunucular Debian 12 x86_64'dir. Windows yalnızca geliştirme makinesidir.
+- 17.2 — Her bileşen Docker imajıdır. İmajlar digest ile pinlenir. `curl-impersonate` sürümü imaj içinde sabittir, host'a kurulmaz.
+- 17.3 — Sertleştirme: root olmayan kullanıcı, read_only rootfs, cap_drop: ALL, restart: always.
+- 17.4 — Bulut bağımsızlığı: kod hiçbir bulut sağlayıcısının API'sine bağlı değildir.
+- 17.5 — Worker'lar public alt ağda çalışır; NAT Gateway maliyeti doğmaz.
+- 17.6 — MySQL günlük `mysqldump` ile yedeklenir, 7 gün saklanır, offsite kopya alınır. Geri yükleme aylık test edilir.
+- 17.7 — Sırlar ortam değişkeninde veya secret store'da tutulur; repoda düz metin yoktur.
+
+## 18. Geliştirme ortamı — Windows'ta yaz, Linux'ta çalıştır
+
 Kod Windows'ta yazılır, Linux'ta çalışır. Aşağıdaki maddeler bağlayıcıdır.
 
-18.1 Yol ve dosya adları
-Tüm dosya yolları Python'da pathlib.Path, Node'da node:path ile kurulur. Sabit / veya \\ yazılmaz.
-Dosya adlarında : * ? " < > | karakterleri kullanılmaz.
-Windows rezerve adları (CON, PRN, AUX, NUL, COM1-9, LPT1-9) kullanılmaz.
-Yol uzunluğu 260 karakteri geçmez.
-Symlink kullanılmaz.
-Dosya ve klasör adlarında büyük-küçük harf karışıksa import ve require birebir eşleşmek zorundadır; Windows toleranslıdır, Linux değildir.
-18.2 Satır sonu
-Depoda yalnızca LF kullanılır. core.autocrlf=false ve .gitattributes zorunludur (Ek A).
-.sh dosyaları LF ve #!/usr/bin/env bash ile yazılır.
-18.3 Kabuk ve süreç
-Kabuk çağrısı minimumdur. Gerektiğinde Python'da subprocess ve shell=False, Node'da execFile kullanılır.
-&&, ;, $VAR içeren tek satır komutlar kullanılmaz; mantık dile taşınır.
-Node script'lerinde cross-env kullanılır, FOO=bar cmd biçimi kullanılmaz.
-os.fork ve fcntl kullanılmaz. Dosya kilidi için filelock veya portalocker kullanılır.
-18.4 Ortam değişkenleri ve zaman
-Ayarlar .env ve python-dotenv / dotenv ile yüklenir. export kullanılmaz.
-Saat dilimi her yerde UTC'dir. Yerel saat varsayımı yapılmaz. tzdata imaja dahildir.
-Python venv Windows'ta Scripts, Linux'ta bin altındadır; betiklerde ikisi de aranmaz, python -m kullanılır.
-18.5 Yerel servisler
-MySQL ve Redis yerelde WSL2 içinde Docker ile çalışır. Windows kurulumları (Memurai, MySQL MSI) desteklenmez.
-Geliştirme ortamı docker compose up ile ayağa kalkar; host'ta servis kurulumu yapılmaz.
-18.6 Test ve CI
-Tüm testler iki platformda geçmek zorundadır. CI matrisi windows-latest ve ubuntu-22.04 içerir.
-Platforma özel dallanma gerekiyorsa sys.platform veya process.platform ile tek noktada ve yorumla yapılır.
-18.7 Parmak izi
-curl_cffi Windows'ta çalışır ancak JA3 doğrulaması iki platformda da koşar (C5). Yalnızca Windows'ta doğrulanmış parmak izi kabul edilmez.
-Docker imajı linux/amd64 üzerinde Debian 12'dir.
-19. Ek A — .gitattributes
+### 18.1 Yol ve dosya adları
 
+- Tüm dosya yolları Python'da `pathlib.Path`, Node'da `node:path` ile kurulur. Sabit `/` veya `\\` yazılmaz.
+- Dosya adlarında `: * ? " < > |` karakterleri kullanılmaz.
+- Windows rezerve adları (CON, PRN, AUX, NUL, COM1-9, LPT1-9) kullanılmaz.
+- Yol uzunluğu 260 karakteri geçmez.
+- Symlink kullanılmaz.
+- Dosya ve klasör adlarında büyük-küçük harf karışıksa import ve require birebir eşleşmek zorundadır; Windows toleranslıdır, Linux değildir.
+
+### 18.2 Satır sonu
+
+- Depoda yalnızca LF kullanılır. `core.autocrlf=false` ve `.gitattributes` zorunludur (Ek A).
+- `.sh` dosyaları LF ve `#!/usr/bin/env bash` ile yazılır.
+
+### 18.3 Kabuk ve süreç
+
+- Kabuk çağrısı minimumdur. Gerektiğinde Python'da `subprocess` ve `shell=False`, Node'da `execFile` kullanılır.
+- `&&`, `;`, `$VAR` içeren tek satır komutlar kullanılmaz; mantık dile taşınır.
+- Node script'lerinde `cross-env` kullanılır, `FOO=bar cmd` biçimi kullanılmaz.
+- `os.fork` ve `fcntl` kullanılmaz. Dosya kilidi için `filelock` veya `portalocker` kullanılır.
+
+### 18.4 Ortam değişkenleri ve zaman
+
+- `.env` yalnızca önyükleme sırlarını taşır: `MYSQL_*`, `REDIS_URL`, `SESSION_SECRET`, `WORKER_TOKEN`.
+- Kodla türetilebilen değerler `.env`'de tutulmaz: panel portu, worker portu, düğüm IP'si, worker adresi. Bunlar koddaki varsayılandan veya kayıt defterinden çözülür; isteğe bağlı olarak ortam değişkeniyle ezilebilir.
+- Yönetim verisi `.env`'de tutulmaz: proxy kimliği `provider` satırında, SERP anahtarı ve ölçüm aralığı `ayar` tablosundadır.
+- `.env.example` doldurulacak alanları yorumla açıklar, gerçek sır taşımaz.
+- Saat dilimi her yerde UTC'dir. Yerel saat varsayımı yapılmaz. `tzdata` imaja dahildir.
+- Python venv Windows'ta `Scripts`, Linux'ta `bin` altındadır; betiklerde ikisi de aranmaz, `python -m` kullanılır.
+
+### 18.5 Yerel servisler
+
+- MySQL ve Redis yerelde çalışır; geliştirme makinesinde yerel kurulum kabul edilir.
+- Üretimde her bileşen konteynerdir.
+
+### 18.6 Test ve CI
+
+- Tüm testler iki platformda geçmek zorundadır. CI matrisi windows-latest ve ubuntu-22.04 içerir.
+- Platforma özel dallanma gerekiyorsa `sys.platform` veya `process.platform` ile tek noktada ve yorumla yapılır.
+
+### 18.7 Parmak izi
+
+- `curl_cffi` Windows'ta çalışır ancak JA3 doğrulaması iki platformda da koşar (C5). Yalnızca Windows'ta doğrulanmış parmak izi kabul edilmez.
+- Docker imajı linux/amd64 üzerinde Debian 12'dir.
+
+## 19. Ek A — .gitattributes
+
+```
 * text=auto eol=lf
 *.png binary
 *.jpg binary
@@ -512,90 +611,97 @@ Docker imajı linux/amd64 üzerinde Debian 12'dir.
 *.sh text eol=lf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
+```
 
-20. Ek B — Yasak yapılar (lint ile zorlanır)
-"C:\\..." veya "/home/..." yerine Path(...) / path.join
-open("a/b.txt") yerine Path("a") / "b.txt"
-subprocess.run("a && b", shell=True) yerine liste argümanı
-os.system yerine subprocess.run
-os.fork yerine multiprocessing
-fcntl.flock yerine filelock
-Naive datetime.now() yerine datetime.now(timezone.utc)
-chmod bağımlılığı yerine python x.py / node x.js
-CRLF commit yerine .gitattributes
-21. Onay
+## 20. Ek B — Yasak yapılar (lint ile zorlanır)
+
+- `"C:\\..."` veya `"/home/..."` yerine `Path(...)` / `path.join`
+- `open("a/b.txt")` yerine `Path("a") / "b.txt"`
+- `subprocess.run("a && b", shell=True)` yerine liste argümanı
+- `os.system` yerine `subprocess.run`
+- `os.fork` yerine `multiprocessing`
+- `fcntl.flock` yerine `filelock`
+- Naive `datetime.now()` yerine `datetime.now(timezone.utc)`
+- `chmod` bağımlılığı yerine `python x.py` / `node x.js`
+- CRLF commit yerine `.gitattributes`
+
+## 21. Onay
+
 İşveren — Ad, tarih, imza: ................................................
 
 Yüklenici — Ad, tarih, imza: ................................................
 
-22. Sürüm kaydı
-1.2 — Tablosuz sözleşme; tüm listeler madde işaretine çevrildi.
-1.3 — §18 Windows/Linux ayrımı, §19 .gitattributes, §20 yasak yapılar,
-§23 kodlama kuralları, §24 cookie politikası, C5 güncellendi. Google'ın
-JavaScript zorunluluğu §4'e işlendi.
-1.4 — §3 worker yazma istisnası, §5 sağlayıcı seçimi ve tür oranları,
-§6 kimlik sütunları ve ayar tablosu, §8 iki seviyeli devre kesici,
-§11 C31-C34, alert türleri genişletildi.
-23. Kodlama kuralları (bağlayıcı)
-23.1 Yorum zorunluluğu — Türkçe
-Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını
-anlatan en az üç satırlık Türkçe blok bulunur.
-Her fonksiyon ve metot, Türkçe docstring taşır; ne yaptığını, parametrelerini,
-dönüş değerini ve fırlattığı hataları yazar.
-Her karmaşık blok (döngü, dallanma, retry, seçim mantığı) öncesinde "neden
-böyle" sorusunu yanıtlayan Türkçe yorum bulunur.
-Her sihirli sayı, birimi ve gerekçesiyle yorumlanır. Örnek: `DWELL_MIN = 5
-saniye; tık sayılsın yeter, hız öncelikli`.
-Yorum, kodu tekrar etmez; kodun neden öyle olduğunu açıklar.
-Değişken, fonksiyon ve tablo adları İngilizce olabilir. Açıklama dili Türkçedir.
-Ölü kod yorumla gizlenmez, silinir. Yerine yeni davranış yorumlanır.
-23.2 Dosya disiplini
-Dosya başına tek sorumluluk. Bir dosyada iki farklı iş varsa bölünür.
-Dosya 250 satırı geçmez. Geçiyorsa sorumluluk ayrıştırılmamış demektir.
-Sınıf başına ayrı dosya açılmaz; ilgili küçük sınıflar tek dosyada toplanır.
-index.ts / index.py barrel zinciri kurulmaz; import doğrudan dosyaya gider.
-Boş klasör bırakılmaz.
-Aynı bilgi iki yerde tutulmaz; konfigürasyon tek kaynaktan okunur.
-Üretilmiş dosyalar (build çıktısı, node_modules, .venv, log, dist) repoya
-girmez.
-Test dosyası, test edilen modülün yanında ve aynı adla *.test.ts /
-test_*.py biçiminde durur.
-Kullanılmayan bağımlılık package.json / requirements.txt içinde bırakılmaz.
-23.3 Ücretsiz servis önceliği
+## 22. Sürüm kaydı
+
+- 1.2 — Tablosuz sözleşme; tüm listeler madde işaretine çevrildi.
+- 1.3 — §18 Windows/Linux ayrımı, §19 `.gitattributes`, §20 yasak yapılar, §23 kodlama kuralları, §24 cookie politikası, C5 güncellendi. Google'ın JavaScript zorunluluğu §4'e işlendi.
+- 1.4 — §3 worker yazma istisnası, §5 sağlayıcı seçimi ve tür oranları, §6 kimlik sütunları ve ayar tablosu, §8 iki seviyeli devre kesici, §11 C31-C34, alert türleri genişletildi.
+- 1.5 — §3 `ayar` okuma istisnası, §4 düğüm seçimi, §5 `geo_mode` üç değeri ve `provider.ulke`, §6 `dugum`, `dugum_olay`, `alert` bağlam sütunları, §7 panel ve worker uçlarının tamamı ile sayfalama, §8 SERP anahtarlarının veritabanında tutulması, §9 ölçüm aralığının ayara taşınması, §10 CSV, §11 C35-C43, §14 anahtar değişiminin panelden yapılması, §18.4 `.env` disiplini.
+
+## 23. Kodlama kuralları (bağlayıcı)
+
+### 23.1 Yorum zorunluluğu — Türkçe
+
+- Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
+- Her fonksiyon ve metot, Türkçe docstring taşır; ne yaptığını, parametrelerini, dönüş değerini ve fırlattığı hataları yazar.
+- Her karmaşık blok (döngü, dallanma, retry, seçim mantığı) öncesinde "neden böyle" sorusunu yanıtlayan Türkçe yorum bulunur.
+- Her sihirli sayı, birimi ve gerekçesiyle yorumlanır. Örnek: `DWELL_MIN = 5 saniye; tık sayılsın yeter, hız öncelikli`.
+- Yorum, kodu tekrar etmez; kodun neden öyle olduğunu açıklar.
+- Değişken, fonksiyon ve tablo adları İngilizce olabilir. Açıklama dili Türkçedir.
+- Ölü kod yorumla gizlenmez, silinir. Yerine yeni davranış yorumlanır.
+
+### 23.2 Dosya disiplini
+
+- Dosya başına tek sorumluluk. Bir dosyada iki farklı iş varsa bölünür.
+- Dosya 250 satırı geçmez. Geçiyorsa sorumluluk ayrıştırılmamış demektir.
+- Sınıf başına ayrı dosya açılmaz; ilgili küçük sınıflar tek dosyada toplanır.
+- `index.ts` / `index.py` barrel zinciri kurulmaz; import doğrudan dosyaya gider.
+- Boş klasör bırakılmaz.
+- Aynı bilgi iki yerde tutulmaz; konfigürasyon tek kaynaktan okunur.
+- Üretilmiş dosyalar (build çıktısı, node_modules, .venv, log, dist) repoya girmez.
+- Test dosyası, test edilen modülün yanında ve aynı adla `*.test.ts` / `test_*.py` biçiminde durur.
+- Kullanılmayan bağımlılık `package.json` / `requirements.txt` içinde bırakılmaz.
+
+### 23.3 Ücretsiz servis önceliği
+
 Geliştirme aşamasında (M1-M5) ücretsiz katmanlar kullanılır:
 
-SERP ölçümü: Decodo ücretsiz plan (10 bin istek) ve Serper ücretsiz kota (2.500).
-Yerel MySQL ve Redis: Docker konteyneri, ek ücret yok.
-CI: GitHub Actions ücretsiz dakikalar.
-İzleme: kendi Prometheus ve Grafana konteynerleri.
-Hata izleme: Sentry ücretsiz katman veya self-host.
-Test hedef sitesi: kullanıcının kendi domaininde ücretsiz alt alan adı.
-Proxy: M2-M5 için Decodo ücretsiz plan ve IPRoyal deneme kredisi.
+- SERP ölçümü: Decodo ücretsiz plan (10 bin istek) ve Serper ücretsiz kota (2.500).
+- Yerel MySQL ve Redis: konteyner, ek ücret yok.
+- CI: GitHub Actions ücretsiz dakikalar.
+- İzleme: kendi Prometheus ve Grafana konteynerleri.
+- Hata izleme: Sentry ücretsiz katman veya self-host.
+- Test hedef sitesi: kullanıcının kendi domaininde ücretsiz alt alan adı.
+- Proxy: M2-M5 için Decodo ücretsiz plan ve IPRoyal deneme kredisi.
+
 Paralı kaynağa yalnızca şu üç durumda geçilir:
 
-Gerçek residential trafik hacmi (M6 pilot, kaçınılmaz).
-Şehir hedefleme doğrulaması için ücretli sağlayıcı teyidi.
-20 sunucuya ölçekleme (M7).
-Ücretsiz katman sınırına dayanan her yerde kod, kotayı aşınca uyarı üretir ve
-sessizce durmaz.
+- Gerçek residential trafik hacmi (M6 pilot, kaçınılmaz).
+- Şehir hedefleme doğrulaması için ücretli sağlayıcı teyidi.
+- 20 sunucuya ölçekleme (M7).
 
-24. Cookie politikası
-Her istek taze oturumla başlar; SOCS ve CONSENT onay duvarını atlar.
-Aynı hit içinde oturum korunur, AEC/NID gibi cookie'ler tıklamaya taşınır.
-Statik NID yapıştırılmaz; Google'ın üretmesine izin verilir.
-Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi,
-dosya başına tek profil, dosya adında il kodu, hit başına bir kez tüketim.
-Cookie dosyaları repoya girmez.
-Cookie'ler JavaScript duvarını aşmaz; sonuç listesi yine API'den gelir.
+Ücretsiz katman sınırına dayanan her yerde kod, kotayı aşınca uyarı üretir ve sessizce durmaz.
 
-Değişiklik özeti:
+## 24. Cookie politikası
 
-- Sürüm 1.4, §22'ye 1.4 satırı
-- §3: worker yazma istisnası iki maddeye ayrıldı
-- §5: tür oranı, A-Res sırası, düşüş zinciri, mobil penceresi, ayrı ürün kimliği
-- §6: `provider`'a `gateway`, `kullanici`, `sifre`, `weight_yedek`; yeni `ayar` tablosu; `alert` türleri genişletildi
-- §6.1: dört yeni gerekçe
-- §6.3: `alert` 90 gün
-- §7: `/api/ayarlar`, `/api/uyarilar`, `/burst` gövdesine `geo_slug`
-- §8: iki seviyeli devre kesici ve tek failover kuralı
-- §11: C24 veritabanı sırrına izin verir hale geldi, C31-C34 eklendi
+- Her istek taze oturumla başlar; SOCS ve CONSENT onay duvarını atlar.
+- Aynı hit içinde oturum korunur, AEC/NID gibi cookie'ler tıklamaya taşınır.
+- Statik NID yapıştırılmaz; Google'ın üretmesine izin verilir.
+- Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi, dosya başına tek profil, dosya adında il kodu, hit başına bir kez tüketim.
+- Cookie dosyaları repoya girmez.
+- Cookie'ler JavaScript duvarını aşmaz; sonuç listesi yine API'den gelir.
+
+## 25. Değişiklik özeti (1.5)
+
+- §3: `ayar` salt okuma istisnası ve `ayar_db` önbelleği
+- §4: düğüm kayıt defterinden seçim, boş defterde yerel varsayılan
+- §5: `geo_mode` üç değeri, `provider.ulke`, `yabanci` son çare
+- §6: `dugum`, `dugum_olay`, `alert.keyword_id/site_id`, `hit.geo_mode` üç değer, `provider.ulke`, `ayar` seed anahtarları, `dugum_olay` saklama
+- §6.1: beş yeni gerekçe
+- §7: tüm panel uçları, sayfalama parametreleri, `/api/worker/kalp`, `/api/ayar/serp-dene`, maskeleme kuralı
+- §8: SERP anahtarlarının veritabanında tutulması
+- §9: ölçüm aralığının `ayar` üzerinden gelmesi
+- §10: CSV çıktısı
+- §11: C35-C43
+- §14: anahtar değişiminin panelden yapılması
+- §18.4: `.env` disiplini, türetilebilir değerlerin dosyadan çıkarılması

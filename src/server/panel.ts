@@ -226,6 +226,18 @@ yonlendirici.get("/uyari", async (istek, yanit) => {
   }
 
   const nerede = kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "";
+  const adet = adetOku(istek.query.adet, 50);
+  const sayfa = sayfaOku(istek.query.sayfa);
+  const toplam =
+    (
+      await tek<{ sayi: number }>(
+        `SELECT COUNT(*) AS sayi FROM alert a
+           LEFT JOIN keyword k ON k.id = a.keyword_id
+           LEFT JOIN site s ON s.id = a.site_id
+           ${nerede}`,
+        degerler,
+      )
+    )?.sayi ?? 0;
   const satirlar = await sorgu(
     `SELECT a.id, a.kind, a.ref_id, a.message, a.acknowledged, a.created_at,
             TIMESTAMPDIFF(MINUTE, a.created_at, NOW(3)) AS yas_dk,
@@ -236,12 +248,12 @@ yonlendirici.get("/uyari", async (istek, yanit) => {
        ${nerede}
       ORDER BY a.acknowledged ASC, a.created_at DESC
       LIMIT ?`,
-    [...degerler, adetOku(istek.query.adet)],
+    [...degerler, adet, (sayfa - 1) * adet],
   );
   const ozet = await tek<Record<string, number>>(
     `SELECT SUM(acknowledged = 0) AS acik, SUM(acknowledged = 1) AS kapali FROM alert`,
   );
-  yanit.json({ satirlar, ozet });
+  yanit.json({ satirlar, ozet, toplam, sayfa, adet });
 });
 
 yonlendirici.post("/uyari/tumunu-kapat", async (istek, yanit) => {
@@ -280,6 +292,11 @@ yonlendirici.post("/uyari/:id/kapat", async (istek, yanit) => {
 function adetOku(ham: unknown, varsayilan = 100): number {
   const sayi = Number(ham);
   return Number.isInteger(sayi) && sayi > 0 ? Math.min(sayi, 500) : varsayilan;
+}
+/** Sayfa numarasını 1'den başlatır. */
+function sayfaOku(ham: unknown): number {
+  const sayi = Number(ham);
+  return Number.isInteger(sayi) && sayi > 0 ? sayi : 1;
 }
 const GIZLI_AYARLAR = new Set(["serp_decodo", "serp_serper", "serp_searchapi"]);
 
@@ -377,6 +394,19 @@ yonlendirici.get("/log", async (istek, yanit) => {
   if (aralik) kosullar.push(aralik);
 
   const nerede = kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "";
+  const adet = adetOku(istek.query.adet, 50);
+  const sayfa = sayfaOku(istek.query.sayfa);
+  const toplam =
+    (
+      await tek<{ sayi: number }>(
+        `SELECT COUNT(*) AS sayi FROM burst b
+           JOIN keyword_geo g ON g.id = b.keyword_geo_id
+           JOIN keyword k ON k.id = g.keyword_id
+           JOIN site s ON s.id = k.site_id
+           ${nerede}`,
+        degerler,
+      )
+    )?.sayi ?? 0;
   const satirlar = await sorgu(
     `SELECT b.id, k.text AS kelime, s.domain, b.step, b.target_count,
             b.started_at, b.ended_at, b.stats, g.geo_code, g.tier, geo.name AS il_adi
@@ -386,10 +416,10 @@ yonlendirici.get("/log", async (istek, yanit) => {
        JOIN site s ON s.id = k.site_id
        LEFT JOIN geo ON geo.code = g.geo_code
        ${nerede}
-      ORDER BY b.id DESC LIMIT 100`,
-    [...degerler, adetOku(istek.query.adet)],
+      ORDER BY b.id DESC LIMIT ?`,
+    [...degerler, adet, (sayfa - 1) * adet],
   );
-  yanit.json(satirlar);
+  yanit.json({ satirlar, toplam, sayfa, adet });
 });
 
 export default yonlendirici;

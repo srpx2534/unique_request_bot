@@ -52,6 +52,7 @@ yonlendirici.get("/rapor", async (istek, yanit) => {
     JOIN keyword_geo g ON g.id = b.keyword_geo_id
     JOIN keyword k ON k.id = g.keyword_id
     JOIN site s ON s.id = k.site_id
+    LEFT JOIN geo il ON il.code = g.geo_code
     ${nerede}`;
 
   const ozet = await tek<Record<string, number>>(
@@ -77,7 +78,6 @@ yonlendirici.get("/rapor", async (istek, yanit) => {
             ${HIT} AS hit, ${OK} AS ok, ${CAPTCHA} AS captcha,
             MAX(b.started_at) AS son
        ${taban}
-       LEFT JOIN geo il ON il.code = g.geo_code
       GROUP BY k.id, k.text, s.domain, il.name
       ORDER BY hit DESC
       LIMIT 100`,

@@ -45,7 +45,7 @@ export default function YanMenu({
     <div className="flex h-full flex-col border-r border-kenar bg-yuzey">
       <div className={cn("flex h-14 items-center border-b border-kenar px-4", dar && "justify-center px-0")}>
         <span className="text-sm font-semibold tracking-tight text-vurgu">
-          {dar ? "ub" : "unique_request_bot"}
+          {dar ? "URB" : "Unique Request Bot"}
         </span>
       </div>
 
