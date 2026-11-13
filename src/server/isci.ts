@@ -10,33 +10,56 @@
 import { Worker } from "bullmq";
 import { baglanti, type Is } from "./kuyruk.js";
 import { tek, yaz } from "./veritabani.js";
+import { dugumSec } from "./dugum_sec.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
 const ZAMAN_ASIMI_MS = 120_000;
 
+
+
+type MotorHiti = {
+  result: string;
+  saglayici_id: number | null;
+  geo_mode: string | null;
+  http_status: number | null;
+  latency_ms: number | null;
+  bytes: number | null;
+};
+
+type MotorCevabi = {
+  ok?: number;
+  stats?: Record<string, number>;
+  hits?: MotorHiti[];
+};
+
+const HIT_PARCASI = 500;
+
 /**
- * İş atılacak düğümü seçer.
+ * Hit dizisini toplu yazar.
  *
- * Kayıtlı ve aktif düğüm varsa yalnızca onlar arasından, en az yüklü olanı
- * seçer; 45 saniyeden eski kalbi olan sessiz düğüm atlanır. Kayıt defteri
- * boşsa yerel düğüm varsayılır: 127.0.0.1:WORKER_PORT.
+ * Saglayicisi olmayan satir atlanir; hit.provider_id zorunludur. Parca
+ * boyu 500'u gecmez, tek INSERT fazla parametreye carpmaz.
  */
-async function dugumSec(): Promise<string | null> {
-  const satir = await tek<{ ip: string }>(
-    `SELECT ip FROM dugum
-      WHERE durum = 'aktif' AND son_kalp_at > UTC_TIMESTAMP(3) - INTERVAL 45 SECOND
-      ORDER BY yuk ASC, id ASC LIMIT 1`,
-  );
-  if (satir) return `http://${satir.ip}:${process.env.WORKER_PORT ?? 8081}`;
-
-  const kayitli = await tek<{ sayi: number }>("SELECT COUNT(*) AS sayi FROM dugum");
-  if ((kayitli?.sayi ?? 0) === 0) {
-    return `http://127.0.0.1:${process.env.WORKER_PORT ?? 8081}`;
+async function hitYaz(
+  burstId: number,
+  geoKodu: number,
+  hits: MotorHiti[],
+): Promise<void> {
+  const satirlar = hits
+    .filter((h) => h.saglayici_id !== null)
+    .map((h) => [
+      burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback",
+      h.result, h.http_status, h.latency_ms, h.bytes,
+    ]);
+  for (let i = 0; i < satirlar.length; i += HIT_PARCASI) {
+    const parca = satirlar.slice(i, i + HIT_PARCASI);
+    const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+    await yaz(
+      `INSERT INTO hit (burst_id, provider_id, geo_code, geo_mode, result, http_status, latency_ms, bytes) VALUES ${yerler}`,
+      parca.flat(),
+    );
   }
-  return null;
 }
-
-type MotorCevabi = { ok?: number; stats?: Record<string, number> };
 
 /** Satırı beklemede bırakır ve kısa cooldown verir. */
 async function geriAl(geoId: number, sebep: string): Promise<void> {
@@ -72,9 +95,10 @@ async function calistir(is: Is): Promise<void> {
     burst_count: number;
     uule: string | null;
     domain: string;
+    geo_code: number;
     step_size: number;
   }>(
-    `SELECT g.burst_count, geo.uule, s.domain, c.step_size
+    `SELECT g.burst_count, geo.uule, s.domain, g.geo_code, c.step_size
        FROM keyword_geo g
        JOIN geo ON geo.code = g.geo_code
        JOIN keyword k ON k.id = g.keyword_id
@@ -91,7 +115,7 @@ async function calistir(is: Is): Promise<void> {
   const adet = Math.min(adim * 5, tavan);
   await yaz(
     "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count, phase, stats) VALUES (?, ?, ?, ?, ?, ?)",
-    [is.campaignId, is.keywordGeoId, adim, adet, is.tier === "core" ? "core" : "broad", "{}"],
+    [is.campaignId, is.keywordGeoId, adim, adet, satir.burst_count < 3 ? "core" : "broad", "{}"],
   );
   const burst = await tek<{ id: number }>(
     "SELECT id FROM burst WHERE keyword_geo_id = ? ORDER BY id DESC LIMIT 1",
@@ -111,18 +135,17 @@ async function calistir(is: Is): Promise<void> {
       headers: { "content-type": "application/json", Authorization: `Bearer ${TOKEN}` },
       body: JSON.stringify({
         burst_id: burst.id,
-        kelime: is.kelime,
-        il: is.il,
+        keyword: is.kelime,
+        geo_code: satir.geo_code,
         uule: satir.uule,
-        domain: satir.domain,
-        tier: is.tier,
-        adet,
-      }),
-      signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
+        target_domain: satir.domain,
+        size: adet,
+      }),      signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
     });
     if (!yanit.ok) throw new Error(`motor ${yanit.status}`);
 
     const govde = (await yanit.json()) as MotorCevabi;
+    await hitYaz(burst.id, satir.geo_code, govde.hits ?? []);
     await yaz("UPDATE burst SET ended_at = NOW(3), stats = ? WHERE id = ?", [
       JSON.stringify(govde.stats ?? {}),
       burst.id,

@@ -46,7 +46,8 @@ yonlendirici.get("/site", async (istek, yanit) => {
       ORDER BY s.id DESC`,
     ara ? [`%${ara}%`, `%${ara}%`] : [],
   );
-  yanit.json(satirlar);
+  // Sözleşme §7.1 zarf ister: liste uçları { satirlar } döner.
+  yanit.json({ satirlar });
 });
 
 yonlendirici.post("/site", async (istek, yanit) => {

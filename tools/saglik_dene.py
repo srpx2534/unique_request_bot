@@ -18,18 +18,17 @@ sys.path.insert(0, str(KOK / "tools"))
 
 from db import baglan  # noqa: E402
 
-from worker import saglik  # noqa: E402
+from worker import saglik_db  # noqa: E402
 
-SAGLAYICI = 99
 GEO = 34
 TEKRAR = 12  # ASGARI_ORNEK'in üstünde; oran eşiği aşsın
 
 
-def _durum(imlec) -> tuple:
+def _durum(imlec, saglayici: int) -> tuple:
     """Sağlayıcının durum, ağırlık ve yedeğini okur."""
     imlec.execute(
         "SELECT state, weight, weight_yedek, captcha_pct FROM provider WHERE id = %s",
-        (SAGLAYICI,),
+        (saglayici,),
     )
     return imlec.fetchone()
 
@@ -37,32 +36,36 @@ def _durum(imlec) -> tuple:
 def main() -> int:
     """Sınamayı yürütür. Beklenen sonuç çıkmazsa 1 döner."""
     baglanti = baglan()
+    # Kimlik sabit tutulmaz; provider.id SMALLINT olduğu için boş bir kimlik aranır.
+    with baglanti.cursor() as imlec:
+        imlec.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM provider")
+        saglayici = int(imlec.fetchone()[0])
     try:
         with baglanti.cursor() as imlec:
-            imlec.execute("DELETE FROM provider WHERE id = %s", (SAGLAYICI,))
+            imlec.execute("DELETE FROM provider WHERE id = %s", (saglayici,))
             imlec.execute(
                 "INSERT INTO provider (id, name, kind, city_capable, weight, state,"
                 " gateway, kullanici, sifre) VALUES (%s, 'Deneme', 'residential', 1,"
                 " 5, 'active', 'host:10001', 'k', 's')",
-                (SAGLAYICI,),
+                (saglayici,),
             )
-            imlec.execute("DELETE FROM provider_geo WHERE provider_id = %s", (SAGLAYICI,))
+            imlec.execute("DELETE FROM provider_geo WHERE provider_id = %s", (saglayici,))
     finally:
         baglanti.close()
 
     # Eşiğin üstünde CAPTCHA üretilir; hem il çifti hem genel oran aşar.
     for _ in range(TEKRAR):
-        saglik.kaydet(SAGLAYICI, GEO, "captcha")
-    saglik.karantina_kontrol(SAGLAYICI)
+        saglik_db.kaydet(saglayici, GEO, "captcha")
+    saglik_db.karantina_kontrol(saglayici)
 
     baglanti = baglan()
     try:
         with baglanti.cursor() as imlec:
-            durum, agirlik, yedek, oran = _durum(imlec)
+            durum, agirlik, yedek, oran = _durum(imlec, saglayici)
             imlec.execute(
                 "SELECT exhausted_until IS NOT NULL FROM provider_geo"
                 " WHERE provider_id = %s AND geo_code = %s",
-                (SAGLAYICI, GEO),
+                (saglayici, GEO),
             )
             tukendi = imlec.fetchone()[0]
     finally:
@@ -78,16 +81,16 @@ def main() -> int:
             imlec.execute(
                 "UPDATE provider SET quarantine_until = NOW(3) - INTERVAL 1 MINUTE"
                 " WHERE id = %s",
-                (SAGLAYICI,),
+                (saglayici,),
             )
     finally:
         baglanti.close()
-    saglik.karantina_kontrol(SAGLAYICI)
+    saglik_db.karantina_kontrol(saglayici)
 
     baglanti = baglan()
     try:
         with baglanti.cursor() as imlec:
-            durum2, agirlik2, yedek2, oran2 = _durum(imlec)
+            durum2, agirlik2, yedek2, oran2 = _durum(imlec, saglayici)
     finally:
         baglanti.close()
     print(f"açılma: state={durum2} weight={agirlik2} yedek={yedek2} oran=%{oran2}")
@@ -96,8 +99,8 @@ def main() -> int:
     baglanti = baglan()
     try:
         with baglanti.cursor() as imlec:
-            imlec.execute("DELETE FROM provider_geo WHERE provider_id = %s", (SAGLAYICI,))
-            imlec.execute("DELETE FROM provider WHERE id = %s", (SAGLAYICI,))
+            imlec.execute("DELETE FROM provider_geo WHERE provider_id = %s", (saglayici,))
+            imlec.execute("DELETE FROM provider WHERE id = %s", (saglayici,))
     finally:
         baglanti.close()
 

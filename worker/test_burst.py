@@ -44,9 +44,9 @@ def taklit(monkeypatch):
     monkeypatch.setattr(click, "pogo", sahte_pogo)
     monkeypatch.setattr(burst.time, "sleep", lambda _s: None)
     # Sağlık yazımı veritabanına gider; birim testi kirletmesin diye susturulur.
-    monkeypatch.setattr(burst.saglik, "uyari", lambda *_a, **_k: None)
-    monkeypatch.setattr(burst.saglik, "kaydet", lambda *_a, **_k: None)
-    monkeypatch.setattr(burst.saglik, "karantina_kontrol", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "uyari", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "kaydet", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "karantina_kontrol", lambda *_a, **_k: None)
     return sayac
 
 

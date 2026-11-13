@@ -1,5 +1,12 @@
-/** Ayarlar: SERP anahtarları ve ölçüm parametreleri. */
-import { useEffect, useState } from "react";
+/**
+ * Ayarlar: SERP anahtarları ve ölçüm eşikleri.
+ *
+ * Alanlar bildirimsel listeden üretilir. Tabloda olup listede olmayan
+ * anahtarlar (oran_* gibi) burada görünmez; oranlar Sağlayıcılar ekranında
+ * düzenlenir. Her kart kendi alanlarını aralıkla doğrular ve yalnızca onları
+ * yazar, böylece tek hatalı alan diğerlerini kilitlemez.
+ */
+import { useState } from "react";
 import { Kart } from "@/bilesen/ui/kart";
 import { Dugme } from "@/bilesen/ui/dugme";
 import { Girdi } from "@/bilesen/ui/girdi";
@@ -7,51 +14,100 @@ import { useBildirim } from "@/bilesen/ui/bildirim";
 import { ayarKullan, ayarYaz } from "@/lib/panel";
 import { iste } from "@/lib/api";
 
-const ETIKETLER: Record<string, string> = {
-  mobil_pencere_sn: "Mobil pencere (sn)",
-  olcum_araligi_dk: "Ölçüm aralığı (dk, 0 = kapalı)",
-  gunluk_tavan: "Günlük tavan",
-  esik_captcha: "CAPTCHA eşiği (%)",
+type SayisalAlan = {
+  anahtar: string;
+  etiket: string;
+  aciklama: string;
+  min: number;
+  max: number;
+  varsayilan: number;
 };
 
-const SERP = [
-  { anahtar: "serp_decodo", ad: "Decodo", not: "sıralama ölçümü" },
-  { anahtar: "serp_serper", ad: "Serper", not: "yedek" },
-  { anahtar: "serp_searchapi", ad: "SearchApi", not: "yedek" },
+const OLCUM_ALANLARI: SayisalAlan[] = [
+  {
+    anahtar: "olcum_araligi_dk",
+    etiket: "Ölçüm aralığı (dk)",
+    aciklama: "0 = yalnızca cooldown sırası. Boşluk 15 dakikayı geçemez.",
+    min: 0,
+    max: 15,
+    varsayilan: 0,
+  },
+  {
+    anahtar: "esik_captcha",
+    etiket: "CAPTCHA eşiği (%)",
+    aciklama: "Aşılınca sağlayıcı 2 saat karantinaya alınır. En az 10 örnek beklenir.",
+    min: 1,
+    max: 100,
+    varsayilan: 20,
+  },
 ];
 
-const GIZLI = new Set([
-  ...SERP.map((s) => s.anahtar),
-  "oran_residential",
-  "oran_mobil",
-  "oran_datacenter",
-]);
+const KUYRUK_ALANLARI: SayisalAlan[] = [
+  {
+    anahtar: "kuyruk_esik",
+    etiket: "Kuyruk eşiği (iş)",
+    aciklama: "Bekleyen iş sayısı bu değeri aşarsa queue_lag uyarısı düşer.",
+    min: 1,
+    max: 100000,
+    varsayilan: 200,
+  },
+];
+
+const SERP = [
+  { anahtar: "serp_decodo", ad: "Decodo", not: "sıralama ölçümü · birincil" },
+  { anahtar: "serp_serper", ad: "Serper", not: "yedek · henüz bağlı değil" },
+  { anahtar: "serp_searchapi", ad: "SearchApi", not: "yedek · henüz bağlı değil" },
+];
+
+const GIZLI = new Set(SERP.map((s) => s.anahtar));
 
 export default function Ayarlar() {
   const ayarlar = ayarKullan();
   const yaz = ayarYaz();
   const bildir = useBildirim();
-  const [degerler, setDegerler] = useState<Record<string, string>>({});
   const [anahtarlar, setAnahtarlar] = useState<Record<string, string>>({});
+  const [degerler, setDegerler] = useState<Record<string, string>>({});
   const [sinama, setSinama] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!ayarlar.data) return;
-    setDegerler(
-      Object.fromEntries(
-        ayarlar.data.filter((a) => !GIZLI.has(a.anahtar)).map((a) => [a.anahtar, a.deger]),
-      ),
-    );
-  }, [ayarlar.data]);
 
   /** Kayıtlı değer; sırlar için maskeli gelir. */
   function kayitli(anahtar: string): string {
     return ayarlar.data?.find((a) => a.anahtar === anahtar)?.deger ?? "";
   }
 
+  /** Alanın gösterilecek değeri: düzenlenen ya da kayıtlı. */
+  function alanDegeri(alan: SayisalAlan): string {
+    return degerler[alan.anahtar] ?? (kayitli(alan.anahtar) || String(alan.varsayilan));
+  }
+
+  /** Kart alanlarını aralıkla doğrular, hata varsa null döner. */
+  function dogrula(alanlar: SayisalAlan[]): Record<string, string> | null {
+    const govde: Record<string, string> = {};
+    for (const alan of alanlar) {
+      const ham = alanDegeri(alan).trim();
+      const sayi = Number(ham);
+      if (!Number.isInteger(sayi) || sayi < alan.min || sayi > alan.max) {
+        bildir(`${alan.etiket}: ${alan.min}-${alan.max} arası tam sayı yaz`, "hata");
+        return null;
+      }
+      govde[alan.anahtar] = String(sayi);
+    }
+    return govde;
+  }
+
+  function sayisalKaydet(alanlar: SayisalAlan[]) {
+    const govde = dogrula(alanlar);
+    if (!govde) return;
+    yaz.mutate(govde, {
+      onSuccess: () => {
+        setDegerler({});
+        bildir("Kaydedildi");
+      },
+    });
+  }
+
   function anahtarKaydet() {
     const dolu = Object.fromEntries(
-      Object.entries(anahtarlar).filter(([, deger]) => deger.trim() !== ""),
+      Object.entries(anahtarlar).filter(([, d]) => d.trim() !== ""),
     );
     if (Object.keys(dolu).length === 0) {
       bildir("Doldurulmuş anahtar yok", "hata");
@@ -101,26 +157,35 @@ export default function Ayarlar() {
     }
   }
 
+  /** Tek sayısal alanı çizer. */
+  function sayisalGirdi(alan: SayisalAlan) {
+    return (
+      <label key={alan.anahtar} className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">{alan.etiket}</span>
+        <Girdi
+          inputMode="numeric"
+          value={alanDegeri(alan)}
+          onChange={(o) => setDegerler({ ...degerler, [alan.anahtar]: o.target.value })}
+          className="max-w-[8rem]"
+        />
+        <span className="text-xs leading-relaxed text-solgun">{alan.aciklama}</span>
+      </label>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Kart
         baslik="SERP anahtarları"
         aciklama="Sıralama bu anahtarlarla okunur. Kayıtlı değer maskelenir; yeni değer yazınca üzerine yazılır."
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {SERP.map((s) => (
-            <label key={s.anahtar} className="block text-sm">
-              <span className="text-solgun">
-                {s.ad} · {s.not}
-              </span>
-              <div className="mt-1 flex items-center gap-2">
-                <Girdi
-                  value={anahtarlar[s.anahtar] ?? ""}
-                  placeholder={kayitli(s.anahtar) || "tanımlı değil"}
-                  onChange={(o) => setAnahtarlar({ ...anahtarlar, [s.anahtar]: o.target.value })}
-                  className="max-w-sm"
-                />
-                <span className={`text-xs ${kayitli(s.anahtar) ? "text-basari" : "text-uyari"}`}>
+            <div key={s.anahtar} className="rounded-[var(--radius-kutu)] border border-kenar p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{s.ad}</span>
+                <span className="text-xs text-solgun">{s.not}</span>
+                <span className={`ml-auto text-xs ${kayitli(s.anahtar) ? "text-basari" : "text-uyari"}`}>
                   {kayitli(s.anahtar) ? "tanımlı" : "yok"}
                 </span>
                 {s.anahtar === "serp_decodo" ? (
@@ -128,7 +193,7 @@ export default function Ayarlar() {
                     type="button"
                     onClick={() => anahtarDene(s.anahtar)}
                     disabled={sinama[s.anahtar] === "sınanıyor..."}
-                    className="rounded-full bg-yuzey-2 px-2 py-1 text-xs text-metin hover:bg-kenar"
+                    className="rounded-full bg-yuzey-2 px-2.5 py-1 text-xs text-metin hover:bg-kenar disabled:opacity-50"
                   >
                     Dene
                   </button>
@@ -138,16 +203,22 @@ export default function Ayarlar() {
                     type="button"
                     onClick={() => anahtarTemizle(s.anahtar)}
                     disabled={yaz.isPending}
-                    className="rounded-full bg-yuzey-2 px-2 py-1 text-xs text-metin hover:bg-kenar"
+                    className="rounded-full bg-yuzey-2 px-2.5 py-1 text-xs text-metin hover:bg-kenar disabled:opacity-50"
                   >
                     Temizle
                   </button>
                 ) : null}
               </div>
+              <Girdi
+                value={anahtarlar[s.anahtar] ?? ""}
+                placeholder={kayitli(s.anahtar) || "tanımlı değil"}
+                onChange={(o) => setAnahtarlar({ ...anahtarlar, [s.anahtar]: o.target.value })}
+                className="mt-2"
+              />
               {sinama[s.anahtar] ? (
-                <p className="mt-1 text-xs text-solgun">{sinama[s.anahtar]}</p>
+                <p className="mt-1.5 text-xs text-solgun">{sinama[s.anahtar]}</p>
               ) : null}
-            </label>
+            </div>
           ))}
         </div>
         <Dugme className="mt-4" disabled={yaz.isPending} onClick={anahtarKaydet}>
@@ -155,25 +226,29 @@ export default function Ayarlar() {
         </Dugme>
       </Kart>
 
-      <Kart baslik="Ölçüm" aciklama="Değişiklikler bir sonraki turda etkili olur.">
-        <div className="space-y-3">
-          {Object.keys(degerler).map((k) => (
-            <label key={k} className="block text-sm">
-              <span className="text-solgun">{ETIKETLER[k] ?? k}</span>
-              <Girdi
-                value={degerler[k]}
-                onChange={(o) => setDegerler({ ...degerler, [k]: o.target.value })}
-                className="mt-1 max-w-xs"
-              />
-            </label>
-          ))}
+      <Kart baslik="Ölçüm" aciklama="Değişiklik bir sonraki turda etkili olur.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          {OLCUM_ALANLARI.map(sayisalGirdi)}
         </div>
         <Dugme
           className="mt-4"
           disabled={yaz.isPending}
-          onClick={() => yaz.mutate(degerler, { onSuccess: () => bildir("Ayarlar kaydedildi") })}
+          onClick={() => sayisalKaydet(OLCUM_ALANLARI)}
         >
-          Kaydet
+          Ölçümü kaydet
+        </Dugme>
+      </Kart>
+
+      <Kart baslik="Kuyruk" aciklama="Birikme eşiği; aşılınca uyarı üretilir.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          {KUYRUK_ALANLARI.map(sayisalGirdi)}
+        </div>
+        <Dugme
+          className="mt-4"
+          disabled={yaz.isPending}
+          onClick={() => sayisalKaydet(KUYRUK_ALANLARI)}
+        >
+          Kuyruğu kaydet
         </Dugme>
       </Kart>
     </div>

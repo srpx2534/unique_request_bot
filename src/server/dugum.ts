@@ -10,6 +10,7 @@ import { z } from "zod";
 import { dogrula } from "./dogrula.js";
 import { denetim } from "./denetim.js";
 import { sorgu, tek, yaz } from "./veritabani.js";
+import { olay } from "./dugum_olay.js";
 
 const yonlendirici = Router();
 
@@ -29,6 +30,7 @@ const kalpSemasi = z.object({
   cpu: z.number().min(0).max(100).optional(),
   ram: z.number().min(0).max(100).optional(),
   surum: z.string().trim().max(32).optional(),
+  ts: z.number().int(),
 });
 
 yonlendirici.get("/dugum", async (istek, yanit) => {
@@ -77,8 +79,9 @@ yonlendirici.post("/dugum", async (istek, yanit) => {
     }
     throw hata;
   }
-  const dugum = await tek("SELECT id, ad, ip, durum FROM dugum WHERE ip = ?", [govde.ip]);
-  await denetim(istek, "dugum-ekle", "dugum", (dugum as { id: number } | null)?.id ?? null);
+  const dugum = await tek<{ id: number }>("SELECT id FROM dugum WHERE ip = ?", [govde.ip]);
+  if (dugum) await olay(dugum.id, "kayit", "dugum kaydedildi");
+  await denetim(istek, "dugum-ekle", "dugum", dugum?.id ?? null);
   yanit.status(201).json(dugum);
 });
 
@@ -91,6 +94,7 @@ yonlendirici.patch("/dugum/:id", async (istek, yanit) => {
   const govde = dogrula(guncellemeSemasi, istek.body, yanit);
   if (!govde) return;
 
+  const onceki = await tek<{ durum: string }>("SELECT durum FROM dugum WHERE id = ?", [id]);
   const alanlar: string[] = [];
   const degerler: unknown[] = [];
   if (govde.ad !== undefined) {
@@ -111,8 +115,30 @@ yonlendirici.patch("/dugum/:id", async (istek, yanit) => {
     yanit.status(404).json({ hata: "düğüm yok" });
     return;
   }
+  // Durum gerçekten değiştiyse deftere yazılır; aynı değerin tekrarı sayılmaz.
+  if (onceki && govde.durum !== undefined && govde.durum !== onceki.durum) {
+    await olay(id, govde.durum === "durduruldu" ? "durdur" : "baslat", `durum: ${govde.durum}`);
+  }
   await denetim(istek, "dugum-guncelle", "dugum", id);
   yanit.json(await tek("SELECT id, ad, ip, durum FROM dugum WHERE id = ?", [id]));
+});
+
+yonlendirici.get("/dugum/:id/olay", async (istek, yanit) => {
+  const id = Number(istek.params.id);
+  if (!Number.isInteger(id)) {
+    yanit.status(400).json({ hata: "geçersiz düğüm kimliği" });
+    return;
+  }
+  const adet = Math.min(200, Math.max(1, Number(istek.query.adet ?? 50) || 50));
+  const sayfa = Math.max(1, Number(istek.query.sayfa ?? 1) || 1);
+  const toplam =
+    (await tek<{ sayi: number }>("SELECT COUNT(*) AS sayi FROM dugum_olay WHERE dugum_id = ?", [id]))?.sayi ?? 0;
+  const satirlar = await sorgu(
+    `SELECT id, tur, message, created_at FROM dugum_olay
+      WHERE dugum_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+    [id, adet, (sayfa - 1) * adet],
+  );
+  yanit.json({ satirlar, toplam, sayfa, adet });
 });
 
 yonlendirici.delete("/dugum/:id", async (istek, yanit) => {
@@ -121,6 +147,9 @@ yonlendirici.delete("/dugum/:id", async (istek, yanit) => {
     yanit.status(400).json({ hata: "geçersiz düğüm kimliği" });
     return;
   }
+  // Olaylar cascade ile gider; silme kaydı düğüm gitmeden önce yazılır.
+  const varMi = await tek<{ id: number }>("SELECT id FROM dugum WHERE id = ?", [id]);
+  if (varMi) await olay(id, "sil", "dugum silindi");
   const etkilenen = await yaz("DELETE FROM dugum WHERE id = ?", [id]);
   if (etkilenen === 0) {
     yanit.status(404).json({ hata: "düğüm yok" });

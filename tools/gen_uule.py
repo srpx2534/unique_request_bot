@@ -1,80 +1,95 @@
-"""geo koordinatlarÃ„Â±ndan uule deÃ„Å¸eri ÃƒÂ¼retir ve SQL dosyasÃ„Â± yazar.
+"""geo koordinatlarindan uule degeri uretir ve SQL dosyasi yazar.
 
-uule, Google'a "Ã…Å¸u noktadan aranmÃ„Â±Ã…Å¸" demenin yoludur. Ã…Âehir hedefleyen proxy
-bulunamadÃ„Â±Ã„Å¸Ã„Â±nda SERP'in doÃ„Å¸ru ili gÃƒÂ¶stermesi iÃƒÂ§in kullanÃ„Â±lÃ„Â±r; tÃ„Â±klama IP'sini
-deÃ„Å¸iÃ…Å¸tirmez. Format Google tarafÃ„Â±ndan belgelenmemiÃ…Å¸tir, bu yÃƒÂ¼zden deÃ„Å¸erler
-ampirik olarak doÃ„Å¸rulanÃ„Â±r.
+uule, Google'a "su noktadan aranmis" demenin yoludur. Sehir hedefleyen proxy
+bulunamadiginda SERP'in dogru ili gostermesi icin kullanilir; tiklama IP'sini
+degistirmez.
 
-Girdi : db/init/003_geo.sql (lat/lon)
-Ãƒâ€¡Ã„Â±ktÃ„Â± : db/init/004_uule.sql (UPDATE ifadeleri)
-BaÃ„Å¸Ã„Â±mlÃ„Â±lÃ„Â±k yoktur; Windows ve Linux'ta aynÃ„Â± ÃƒÂ§alÃ„Â±Ã…Å¸Ã„Â±r.
+Girdi artik SQL metni degil, seed CSV'sidir: 003 dosyasi yeniden uretilse de
+kolon sirasi degisse de ayristirma bozulmaz.
+
+Girdi : db/seeds/geo.csv
+Cikti : db/migrations/004_uule.sql
+
+Kullanim: python tools/gen_uule.py
 """
 
 from __future__ import annotations
 
 import base64
-import re
+import csv
 import sys
 import time
 from pathlib import Path
 
-# Proje kÃƒÂ¶kÃƒÂ¼: bu dosyanÃ„Â±n iki ÃƒÂ¼st dizini. Windows'ta da doÃ„Å¸ru ÃƒÂ§ÃƒÂ¶zÃƒÂ¼lÃƒÂ¼r.
 KOK = Path(__file__).resolve().parents[1]
-GEO_SQL = KOK / "db" / "migrations" / "003_geo.sql"
+GEO_CSV = KOK / "db" / "seeds" / "geo.csv"
 CIKTI_SQL = KOK / "db" / "migrations" / "004_uule.sql"
 
-# Ã…Âehir yarÃ„Â±ÃƒÂ§apÃ„Â± metre cinsinden. 65 km, il merkezini ve ÃƒÂ§evresini kapsar.
-YARICAP_M = 65_000
-
-# geo satÃ„Â±rlarÃ„Â±nÃ„Â± yakalayan desen: (kod, lat, lon)
-SATIR_DESENI = re.compile(r"\((\d+),'[^']*','[^']*',\d+,([\d.]+),([\d.]+)\)")
+YARICAP_M = 65_000  # metre; il merkezini ve cevresini kapsar
+BEKLENEN_IL = 81
 
 
 def uule_uret(lat: str, lon: str) -> str:
-    """Verilen koordinat iÃƒÂ§in uule dizesi dÃƒÂ¶ndÃƒÂ¼rÃƒÂ¼r.
+    """Verilen koordinat icin uule dizesi dondurur.
 
     Args:
-        lat: Enlem, ondalÃ„Â±k metin.
-        lon: Boylam, ondalÃ„Â±k metin.
+        lat: Enlem, ondalik metin.
+        lon: Boylam, ondalik metin.
 
     Returns:
-        Google'Ã„Â±n beklediÃ„Å¸i w+CAIQICI ÃƒÂ¶nekli kodlanmÃ„Â±Ã…Å¸ dize.
+        Google'in bekledigi w+CAIQICI onekli kodlanmis dize.
     """
-    # Zaman damgasÃ„Â± milisaniye; Google tazelik kontrolÃƒÂ¼nde kullanÃ„Â±r.
+    # Zaman damgasi milisaniye; Google tazelik kontrolunde kullanir.
     zaman = int(time.time() * 1000)
     govde = (
         f"role:1 producer:12 provenance:6 timestamp:{zaman} "
         f"latlng:{lat},{lon} radius:{YARICAP_M}"
     )
-    # Base64 URL-gÃƒÂ¼venli, dolgu karakterleri atÃ„Â±lÃ„Â±r.
     kodlu = base64.urlsafe_b64encode(govde.encode("utf-8")).decode().rstrip("=")
     return "w+CAIQICI" + kodlu
 
 
+def satirlari_oku() -> list[tuple[int, str, str]]:
+    """CSV'den kod ve koordinatlari okur.
+
+    Returns:
+        (kod, lat, lon) demetleri.
+
+    Raises:
+        FileNotFoundError: CSV yoksa.
+        ValueError: Satir sayisi 81 degilse.
+    """
+    if not GEO_CSV.exists():
+        raise FileNotFoundError(f"seed dosyasi yok: {GEO_CSV}")
+
+    kayitlar: list[tuple[int, str, str]] = []
+    with GEO_CSV.open(encoding="utf-8", newline="") as dosya:
+        for satir in csv.DictReader(dosya):
+            kayitlar.append((int(satir["code"]), satir["lat"], satir["lon"]))
+
+    if len(kayitlar) != BEKLENEN_IL:
+        raise ValueError(f"{BEKLENEN_IL} il bekleniyordu, {len(kayitlar)} bulundu.")
+    return kayitlar
+
+
 def main() -> int:
-    """Seed dosyasÃ„Â±nÃ„Â± okur, uule SQL'i ÃƒÂ¼retir. Hata varsa 1 dÃƒÂ¶ner."""
-    if not GEO_SQL.exists():
-        print(f"HATA: seed dosyasÃ„Â± bulunamadÃ„Â±: {GEO_SQL}")
-        return 1
-
-    icerik = GEO_SQL.read_text(encoding="utf-8")
-    satirlar = SATIR_DESENI.findall(icerik)
-
-    if len(satirlar) != 81:
-        print(f"HATA: 81 il bekleniyordu, {len(satirlar)} bulundu.")
+    """uule SQL'ini uretir. Hata varsa 1 doner."""
+    try:
+        kayitlar = satirlari_oku()
+    except (FileNotFoundError, ValueError) as hata:
+        print(f"HATA: {hata}")
         return 1
 
     parcalar = [
-        "-- ÃƒÅ“retilmiÃ…Å¸ dosya. Elle dÃƒÂ¼zenlenmez.",
-        "-- Kaynak: tools/gen_uule.py, girdi: 003_geo.sql",
+        "-- Uretilmis dosya. Elle duzenlenmez.",
+        "-- Kaynak: tools/gen_uule.py, girdi: db/seeds/geo.csv",
         "SET NAMES utf8mb4;",
     ]
-    # Her il iÃƒÂ§in tek UPDATE; kod plaka kodudur.
-    for kod, lat, lon in satirlar:
+    for kod, lat, lon in kayitlar:
         parcalar.append(f"UPDATE geo SET uule='{uule_uret(lat, lon)}' WHERE code={kod};")
 
     CIKTI_SQL.write_text("\n".join(parcalar) + "\n", encoding="utf-8", newline="\n")
-    print(f"OK: {len(satirlar)} il iÃƒÂ§in uule yazÃ„Â±ldÃ„Â± -> {CIKTI_SQL.name}")
+    print(f"OK: {len(kayitlar)} il icin uule yazildi -> {CIKTI_SQL.name}")
     return 0
 
 

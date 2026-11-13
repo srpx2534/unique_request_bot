@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from curl_cffi import requests
 
-from worker import click, fingerprint, havuz, saglik, serp
+from worker import click, fingerprint, havuz, saglik_db, serp
 
 AZAMI_HIT = 60  # sözleşme §9: basamak boyu en fazla 60
 HIT_ARASI_MIN = 0.4  # saniye; art arda istekte insan ritmi
@@ -49,36 +49,52 @@ def _tek_hit(
     profil: str,
     uule: str | None,
 ) -> dict:
-    """Bir hit'i uçtan uca dener.
+    """Bir hit'i uctan uca dener.
+
+    Kayit, sonucu belirleyen adimin HTTP kodu ve bayt sayisiyla doner.
+    Ayrica dwell dusulmus ag suresi tasinir: dwell bir uyku oldugu icin
+    latency'ye katilmaz, kolon saglayici ve ag kalitesini gostermeli.
 
     Returns:
-        sira dışındaki alanları taşıyan kayıt sözlüğü.
+        sira, saglayici_id ve geo_mode disindaki alanlari tasiyan sozluk.
     """
     kayit = {"profil": profil, "izlenim": None, "tik": None, "pogo": None,
-             "result": "error"}
+             "result": "error", "http_status": None, "bytes": None,
+             "latency_ms": 0}
 
     with requests.Session(impersonate=profil) as oturum:
         izlenim = serp.serp_getir_html(sorgu, uule=uule, proxy=proxy_adres,
                                        onceki_profil=profil, oturum=oturum)
         kayit["izlenim"] = izlenim["result"]
         if izlenim["result"] == "captcha":
+            # Duvara carptiysa tiklama denenmez; telemetri izlenimden alinir.
             kayit["result"] = "captcha"
+            kayit["http_status"] = izlenim["http_status"]
+            kayit["bytes"] = izlenim["bytes"]
+            kayit["latency_ms"] = izlenim["elapsed_ms"]
             return kayit
 
         tik = click.tikla(hedef_url, referer=serp_url, proxy=proxy_adres,
                           onceki_profil=profil, oturum=oturum)
         kayit["tik"] = tik["result"]
+        # Tiklama suresi dwell'i de olcer; dwell dusulerek ag suresi bulunur.
+        ag_ms = izlenim["elapsed_ms"] + tik["elapsed_ms"] - tik["dwell_ms"]
         if tik["result"] != "ok":
             kayit["result"] = tik["result"]
+            kayit["http_status"] = tik["http_status"]
+            kayit["bytes"] = tik["bytes"]
+            kayit["latency_ms"] = max(0, ag_ms)
             return kayit
 
         pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
                          onceki_profil=profil, oturum=oturum)
         kayit["pogo"] = pog["result"]
+        kayit["http_status"] = tik["http_status"]
+        kayit["bytes"] = tik["bytes"]
+        kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
 
     kayit["result"] = "ok"
     return kayit
-
 
 def burst_yap(
     sorgu: str,
@@ -127,7 +143,7 @@ def burst_yap(
             sonuc["result"] = "hedef_yok"
             sonuc["not_found"] = adet
             # Hedef ilk 100'de yok: panelde görülsün, sessizce geçmesin.
-            saglik.uyari("hedef_yok", None, f"'{sorgu}' ilk 100'de bulunamadı")
+            saglik_db.uyari("hedef_yok", None, f"'{sorgu}' ilk 100'de bulunamadı", kelime=sorgu, domain=hedef_domain)
             return sonuc
         hedef_url = next(
             k["link"] for k in cozum["organik"] if k["position"] == cozum["position"]
@@ -155,17 +171,23 @@ def burst_yap(
         failover_oldu = False
         saglayici_id: int | None = None
         for deneme in range(1, DENEME + 1):
+            geo_mod: str | None = None
             if proxy_secici:
                 proxy_adres = proxy_secici()
             else:
-                secim = havuz.sec(geo_slug, mobil_acik)
+                # sec_mod ucuncu eleman olarak hangi yoldan gidildigini verir.
+                # Paylasilan son_mod globali eszamanli burst'te karisirdi.
+                secim = havuz.sec_mod(geo_slug, mobil_acik)
                 proxy_adres = secim[1] if secim else None
                 saglayici_id = secim[0] if secim else None
+                geo_mod = secim[2] if secim else None
 
             profil = fingerprint.profil_sec(haric=onceki_profil)
             onceki_profil = profil
             kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule)
-
+            # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.
+            kayit["saglayici_id"] = saglayici_id
+            kayit["geo_mode"] = geo_mod
             if kayit["result"] == "ok" or kayit["result"] == "captcha":
                 break
             # Sağlayıcı kaynaklı düşüşte yeni sağlayıcıyla bir kez daha
@@ -174,7 +196,7 @@ def burst_yap(
                 failover_oldu = True
                 # Burst başına tek uyarı yeter; her hit'te tekrar yazılmasın.
                 if not failover_uyarildi:
-                    saglik.uyari("failover", saglayici_id, f"'{sorgu}' sağlayıcı değişimi")
+                    saglik_db.uyari("failover", saglayici_id, f"'{sorgu}' sağlayıcı değişimi", kelime=sorgu, domain=hedef_domain)
                     failover_uyarildi = True
 
         # Bayrak deneme döngüsünde kaybolmasın diye burada işaretlenir.
@@ -183,8 +205,8 @@ def burst_yap(
 
         # Sağlayıcı sağlığı yalnızca gerçek bir sağlayıcı kullanıldıysa işlenir.
         if saglayici_id:
-            saglik.kaydet(saglayici_id, geo_kodu, kayit["result"])
-            saglik.karantina_kontrol(saglayici_id)
+            saglik_db.kaydet(saglayici_id, geo_kodu, kayit["result"])
+            saglik_db.karantina_kontrol(saglayici_id)
 
         kayit["sira"] = sira
         sonuc["hits"].append(kayit)
@@ -199,11 +221,12 @@ def burst_yap(
 
     # Kapanış değerlendirmesi: oran eşiğin altındaysa uyarı düşülür.
     if sonuc["ok"] / adet < BASARI_ESIGI:
-        saglik.uyari(
+        saglik_db.uyari(
             "burst_hata", None,
             f"'{sorgu}' tamamlanma %{round(sonuc['ok'] * 100 / adet)} "
-            f"(ok={sonuc['ok']} captcha={sonuc['captcha']} hata={sonuc['error']})",
+                        f"(ok={sonuc['ok']} captcha={sonuc['captcha']} hata={sonuc['error']})",
+            kelime=sorgu, domain=hedef_domain,
         )
     if sonuc["captcha"]:
-        saglik.uyari("captcha", None, f"'{sorgu}' captcha={sonuc['captcha']}")
+        saglik_db.uyari("captcha", None, f"'{sorgu}' captcha={sonuc['captcha']}", kelime=sorgu, domain=hedef_domain)
     return sonuc

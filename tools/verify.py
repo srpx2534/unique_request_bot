@@ -1,28 +1,40 @@
-"""Kurulum doğrulaması: tablo, view, seed ve migration defteri.
+"""Kurulum dogrulamasi: zorunlu tablo, view, seed ve migration defteri.
 
-Tek satırlık -c komutlarında tırnak kaçışı sorun çıkardığı için dosya.
+Tablo sayisi sabit tutulmaz; migration eklendikce liste buyur ve sayi
+degisir. Zorunlu tablolar tek tek aranir, eksik olan adiyla yazilir.
 """
 
 from db import baglan
 
 SEMA = "unique_request_bot"
 
+# Kurulumda bulunmasi zorunlu tablolar. Yeni tablo eklenince buraya yazilir.
+ZORUNLU = (
+    "geo", "site", "keyword", "keyword_geo", "provider", "provider_geo",
+    "serp_provider", "profile", "campaign", "burst", "hit", "position",
+    "traffic_daily", "alert", "audit_log", "kullanici", "dugum", "dugum_olay", "ayar",
+)
+
+# Asgari migration sayisi; defter bunun altindaysa kurulum yarim kalmistir.
+ASGARI_MIGRATION = 18
+
 
 def main() -> int:
-    """Sayımları yazar. Eksik varsa 1 döner."""
+    """Eksikleri yazar. Eksik varsa 1 doner."""
     baglanti = baglan()
     try:
         imlec = baglanti.cursor()
 
         imlec.execute(
-            "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema=%s AND table_type='BASE TABLE'",
+            "SELECT table_name FROM information_schema.tables"
+            " WHERE table_schema = %s AND table_type = 'BASE TABLE'",
             (SEMA,),
         )
-        tablo = imlec.fetchone()[0]
+        var = {satir[0] for satir in imlec.fetchall()}
+        eksik = [t for t in ZORUNLU if t not in var]
 
         imlec.execute(
-            "SELECT COUNT(*) FROM information_schema.views WHERE table_schema=%s",
+            "SELECT COUNT(*) FROM information_schema.views WHERE table_schema = %s",
             (SEMA,),
         )
         view = imlec.fetchone()[0]
@@ -33,15 +45,21 @@ def main() -> int:
         imlec.execute("SELECT ad FROM schema_migration ORDER BY ad")
         defter = [satir[0] for satir in imlec.fetchall()]
 
-        print(f"tablo: {tablo}")
+        print(f"tablo: {len(var)} · eksik: {len(eksik)}")
+        for ad in eksik:
+            print(f"  EKSIK {ad}")
         print(f"view: {view}")
         print(f"geo: {geo} · uule: {uule}")
-        print(f"migration: {defter}")
+        print(f"migration: {len(defter)}")
 
-        if tablo != 16 or view < 1 or geo != 81 or uule != 81 or len(defter) != 4:
-            print("HATA: doğrulama tutmadı.")
+        hata = bool(eksik) or view < 2 or geo != 81 or uule != 81
+        if len(defter) < ASGARI_MIGRATION:
+            print(f"HATA: en az {ASGARI_MIGRATION} migration bekleniyordu.")
+            hata = True
+        if hata:
+            print("HATA: dogrulama tutmadi.")
             return 1
-        print("DOĞRULAMA TAMAM.")
+        print("DOGRULAMA TAMAM.")
         return 0
     finally:
         baglanti.close()

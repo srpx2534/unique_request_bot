@@ -9,9 +9,11 @@ import uygulama from "./uygulama.js";
 import { redis } from "./redis.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
+// Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
+const HOST = process.env.PANEL_HOST ?? "127.0.0.1";
 
-uygulama.listen(PORT, "127.0.0.1", () => {
-  console.log(`panel dinliyor: 127.0.0.1:${PORT}`);
+uygulama.listen(PORT, HOST, () => {
+  console.log(`panel dinliyor: ${HOST}:${PORT}`);
   redis
     .ping()
     .then(() => console.log("[redis] oturum deposu hazır"))

@@ -1,89 +1,50 @@
-"""Referans verisini veritabanına yazar.
+"""Referans verisini yeniden yukler.
 
-Şu an tek iş yapar: 81 ili nüfus ve koordinatla ekler, uule değerini üretir.
-Idempotenttir; tekrar çalıştırıldığında satırları günceller, çoğaltmaz.
+Iki kaynak sirayla uygulanir: 003_geo.sql (81 il) ve 004_uule.sql (uule).
+Ikisi de ON DUPLICATE KEY UPDATE ile yazdigi icin tekrar calistirmak guvenlidir.
+uule dosyasi once uretilir, elle guncel tutulmaz.
 
-Kullanım:
-    python tools/seed.py
+Kullanim: python tools/seed.py
 """
 
 from __future__ import annotations
 
-import csv
 import sys
+from pathlib import Path
 
-import uule
-from db import KOK, baglan
+sys.path.insert(0, "tools")
 
-GEO_CSV = KOK / "db" / "seeds" / "geo.csv"
+import gen_uule  # noqa: E402
+from db import MIGRATION_DIZINI, baglan, sql_dosyasini_ayristir  # noqa: E402
 
-# Beklenen il sayısı. Eksik seed sessizce geçmesin.
+SIRA = ("003_geo.sql", "004_uule.sql")
 BEKLENEN_IL = 81
 
 
-def satirlari_oku() -> list[tuple]:
-    """CSV'yi okur ve doğrular.
-
-    Returns:
-        (kod, ad, slug, nufus, lat, lon, uule) demetlerinden oluşan liste.
-    """
-    if not GEO_CSV.exists():
-        raise FileNotFoundError(f"seed dosyası yok: {GEO_CSV}")
-
-    kayitlar: list[tuple] = []
-    with GEO_CSV.open(encoding="utf-8", newline="") as dosya:
-        for satir in csv.DictReader(dosya):
-            kod = int(satir["code"])
-            # uule koordinattan burada üretilir, ayrı dosya gerekmez.
-            kayitlar.append(
-                (
-                    kod,
-                    satir["name"],
-                    satir["slug"],
-                    int(satir["population"]),
-                    satir["lat"],
-                    satir["lon"],
-                    uule.uret(satir["lat"], satir["lon"]),
-                )
-            )
-
-    if len(kayitlar) != BEKLENEN_IL:
-        raise ValueError(f"{BEKLENEN_IL} il bekleniyordu, {len(kayitlar)} bulundu.")
-    return kayitlar
+def _uygula(baglanti, ad: str) -> None:
+    """Tek SQL dosyasini uygular."""
+    for ifade in sql_dosyasini_ayristir(MIGRATION_DIZINI / ad):
+        with baglanti.cursor() as imlec:
+            imlec.execute(ifade)
 
 
 def main() -> int:
-    """Seed'i uygular. Hata varsa 1 döner."""
-    try:
-        kayitlar = satirlari_oku()
-    except (FileNotFoundError, ValueError) as hata:
-        print(f"HATA: {hata}")
+    """Seed'i uygular ve dogrular. Hata varsa 1 doner."""
+    if gen_uule.main() != 0:
         return 1
 
     baglanti = baglan()
     try:
-        with baglanti.cursor() as imlec:
-            # Çakışmada güncelle: seed tekrar çalıştırılabilir kalır.
-            imlec.executemany(
-                """
-                INSERT INTO geo (code, name, slug, population, lat, lon, uule)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                  name=VALUES(name), slug=VALUES(slug),
-                  population=VALUES(population), lat=VALUES(lat),
-                  lon=VALUES(lon), uule=VALUES(uule)
-                """,
-                kayitlar,
-            )
+        for ad in SIRA:
+            _uygula(baglanti, ad)
 
-        # Doğrulama: satır sayısı ve uule doluluğu yerinde mi.
         with baglanti.cursor() as imlec:
             imlec.execute("SELECT COUNT(*), COUNT(uule) FROM geo")
             toplam, dolu = imlec.fetchone()
 
-        print(f"geo: {toplam} satır, {dolu} uule dolu.")
+        print(f"geo: {toplam} satir, {dolu} uule dolu.")
         if toplam != BEKLENEN_IL or dolu != BEKLENEN_IL:
-            print("HATA: doğrulama tutmadı.")
+            print("HATA: dogrulama tutmadi.")
             return 1
         return 0
     finally:

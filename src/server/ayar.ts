@@ -6,7 +6,8 @@
  */
 import { tek } from "./veritabani.js";
 
-const ONBELLEK_MS = 30_000;
+// Sözleşme §3: değişiklik en geç bir dakika içinde etkili olur; worker ile aynı.
+const ONBELLEK_MS = 60_000;
 const onbellek = new Map<string, { deger: string; zaman: number }>();
 
 /**

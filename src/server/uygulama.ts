@@ -19,14 +19,24 @@ import kelimeYonlendirici from "./kelime.js";
 import panelYonlendirici from "./panel.js";
 import raporYonlendirici from "./rapor.js";
 import dugumYonlendirici, { kalpIsleyici } from "./dugum.js";
+import { imzaDogrula } from "./worker_imza.js";
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const uygulama = express();
 uygulama.disable("x-powered-by");
-uygulama.set("trust proxy", 1);
+// Ters proxy sayısı ortamdan ezilebilir; panel tek başına 127.0.0.1'de dinler.
+uygulama.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
 uygulama.use(helmet());
-uygulama.use(express.json({ limit: "256kb" }));
+// Ham gövde saklanır: worker kalbi bu baytların HMAC'i ile imzalanır.
+uygulama.use(
+  express.json({
+    limit: "256kb",
+    verify: (istek, _yanit, tampon) => {
+      (istek as { rawBody?: Buffer }).rawBody = Buffer.from(tampon);
+    },
+  }),
+);
 
 // Genel hız sınırı: panel tek kullanıcı, dakikada 300 istek fazlasıyla yeter.
 uygulama.use(
@@ -39,7 +49,7 @@ uygulama.get("/saglik", (_istek, yanit) => {
 
 uygulama.use(oturum);
 // Kalp ucu oturum ve CSRF istemez; worker''ın çerezi yok.
-uygulama.post("/api/worker/kalp", kalpIsleyici);
+uygulama.post("/api/worker/kalp", imzaDogrula, kalpIsleyici);
 
 uygulama.use("/api", csrf);
 

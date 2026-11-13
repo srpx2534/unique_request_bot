@@ -21,9 +21,9 @@ export default function Siteler() {
   const [duzenlenen, setDuzenlenen] = useState<Site | null>(null);
   const [silinecek, setSilinecek] = useState<Site | null>(null);
 
-  const liste = useQuery<Site[], ApiHatasi>({
+  const liste = useQuery<{ satirlar: Site[] }, ApiHatasi>({
     queryKey: ["site", arama],
-    queryFn: () => iste<Site[]>(`/site${arama ? `?q=${encodeURIComponent(arama)}` : ""}`),
+    queryFn: () => iste<{ satirlar: Site[] }>(`/site${arama ? `?q=${encodeURIComponent(arama)}` : ""}`),
   });
 
   const islem = useMutation<unknown, ApiHatasi, { yol: string; yontem: string; govde?: unknown }>({
@@ -60,10 +60,10 @@ export default function Siteler() {
         </form>
       </Kart>
 
-      <Kart baslik="Siteler" aciklama={`${liste.data?.length ?? 0} kayıt`}>
+      <Kart baslik="Siteler" aciklama={`${liste.data?.satirlar.length ?? 0} kayıt`}>
         <Girdi value={arama} onChange={(o) => setArama(o.target.value)} placeholder="alan adı ya da etiket ara" className="mb-3 max-w-sm" />
         <ul className="divide-y divide-kenar text-sm">
-          {liste.data?.map((s) => (
+          {liste.data?.satirlar.map((s) => (
             <li key={s.id} className="flex items-center gap-2 py-2">
               <span className="w-72 truncate">{s.domain}</span>
               <span className="w-48 truncate text-solgun">{s.label ?? "—"}</span>
@@ -81,7 +81,7 @@ export default function Siteler() {
             </li>
           ))}
         </ul>
-        {!liste.data?.length ? <p className="mt-3 text-sm text-solgun">Kayıt yok.</p> : null}
+        {!liste.data?.satirlar.length ? <p className="mt-3 text-sm text-solgun">Kayıt yok.</p> : null}
       </Kart>
 
       <Modal acik={duzenlenen !== null} kapat={() => setDuzenlenen(null)} baslik="Siteyi düzenle">

@@ -12,6 +12,9 @@ import { redis } from "./redis.js";
 import { tek, yaz } from "./veritabani.js";
 
 const KILIT_SINIR = 5; // deneme; üstünde kilit
+// Karsilastirma icin gecerli bir ozet gerekir; sabit metin bcrypt tarafindan
+// reddedilebiliyordu. Bir kez uretilir, maliyeti acilista 100 ms.
+const SAHTE_OZET = bcrypt.hashSync("gecersiz-parola", 12);
 const KILIT_SN = 15 * 60; // saniye; kilit süresi
 
 const govdeSemasi = z.object({
@@ -50,11 +53,13 @@ yonlendirici.post("/giris", async (istek, yanit) => {
   );
 
   // Kullanıcı yoksa da bcrypt çalıştırılır; yanıt süresi bilgi sızdırmasın.
-  const ozet = kullanici?.sifre_hash ?? "$2b$12$" + "x".repeat(53);
+  const ozet = kullanici?.sifre_hash ?? SAHTE_OZET;
   const dogru = await bcrypt.compare(sifre, ozet);
 
   if (!kullanici || !dogru || kullanici.aktif !== 1) {
-    await redis.multi().incr(kilitAnahtar).expire(kilitAnahtar, KILIT_SN).exec();
+    // TTL yalnizca ilk denemede kurulur; her denemede kurulsa kilit hic dolmaz.
+    const denemeSayisi = await redis.incr(kilitAnahtar);
+    if (denemeSayisi === 1) await redis.expire(kilitAnahtar, KILIT_SN);
     yanit.status(401).json({ hata: "e-posta veya şifre hatalı" });
     return;
   }

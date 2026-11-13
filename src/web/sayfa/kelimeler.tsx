@@ -44,7 +44,7 @@ export default function Kelimeler() {
   const [duzenlenen, setDuzenlenen] = useState<Kelime | null>(null);
   const [silinecek, setSilinecek] = useState<Kelime | null>(null);
 
-  const siteler = useQuery<Site[], ApiHatasi>({ queryKey: ["site"], queryFn: () => iste<Site[]>("/site") });
+  const siteler = useQuery<{ satirlar: Site[] }, ApiHatasi>({ queryKey: ["site"], queryFn: () => iste<{ satirlar: Site[] }>("/site") });
   const iller = useQuery<Il[], ApiHatasi>({ queryKey: ["geo"], queryFn: () => iste<Il[]>("/geo"), staleTime: 600_000 });
   const liste = useQuery<{ satirlar: Kelime[]; toplam: number }, ApiHatasi>({
     queryKey: ["kelime", siteId, arama],
@@ -83,7 +83,7 @@ export default function Kelimeler() {
             <select value={siteId ?? ""} onChange={(o) => setSiteId(o.target.value ? Number(o.target.value) : null)}
               className="mt-1 block h-10 w-full rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-3 text-sm">
               <option value="">seç</option>
-              {siteler.data?.map((s) => <option key={s.id} value={s.id}>{s.domain}</option>)}
+              {siteler.data?.satirlar.map((s) => <option key={s.id} value={s.id}>{s.domain}</option>)}
             </select>
           </label>
           <label className="w-56 text-sm">

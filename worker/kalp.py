@@ -10,9 +10,12 @@ CPU yüzdesi psutil'de ilk çağrıda 0 döner; bu yüzden açılışta bir kez
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -22,6 +25,7 @@ ARALIK_SN = 15
 SURUM = "0.1.0"
 
 yuk_kaynagi = lambda: 0  # app.py gerçek doluluk sayacını bağlar
+TOKEN = ayar.oku("WORKER_TOKEN")  # imza anahtarı; panel ile aynı olmalı
 _durum = "aktif"
 _zaman: threading.Timer | None = None
 _psutil = None
@@ -60,12 +64,16 @@ def _at() -> None:
     global _durum, _zaman
 
     cpu, ram = _kaynak()
+    # ts imzaya dahildir; sunucu iki dakikalık pencere dışını reddeder.
     govde = json.dumps(
-        {"ip": _ip(), "yuk": yuk_kaynagi(), "cpu": cpu, "ram": ram, "surum": SURUM}
+        {"ip": _ip(), "yuk": yuk_kaynagi(), "cpu": cpu, "ram": ram,
+         "surum": SURUM, "ts": int(time.time())}
     ).encode("utf-8")
+    imza = hmac.new(TOKEN.encode("utf-8"), govde, hashlib.sha256).hexdigest()
     adres = ayar.oku("PANEL_ADRES", "http://127.0.0.1:8080") + "/api/worker/kalp"
     istek = urllib.request.Request(
-        adres, data=govde, headers={"content-type": "application/json"}
+        adres, data=govde,
+        headers={"content-type": "application/json", "x-imza": imza},
     )
     try:
         with urllib.request.urlopen(istek, timeout=8) as yanit:
@@ -73,6 +81,8 @@ def _at() -> None:
     except urllib.error.HTTPError as hata:
         if hata.code == 404:
             print("[kalp] düğüm kayıtlı değil, Sunucular ekranından ekle")
+        elif hata.code == 401:
+            print("[kalp] imza reddedildi · WORKER_TOKEN iki tarafta aynı mı")
     except Exception as hata:  # noqa: BLE001
         print(f"[kalp] gönderilemedi: {hata}")
 
@@ -92,6 +102,8 @@ def baslat() -> None:
     except Exception:  # noqa: BLE001
         print("[kalp] psutil yok, cpu/ram 0 kalacak")
 
+    if not TOKEN:
+        print("[kalp] WORKER_TOKEN boş, imza tutmaz")
     print(f"[kalp] başladı: {_ip()}")
     _at()
 

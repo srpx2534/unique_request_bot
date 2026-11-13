@@ -107,13 +107,15 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(400, {"hata": "gövde okunamadı"})
             return
 
-        kelime = str(govde.get("keyword", "")).strip()
-        hedef = govde.get("target_url") or govde.get("target_domain")
+        # Sozlesme adlari esastir; eski isci kelime/domain/adet gonderiyordu.
+        kelime = str(govde.get("keyword") or govde.get("kelime") or "").strip()
+        hedef = (govde.get("target_url") or govde.get("target_domain")
+                 or govde.get("domain"))
         if not kelime or not hedef:
             self._json(400, {"hata": "keyword ve target_url/target_domain zorunlu"})
             return
 
-        adet = int(govde.get("size", 1))
+        adet = int(govde.get("size") or govde.get("adet") or 1)
         uule = govde.get("uule")
         # İl slug'ı adresten ya da plaka kodundan çözülür; yoksa ulusal kalır.
         geo_slug = govde.get("geo_slug")
@@ -133,9 +135,11 @@ class Isleyici(BaseHTTPRequestHandler):
             for anahtar in ("ok", "captcha", "not_found", "timeout", "error"):
                 _sayac[anahtar] += sonuc[anahtar]
 
+        ilk_mod = sonuc["hits"][0]["geo_mode"] if sonuc["hits"] else None
         self._json(200, {
-            "geo_mode": havuz.son_mod, "ok": sonuc["ok"],
-            "captcha": sonuc["captcha"],
+            # Mod hit basina degisebilir; ozet icin ilk hit'in modu verilir.
+            "geo_mode": ilk_mod or havuz.son_mod, "ok": sonuc["ok"],
+            "hits": sonuc["hits"],            "captcha": sonuc["captcha"],
             "not_found": sonuc["not_found"],
             "timeout": sonuc["timeout"],
             "error": sonuc["error"],

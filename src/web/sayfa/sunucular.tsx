@@ -5,6 +5,7 @@ import { Kart } from "@/bilesen/ui/kart";
 import { Dugme } from "@/bilesen/ui/dugme";
 import { Girdi } from "@/bilesen/ui/girdi";
 import { Etiket } from "@/bilesen/ui/etiket";
+import { Modal } from "@/bilesen/ui/pencere";
 import { Onay } from "@/bilesen/ui/onay";
 import { useBildirim } from "@/bilesen/ui/bildirim";
 import { ApiHatasi, iste } from "@/lib/api";
@@ -21,6 +22,8 @@ type Dugum = {
   son_kalp_at: string | null;
   canli: string;
 };
+
+type Olay = { id: number; tur: string; message: string | null; created_at: string };
 
 function kalpYasi(zaman: string | null): string {
   if (!zaman) return "—";
@@ -39,6 +42,13 @@ export default function Sunucular() {
   const [durumSuz, setDurumSuz] = useState("");
   const [kalpSuz, setKalpSuz] = useState("");
   const [silinecek, setSilinecek] = useState<Dugum | null>(null);
+  const [olaylar, setOlaylar] = useState<Dugum | null>(null);
+
+  const olayListe = useQuery<{ satirlar: Olay[]; toplam: number }, ApiHatasi>({
+    queryKey: ["dugum-olay", olaylar?.id],
+    queryFn: () => iste(`/dugum/${olaylar?.id}/olay?adet=100`),
+    enabled: olaylar !== null,
+  });
 
   const liste = useQuery<Dugum[], ApiHatasi>({
     queryKey: ["dugum", arama, durumSuz, kalpSuz],
@@ -129,6 +139,7 @@ export default function Sunucular() {
                         onClick={() => islem.mutate({ yol: `/dugum/${d.id}`, yontem: "PATCH", govde: { durum: d.durum === "aktif" ? "durduruldu" : "aktif" } })}>
                         {d.durum === "aktif" ? "Durdur" : "Başlat"}
                       </Dugme>
+                      <Dugme gorunum="sade" className="h-8 px-2 text-xs" onClick={() => setOlaylar(d)}>Olaylar</Dugme>
                       <Dugme gorunum="sade" className="h-8 px-2 text-xs" onClick={() => setSilinecek(d)}>Sil</Dugme>
                     </div>
                   </td>
@@ -139,6 +150,22 @@ export default function Sunucular() {
         </div>
         {!liste.data?.length ? <p className="mt-3 text-sm text-solgun">Kayıt yok.</p> : null}
       </Kart>
+
+      <Modal acik={olaylar !== null} kapat={() => setOlaylar(null)} baslik={`${olaylar?.ad ?? ""} · olaylar`}>
+        {olayListe.data?.satirlar.length ? (
+          <ul className="max-h-80 divide-y divide-kenar overflow-y-auto text-sm">
+            {olayListe.data.satirlar.map((o) => (
+              <li key={o.id} className="flex items-start gap-2 py-2">
+                <Etiket ton="notr">{o.tur}</Etiket>
+                <span className="flex-1 text-solgun">{o.message ?? "—"}</span>
+                <span className="text-xs text-solgun">{o.created_at.slice(5, 16).replace("T", " ")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-4 text-center text-sm text-solgun">Olay yok.</p>
+        )}
+      </Modal>
 
       <Onay
         acik={silinecek !== null}

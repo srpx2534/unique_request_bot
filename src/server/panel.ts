@@ -21,7 +21,7 @@ yonlendirici.get("/ozet", async (_istek, yanit) => {
        (SELECT COUNT(*) FROM site WHERE active = 1) AS aktif_site,
        (SELECT COUNT(*) FROM provider WHERE state = 'active' AND gateway IS NOT NULL) AS canli_saglayici,
        (SELECT COUNT(*) FROM alert WHERE acknowledged = 0) AS acik_uyari,
-       (SELECT COUNT(*) FROM burst WHERE started_at >= NOW() - INTERVAL 24 HOUR) AS gunluk_burst`,
+       (SELECT COUNT(*) FROM burst WHERE started_at >= UTC_TIMESTAMP(3) - INTERVAL 24 HOUR) AS gunluk_burst`,
   );
   const son = await sorgu(
     `SELECT b.id, k.text, b.step, b.target_count, b.started_at, b.stats
@@ -53,7 +53,7 @@ yonlendirici.get("/ozet", async (_istek, yanit) => {
        (SELECT COUNT(*) FROM provider WHERE state <> 'active') AS olu`,
   );
   const uyarilar = await sorgu(
-    "SELECT id, kind, message, TIMESTAMPDIFF(MINUTE, created_at, NOW(3)) AS yas_dk FROM alert WHERE acknowledged = 0 ORDER BY created_at DESC LIMIT 3",
+    "SELECT id, kind, message, TIMESTAMPDIFF(MINUTE, created_at, UTC_TIMESTAMP(3)) AS yas_dk FROM alert WHERE acknowledged = 0 ORDER BY created_at DESC LIMIT 3",
   );
   yanit.json({ ...sayim, son, siteler, kelimeler, havuz, uyarilar });
 });
@@ -94,11 +94,20 @@ yonlendirici.patch("/provider/:id", async (istek, yanit) => {
   const govde = dogrula(saglayiciSemasi, istek.body, yanit);
   if (!govde) return;
 
+  const onceki = await tek<{ state: string }>("SELECT state FROM provider WHERE id = ?", [id]);
   const alanlar: string[] = [];
   const degerler: unknown[] = [];
   if (govde.state !== undefined) {
     alanlar.push("state = ?");
     degerler.push(govde.state);
+    // Karantina agirligi yedege alir, cikista yedekten doner (§8, C33).
+    if (govde.state === "quarantine" && onceki?.state !== "quarantine") {
+      alanlar.push("weight_yedek = weight", "weight = 0");
+      alanlar.push("quarantine_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 2 HOUR)");
+    } else if (govde.state === "active" && onceki?.state === "quarantine") {
+      alanlar.push("weight = COALESCE(weight_yedek, 10)", "weight_yedek = NULL");
+      alanlar.push("quarantine_until = NULL", "captcha_pct = 0");
+    }
   }
   if (govde.weight !== undefined) {
     alanlar.push("weight = ?");
@@ -180,13 +189,13 @@ yonlendirici.delete("/provider/:id", async (istek, yanit) => {
 function aralikKosulu(aralik: string | undefined, kolon: string): string | null {
   switch (aralik) {
     case "bugun":
-      return `DATE(${kolon}) = CURDATE()`;
+      return `DATE(${kolon}) = UTC_DATE()`;
     case "dun":
-      return `DATE(${kolon}) = CURDATE() - INTERVAL 1 DAY`;
+      return `DATE(${kolon}) = UTC_DATE() - INTERVAL 1 DAY`;
     case "hafta":
-      return `${kolon} >= NOW(3) - INTERVAL 7 DAY`;
+      return `${kolon} >= UTC_TIMESTAMP(3) - INTERVAL 7 DAY`;
     case "ay":
-      return `${kolon} >= NOW(3) - INTERVAL 30 DAY`;
+      return `${kolon} >= UTC_TIMESTAMP(3) - INTERVAL 30 DAY`;
     default:
       return null;
   }
@@ -240,7 +249,7 @@ yonlendirici.get("/uyari", async (istek, yanit) => {
     )?.sayi ?? 0;
   const satirlar = await sorgu(
     `SELECT a.id, a.kind, a.ref_id, a.message, a.acknowledged, a.created_at,
-            TIMESTAMPDIFF(MINUTE, a.created_at, NOW(3)) AS yas_dk,
+            TIMESTAMPDIFF(MINUTE, a.created_at, UTC_TIMESTAMP(3)) AS yas_dk,
             k.text AS kelime, s.domain
        FROM alert a
        LEFT JOIN keyword k ON k.id = a.keyword_id
@@ -362,7 +371,8 @@ yonlendirici.patch("/ayar", async (istek, yanit) => {
   }
   for (const [anahtar, deger] of ciftler) {
     // Maskeli değer geri gönderildiyse gerçek değer korunur.
-    if (GIZLI_AYARLAR.has(anahtar) && deger.startsWith("••••")) continue;
+    // Maske tam kalıptır; gerçek anahtar bu önekle başlasa bile uzunluğu tutmaz.
+    if (GIZLI_AYARLAR.has(anahtar) && /^••••.{4}$/.test(deger)) continue;
     await yaz(
       "INSERT INTO ayar (anahtar, deger) VALUES (?, ?) ON DUPLICATE KEY UPDATE deger = VALUES(deger)",
       [anahtar, deger],

@@ -96,14 +96,6 @@ export function saglayiciGuncelle() {
   });
 }
 
-export function uyariKullan() {
-  return useQuery<Uyari[], ApiHatasi>({
-    queryKey: ["uyari"],
-    queryFn: () => iste<Uyari[]>("/uyari"),
-    refetchInterval: 20_000,
-  });
-}
-
 /** Çan için yalnızca açık uyarıları verir. */
 export function uyariCanli() {
   return useQuery<Uyari[], ApiHatasi>({
@@ -142,13 +134,5 @@ export function ayarYaz() {
   return useMutation<Ayar[], ApiHatasi, Record<string, string>>({
     mutationFn: (govde) => iste<Ayar[]>("/ayar", { method: "PATCH", body: JSON.stringify(govde) }),
     onSuccess: tazele(istemci, "ayar"),
-  });
-}
-
-export function logKullan() {
-  return useQuery<Log[], ApiHatasi>({
-    queryKey: ["log"],
-    queryFn: () => iste<Log[]>("/log"),
-    refetchInterval: 5_000,
   });
 }

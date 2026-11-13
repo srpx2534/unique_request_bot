@@ -10,13 +10,21 @@
 import { sorgu, yaz } from "./veritabani.js";
 import { ayarOku } from "./ayar.js";
 import { kuyruk, type Is } from "./kuyruk.js";
+import { toparla } from "./traffic.js";
+import { kalpKaybiYaz } from "./dugum_olay.js";
+import { olcumYap } from "./olcum.js";
+import { esikDenetle } from "./esik.js";
+import { saklamaDenetle } from "./saklama.js";
 
 const TIK_MS = 60_000;
 const TUR_SINIRI = 200;
 const KELIME_SINIRI = 12;
 
 /** Tier'a göre bekleme; core sık, passive seyrek. */
-const COOLDOWN_DK: Record<Is["tier"], number> = { core: 6, normal: 20, passive: 60 };
+// Sözleşme §9: keyword_geo cooldown 20-35 dakika, rastgele. Tier yalnızca
+// sıralamayı belirler, süreyi değil.
+const COOLDOWN_MIN_DK = 20;
+const COOLDOWN_MAX_DK = 35;
 
 type Aday = {
   keyword_geo_id: number;
@@ -27,6 +35,11 @@ type Aday = {
   kelime: string;
 };
 
+/** Cooldown: sözleşmedeki 20-35 dakika aralığından rastgele. */
+function rastgeleCooldown(): number {
+  return COOLDOWN_MIN_DK + Math.floor(Math.random() * (COOLDOWN_MAX_DK - COOLDOWN_MIN_DK + 1));
+}
+
 let calisiyor = false;
 let zaman: NodeJS.Timeout | null = null;
 
@@ -34,6 +47,16 @@ async function tara(): Promise<void> {
   if (calisiyor) return;
   calisiyor = true;
   try {
+    // Günlük özet her turda tazelenir; geç gelen hit de yakalanır.
+    await toparla();
+    // Kalbi kesilen düğüm deftere düşer; panelde zaman çizelgesi görünür.
+    await kalpKaybiYaz();
+    // Sıralama ölçümü burst'ten ayrı yürür; aralığı kendi içinde sınırlar.
+    await olcumYap();
+    // Kuyruk birikmesi ve yedek oranı eşiği uyarıya dönüşür.
+    await esikDenetle();
+    // Süresi geçen satırlar saatte bir temizlenir.
+    await saklamaDenetle();
     // Ölçüm aralığı ayardan okunur; 0 ise yalnızca cooldown sırası geçerli.
     const aralik = Number(await ayarOku("olcum_araligi_dk", "0")) || 0;
 
@@ -59,11 +82,12 @@ async function tara(): Promise<void> {
     for (const aday of adaylar) {
       const kullanilan = sayac.get(aday.keyword_id) ?? 0;
       if (kullanilan >= KELIME_SINIRI) continue;
+
       sayac.set(aday.keyword_id, kullanilan + 1);
 
       await yaz(
-        "UPDATE keyword_geo SET state = 'running', cooldown_until = DATE_ADD(NOW(3), INTERVAL ? MINUTE) WHERE id = ?",
-        [COOLDOWN_DK[aday.tier], aday.keyword_geo_id],
+        "UPDATE keyword_geo SET state = 'running', cooldown_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE) WHERE id = ?",
+        [rastgeleCooldown(), aday.keyword_geo_id],
       );
       const is: Is = {
         campaignId: aday.campaign_id,
@@ -89,6 +113,8 @@ export function zamanlayiciBaslat(): void {
   if (zaman) return;
   zaman = setInterval(() => void tara(), TIK_MS);
   console.log("[zamanlayici] başladı");
+  // Uzun kapalılıktan sonra geçmiş günler telafi edilir; tur beklemeden.
+  void toparla(7).catch((hata: Error) => console.error("[traffic]", hata.message));
 }
 
 export function zamanlayiciDurdur(): void {

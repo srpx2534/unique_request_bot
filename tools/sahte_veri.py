@@ -91,6 +91,12 @@ def uret(baglanti) -> None:
                     captcha = random.randint(0, adet - ok)
                     stats = {"ok": ok, "captcha": captcha,
                              "error": adet - ok - captcha, "not_found": 0, "timeout": 0}
+                    # Bitiş, başlangıçtan türetilir; iki bağımsız rastgele
+                    # değer ters düşüp eksi süre üretiyordu. En az 5 dakika
+                    # geçmişte başlar, 1-4 dakika sürer, böylece ikisi de
+                    # geçmişte ve sıralı kalır.
+                    baslangic_dk = random.randint(5, 600)
+                    sure_dk = random.randint(1, 4)
                     imlec.execute(
                         "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count,"
                         " phase, started_at, ended_at, stats)"
@@ -98,8 +104,8 @@ def uret(baglanti) -> None:
                         " NOW(3) - INTERVAL %s DAY - INTERVAL %s MINUTE,"
                         " NOW(3) - INTERVAL %s DAY - INTERVAL %s MINUTE, %s)",
                         (kampanya, random.choice(geo_idleri), gun + 1, adet,
-                         random.choice(["core", "broad"]), gun, random.randint(0, 600),
-                         gun, random.randint(0, 590), json.dumps(stats)),
+                         random.choice(["core", "broad"]), gun, baslangic_dk,
+                         gun, baslangic_dk - sure_dk, json.dumps(stats)),
                     )
 
         for _ in range(18):

@@ -38,5 +38,62 @@ services:
       timeout: 3s
       retries: 10
 
+  # Panel ve worker. Sirri .env'den alir; konteyner adlari MYSQL_HOST ve
+  # REDIS_URL'i ezer. DUGUM_IP servis adidir: konteyner IP'si her acilista
+  # degistigi icin dugum kaydi bu adla yapilir.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    platform: linux/amd64
+    env_file: .env
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_URL: redis://redis:6379/0
+      PANEL_ADRES: http://panel:8080
+      DUGUM_IP: worker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8081:8081"
+
+  panel:
+    build:
+      context: .
+      dockerfile: Dockerfile.panel
+    platform: linux/amd64
+    env_file: .env
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_URL: redis://redis:6379/0
+      PANEL_HOST: 0.0.0.0
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8080:8080"
+
 volumes:
   mysql_data:
