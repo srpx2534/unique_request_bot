@@ -129,7 +129,7 @@ class Isleyici(BaseHTTPRequestHandler):
                 _sayac[anahtar] += sonuc[anahtar]
 
         self._json(200, {
-            "ok": sonuc["ok"],
+            "geo_mode": havuz.son_mod, "ok": sonuc["ok"],
             "captcha": sonuc["captcha"],
             "not_found": sonuc["not_found"],
             "timeout": sonuc["timeout"],

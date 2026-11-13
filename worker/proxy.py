@@ -37,6 +37,9 @@ def dize(
     Returns:
         http://kullanici:sifre@host:port dizesi.
     """
+    if not kullanici:
+        # Ücretsiz düz proxy: kimlik yok, hedefleme de yok.
+        return f"http://{gateway}"
     ad = f"user-{kullanici}-country-tr"
     if geo_slug:
         # İl hedefleme yalnızca destekleyen sağlayıcıda anlamlı (§5 adım 1).

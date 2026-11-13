@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/* Koyu tema varsayılan; açık tema html[data-tema="acik"] ile açılır.
+   Tek vurgu rengi teal, gerisi nötr. */
+@theme {
+  --color-zemin: oklch(0.17 0.012 200);
+  --color-yuzey: oklch(0.22 0.014 200);
+  --color-yuzey-2: oklch(0.26 0.016 200);
+  --color-kenar: oklch(0.32 0.016 200);
+  --color-metin: oklch(0.96 0.004 200);
+  --color-solgun: oklch(0.68 0.012 200);
+  --color-vurgu: oklch(0.74 0.12 185);
+  --color-vurgu-metin: oklch(0.18 0.03 185);
+  --color-tehlike: oklch(0.66 0.19 25);
+  --color-uyari: oklch(0.8 0.14 85);
+  --color-basari: oklch(0.72 0.14 155);
+  --radius-kutu: 0.75rem;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+/* Açık tema aynı değişkenleri ters çevirir, bileşenler değişmez. */
+html[data-tema="acik"] {
+  --color-zemin: oklch(0.98 0.004 200);
+  --color-yuzey: oklch(1 0 0);
+  --color-yuzey-2: oklch(0.96 0.006 200);
+  --color-kenar: oklch(0.89 0.008 200);
+  --color-metin: oklch(0.21 0.012 200);
+  --color-solgun: oklch(0.48 0.012 200);
+  --color-vurgu: oklch(0.56 0.11 185);
+  --color-vurgu-metin: oklch(0.99 0.002 185);
+}
+
+html,
+body,
+#kok {
+  height: 100%;
+}
+
+body {
+  background: var(--color-zemin);
+  color: var(--color-metin);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-vurgu);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-kenar) transparent;
+}

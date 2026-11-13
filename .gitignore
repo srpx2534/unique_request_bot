@@ -15,3 +15,6 @@ db/migrations/004_uule.sql
 # Log ve geÃ§ici
 logs/
 *.log
+coverage/
+.vite/
+.redis/

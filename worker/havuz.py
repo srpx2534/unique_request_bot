@@ -132,8 +132,9 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
     kosullar = [
         "kind = %s",
         "state = 'active'",
-        "kullanici IS NOT NULL",
-        "sifre IS NOT NULL",
+        # Ya tam kimlik ya hiç kimlik: yarım kimlikli satır işe yaramaz.
+        "((kullanici IS NOT NULL AND sifre IS NOT NULL)"
+        " OR (kullanici IS NULL AND sifre IS NULL))",
         "gateway IS NOT NULL",
         "(quarantine_until IS NULL OR quarantine_until < NOW(3))",
     ]
@@ -144,13 +145,13 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
             " AND pg.geo_code = %s AND pg.exhausted_until > NOW(3))"
         )
     return (
-        "SELECT id, gateway, kullanici, sifre FROM provider WHERE "
+        "SELECT id, gateway, kullanici, sifre, ulke FROM provider WHERE "
         + " AND ".join(kosullar)
-        + " ORDER BY -LOG(RAND()) / weight LIMIT 1"
+        + " ORDER BY (ulke = 'TR') DESC, -LOG(RAND()) / weight LIMIT 1"
     )
 
 
-def sec(
+def sec_mod(
     geo_slug: str | None = None, mobil_acik: bool = True
 ) -> tuple[int, str] | None:
     """Bir sağlayıcı seçer ve proxy dizesi üretir.
@@ -191,10 +192,11 @@ def sec(
                     imlec.execute(sorgu, parametreler)
                     kayit = imlec.fetchone()
                     if kayit:
-                        saglayici_id, gateway, kullanici, sifre = kayit
+                        saglayici_id, gateway, kullanici, sifre, ulke = kayit
+                        mod = "city" if kod else ("tr_fallback" if ulke == "TR" else "yabanci")
                         return saglayici_id, proxy.dize(
                             gateway, kullanici, sifre, geo_slug if kod else None
-                        )
+                        ), mod
     except Exception:  # noqa: BLE001
         return None
     finally:
@@ -265,3 +267,36 @@ def durum_sayaci() -> dict[str, int]:
         return {}
     finally:
         baglanti.close()
+def sec(
+    geo_slug: str | None = None, mobil_acik: bool = True
+) -> tuple[int, str] | None:
+    """`sec_mod` sonucundan yalnızca sağlayıcı ve proxy dizesini verir."""
+    sonuc = sec_mod(geo_slug, mobil_acik)
+    return None if sonuc is None else (sonuc[0], sonuc[1])
+# Son seçimin hangi yoldan geldiğini tutar: city, tr_fallback, yabanci.
+son_mod = "yabanci"
+
+
+def varsayilan_secici(geo_slug: str | None = None, mobil_acik: bool = True):
+    """Havuzdan seçim yapan kapanış döndürür.
+
+    Seçilen her proxy için `son_mod` güncellenir; böylece çağıran taraf
+    hit kaydına hangi yoldan gidildiğini yazabilir.
+
+    Args:
+        geo_slug: İl slug'ı; verilirse önce o il denenir.
+        mobil_acik: Mobil havuz katılsın mı.
+
+    Returns:
+        Parametresiz çağrılabilir; proxy dizesi ya da None.
+    """
+
+    def secici() -> str | None:
+        global son_mod
+        sonuc = sec_mod(geo_slug, mobil_acik)
+        if sonuc is None:
+            return None
+        son_mod = sonuc[2]
+        return sonuc[1]
+
+    return secici
