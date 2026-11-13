@@ -36,12 +36,13 @@ export default function Loglar() {
   const [site, setSite] = useState("");
   const [kelime, setKelime] = useState("");
   const [sadeceHata, setSadeceHata] = useState(false);
+  const [adet, setAdet] = useState(100);
 
   const liste = useQuery<Log[], ApiHatasi>({
-    queryKey: ["log", aralik, site, kelime, sadeceHata],
+    queryKey: ["log", aralik, site, kelime, sadeceHata, adet],
     queryFn: () =>
       iste(
-        `/log?aralik=${aralik}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}${sadeceHata ? "&sadece_hata=1" : ""}`,
+        `/log?aralik=${aralik}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}${sadeceHata ? "&sadece_hata=1" : ""}&adet=${adet}`,
       ),
     refetchInterval: 5_000,
   });
@@ -55,7 +56,12 @@ export default function Loglar() {
           className={`rounded-full px-3 py-1 text-xs ${sadeceHata ? "bg-tehlike/15 text-tehlike" : "text-solgun hover:bg-yuzey-2"}`}>
           sadece hatalı
         </button>
-        <span className="ml-auto text-xs text-solgun">{liste.data?.length ?? 0} kayıt · 5 sn</span>
+        <button type="button" onClick={() => setAdet((o) => o + 100)}
+          disabled={(liste.data?.length ?? 0) < adet}
+          className="ml-auto rounded-full bg-yuzey-2 px-3 py-1 text-xs hover:bg-kenar">
+          daha fazla
+        </button>
+        <span className="text-xs text-solgun">{liste.data?.length ?? 0} kayıt · 5 sn</span>
       </FiltreCubugu>
 
       <Kart>

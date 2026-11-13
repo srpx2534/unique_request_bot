@@ -11,6 +11,7 @@ import { Loader2 } from "lucide-react";
 import { BildirimSaglayici } from "@/bilesen/ui/bildirim";
 import Kabuk from "@/kabuk/kabuk";
 import Giris from "@/sayfa/giris";
+import Bulunamadi from "@/sayfa/bulunamadi";
 import Panel from "@/sayfa/panel";
 import Siteler from "@/sayfa/siteler";
 import Kelimeler from "@/sayfa/kelimeler";
@@ -68,7 +69,7 @@ export default function Uygulama() {
               <Route path="rapor" element={<Rapor />} />
               <Route path="ayarlar" element={<Ayarlar />} />
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Bulunamadi />} />
           </Routes>
         </BrowserRouter>
       </BildirimSaglayici>

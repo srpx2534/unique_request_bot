@@ -43,12 +43,13 @@ export default function Uyarilar() {
   const kapat = uyariKapat();
   const tumunuKapat = uyariTumunuKapat();
   const [tumunuOnay, setTumunuOnay] = useState(false);
+  const [adet, setAdet] = useState(100);
 
   const liste = useQuery<{ satirlar: Uyari[]; ozet: { acik: number; kapali: number } }, ApiHatasi>({
-    queryKey: ["uyari", aralik, tur, durum, arama, site, kelime],
+    queryKey: ["uyari", aralik, tur, durum, arama, site, kelime, adet],
     queryFn: () =>
       iste(
-        `/uyari?aralik=${aralik}${tur ? `&tur=${tur}` : ""}${durum ? `&durum=${durum}` : ""}${arama ? `&q=${encodeURIComponent(arama)}` : ""}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}`,
+        `/uyari?aralik=${aralik}${tur ? `&tur=${tur}` : ""}${durum ? `&durum=${durum}` : ""}${arama ? `&q=${encodeURIComponent(arama)}` : ""}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}&adet=${adet}`,
       ),
   });
 
@@ -79,6 +80,11 @@ export default function Uyarilar() {
           disabled={tumunuKapat.isPending}
           className="ml-auto rounded-full bg-yuzey-2 px-3 py-1 text-xs text-metin hover:bg-kenar">
           tümünü kapat
+        </button>
+        <button type="button" onClick={() => setAdet((o) => o + 100)}
+          disabled={(liste.data?.satirlar.length ?? 0) < adet}
+          className="rounded-full bg-yuzey-2 px-3 py-1 text-xs hover:bg-kenar">
+          daha fazla
         </button>
         <span className="text-xs text-solgun">
           açık {liste.data?.ozet?.acik ?? 0} · kapatılmış {liste.data?.ozet?.kapali ?? 0}
@@ -118,7 +124,12 @@ export default function Uyarilar() {
                           {u.domain ?? "site yok"} · {u.kelime ?? "kelime yok"}
                         </p>
                       </div>
-                      <span className="text-xs text-solgun">{u.created_at.slice(11, 16)}</span>
+                      <button type="button" onClick={() => setAdet((o) => o + 100)}
+          disabled={(liste.data?.satirlar.length ?? 0) < adet}
+          className="rounded-full bg-yuzey-2 px-3 py-1 text-xs hover:bg-kenar">
+          daha fazla
+        </button>
+        <span className="text-xs text-solgun">{u.created_at.slice(11, 16)}</span>
                       {!u.acknowledged ? (
                         <Dugme gorunum="sade" className="h-7 px-2 text-xs" onClick={() => kapat.mutate(u.id)}>Kapat</Dugme>
                       ) : null}

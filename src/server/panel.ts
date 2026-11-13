@@ -235,8 +235,8 @@ yonlendirici.get("/uyari", async (istek, yanit) => {
        LEFT JOIN site s ON s.id = a.site_id
        ${nerede}
       ORDER BY a.acknowledged ASC, a.created_at DESC
-      LIMIT 300`,
-    degerler,
+      LIMIT ?`,
+    [...degerler, adetOku(istek.query.adet)],
   );
   const ozet = await tek<Record<string, number>>(
     `SELECT SUM(acknowledged = 0) AS acik, SUM(acknowledged = 1) AS kapali FROM alert`,
@@ -276,6 +276,11 @@ yonlendirici.post("/uyari/:id/kapat", async (istek, yanit) => {
   yanit.status(204).end();
 });
 
+/** Sayfa boyunu sınırlar: 1-500 arası, geçersizse varsayılan. */
+function adetOku(ham: unknown, varsayilan = 100): number {
+  const sayi = Number(ham);
+  return Number.isInteger(sayi) && sayi > 0 ? Math.min(sayi, 500) : varsayilan;
+}
 const GIZLI_AYARLAR = new Set(["serp_decodo", "serp_serper", "serp_searchapi"]);
 
 /** Sır ayarları son dört hane dışında maskeler. */
@@ -290,6 +295,45 @@ yonlendirici.get("/ayar", async (_istek, yanit) => {
   yanit.json(ayarMaskele(await sorgu("SELECT anahtar, deger FROM ayar ORDER BY anahtar")));
 });
 
+/** Bir SERP anahtarını tek sorguyla dener. Yalnızca Decodo desteklenir. */
+yonlendirici.post("/ayar/serp-dene", async (istek, yanit) => {
+  const govde = dogrula(
+    z.object({ anahtar: z.enum(["serp_decodo", "serp_serper", "serp_searchapi"]) }),
+    istek.body,
+    yanit,
+  );
+  if (!govde) return;
+
+  const satir = await tek<{ deger: string }>("SELECT deger FROM ayar WHERE anahtar = ?", [govde.anahtar]);
+  const anahtar = satir?.deger?.trim() ?? "";
+  if (!anahtar) {
+    yanit.status(400).json({ hata: "anahtar tanımlı değil" });
+    return;
+  }
+
+  const basladi = Date.now();
+  try {
+    const cevap = await fetch("https://data.decodo.com/v1/search", {
+      method: "POST",
+      headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
+      body: JSON.stringify({ query: "veteriner", locale: "tr-TR", geo: "tr" }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const sure = Date.now() - basladi;
+    if (!cevap.ok) {
+      yanit.json({ ok: false, kod: cevap.status, sure_ms: sure });
+      return;
+    }
+    const veri = (await cevap.json()) as { organic?: unknown[] };
+    yanit.json({
+      ok: true,
+      organik: Array.isArray(veri.organic) ? veri.organic.length : 0,
+      sure_ms: sure,
+    });
+  } catch (hata) {
+    yanit.json({ ok: false, hata: (hata as Error).message, sure_ms: Date.now() - basladi });
+  }
+});
 yonlendirici.patch("/ayar", async (istek, yanit) => {
   const govde = dogrula(z.record(z.string().max(255)), istek.body, yanit);
   if (!govde) return;
@@ -343,7 +387,7 @@ yonlendirici.get("/log", async (istek, yanit) => {
        LEFT JOIN geo ON geo.code = g.geo_code
        ${nerede}
       ORDER BY b.id DESC LIMIT 100`,
-    degerler,
+    [...degerler, adetOku(istek.query.adet)],
   );
   yanit.json(satirlar);
 });

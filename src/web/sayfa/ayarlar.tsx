@@ -5,6 +5,7 @@ import { Dugme } from "@/bilesen/ui/dugme";
 import { Girdi } from "@/bilesen/ui/girdi";
 import { useBildirim } from "@/bilesen/ui/bildirim";
 import { ayarKullan, ayarYaz } from "@/lib/panel";
+import { iste } from "@/lib/api";
 
 const ETIKETLER: Record<string, string> = {
   mobil_pencere_sn: "Mobil pencere (sn)",
@@ -32,6 +33,7 @@ export default function Ayarlar() {
   const bildir = useBildirim();
   const [degerler, setDegerler] = useState<Record<string, string>>({});
   const [anahtarlar, setAnahtarlar] = useState<Record<string, string>>({});
+  const [sinama, setSinama] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!ayarlar.data) return;
@@ -80,6 +82,25 @@ export default function Ayarlar() {
     );
   }
 
+  /** Anahtarı tek sorguyla dener ve sonucu satırda gösterir. */
+  async function anahtarDene(anahtar: string) {
+    setSinama((eski) => ({ ...eski, [anahtar]: "sınanıyor..." }));
+    try {
+      const sonuc = await iste<{ ok: boolean; organik?: number; kod?: number; hata?: string; sure_ms: number }>(
+        "/ayar/serp-dene",
+        { method: "POST", body: JSON.stringify({ anahtar }) },
+      );
+      setSinama((eski) => ({
+        ...eski,
+        [anahtar]: sonuc.ok
+          ? `çalıştı · ${sonuc.organik} sonuç · ${sonuc.sure_ms} ms`
+          : `başarısız · ${sonuc.kod ?? sonuc.hata ?? "hata"}`,
+      }));
+    } catch {
+      setSinama((eski) => ({ ...eski, [anahtar]: "istek düştü" }));
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Kart
@@ -102,6 +123,16 @@ export default function Ayarlar() {
                 <span className={`text-xs ${kayitli(s.anahtar) ? "text-basari" : "text-uyari"}`}>
                   {kayitli(s.anahtar) ? "tanımlı" : "yok"}
                 </span>
+                {s.anahtar === "serp_decodo" ? (
+                  <button
+                    type="button"
+                    onClick={() => anahtarDene(s.anahtar)}
+                    disabled={sinama[s.anahtar] === "sınanıyor..."}
+                    className="rounded-full bg-yuzey-2 px-2 py-1 text-xs text-metin hover:bg-kenar"
+                  >
+                    Dene
+                  </button>
+                ) : null}
                 {kayitli(s.anahtar) ? (
                   <button
                     type="button"
@@ -113,6 +144,9 @@ export default function Ayarlar() {
                   </button>
                 ) : null}
               </div>
+              {sinama[s.anahtar] ? (
+                <p className="mt-1 text-xs text-solgun">{sinama[s.anahtar]}</p>
+              ) : null}
             </label>
           ))}
         </div>
