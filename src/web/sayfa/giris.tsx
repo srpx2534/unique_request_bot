@@ -61,7 +61,7 @@ export default function Giris() {
           className="pointer-events-none absolute -left-24 top-1/3 size-[28rem] rounded-full bg-vurgu/15 blur-3xl"
         />
         <div className="relative">
-          <p className="text-sm font-semibold tracking-tight text-vurgu">unique_request_bot</p>
+          <p className="text-sm font-semibold tracking-tight text-vurgu">Unique Request Bot</p>
           <h1 className="mt-6 max-w-sm text-3xl font-semibold leading-tight">
             Sıralamayı ölç, gürültüyü ayıkla.
           </h1>
