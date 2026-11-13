@@ -204,35 +204,39 @@ function aralikKosulu(aralik: string | undefined, kolon: string): string | null 
 yonlendirici.get("/uyari", async (istek, yanit) => {
   const kosullar: string[] = [];
   const degerler: unknown[] = [];
+  // Durum ve pencere dışındaki süzgeçler özete de uygulanır: sayaç, listede
+  // görünen kümenin aynısını saysın.
+  const ozetKosullar: string[] = [];
+  const ozetDegerler: unknown[] = [];
+
+  const ekle = (kosul: string, deger: unknown): void => {
+    kosullar.push(kosul);
+    degerler.push(deger);
+    ozetKosullar.push(kosul);
+    ozetDegerler.push(deger);
+  };
 
   const tur = istek.query.tur as string | undefined;
-  if (tur) {
-    kosullar.push("a.kind = ?");
-    degerler.push(tur);
-  }
+  if (tur) ekle("a.kind = ?", tur);
+
   const durum = istek.query.durum as string | undefined;
   if (durum === "acik") kosullar.push("a.acknowledged = 0");
   if (durum === "kapali") kosullar.push("a.acknowledged = 1");
 
+  // Pencere yalnızca kapatılmış uyarıları süzer: açık uyarı ne kadar eski
+  // olursa olsun listede kalır. Aksi halde genel bakıştaki sayı ile liste
+  // uyuşmaz.
   const aralik = aralikKosulu(istek.query.aralik as string | undefined, "a.created_at");
-  if (aralik) kosullar.push(aralik);
+  if (aralik) kosullar.push(`(a.acknowledged = 0 OR ${aralik})`);
 
   const ara = (istek.query.q as string | undefined)?.trim();
-  if (ara) {
-    kosullar.push("a.message LIKE ?");
-    degerler.push(`%${ara}%`);
-  }
+  if (ara) ekle("a.message LIKE ?", `%${ara}%`);
 
   const siteAdi = istek.query.site as string | undefined;
-  if (siteAdi) {
-    kosullar.push("s.domain = ?");
-    degerler.push(siteAdi);
-  }
+  if (siteAdi) ekle("s.domain = ?", siteAdi);
+
   const kelimeAdi = (istek.query.kelime as string | undefined)?.trim();
-  if (kelimeAdi) {
-    kosullar.push("k.text LIKE ?");
-    degerler.push(`%${kelimeAdi}%`);
-  }
+  if (kelimeAdi) ekle("k.text LIKE ?", `%${kelimeAdi}%`);
 
   const nerede = kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "";
   const adet = adetOku(istek.query.adet, 50);
@@ -259,8 +263,14 @@ yonlendirici.get("/uyari", async (istek, yanit) => {
       LIMIT ?`,
     [...degerler, adet, (sayfa - 1) * adet],
   );
+  const ozetNerede = ozetKosullar.length ? `WHERE ${ozetKosullar.join(" AND ")}` : "";
   const ozet = await tek<Record<string, number>>(
-    `SELECT SUM(acknowledged = 0) AS acik, SUM(acknowledged = 1) AS kapali FROM alert`,
+    `SELECT SUM(a.acknowledged = 0) AS acik, SUM(a.acknowledged = 1) AS kapali
+       FROM alert a
+       LEFT JOIN keyword k ON k.id = a.keyword_id
+       LEFT JOIN site s ON s.id = a.site_id
+       ${ozetNerede}`,
+    ozetDegerler,
   );
   yanit.json({ satirlar, ozet, toplam, sayfa, adet });
 });
@@ -274,8 +284,8 @@ yonlendirici.post("/uyari/tumunu-kapat", async (istek, yanit) => {
     kosullar.push("kind = ?");
     degerler.push(tur);
   }
-  const aralik = aralikKosulu(istek.body?.aralik as string | undefined, "created_at");
-  if (aralik) kosullar.push(aralik);
+  // Pencere burada uygulanmaz: açık uyarıların hepsi kapanır, yoksa eski
+  // kayıtlar sayaçta kalıp listeyle uyuşmaz.
 
   const etkilenen = await yaz(`UPDATE alert SET acknowledged = 1 WHERE ${kosullar.join(" AND ")}`, degerler);
   await denetim(istek, "uyari-tumunu-kapat", "alert", null);
