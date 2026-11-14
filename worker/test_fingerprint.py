@@ -15,31 +15,44 @@ def test_bilinmeyen_aile_chrome_havuzuna_duser() -> None:
         assert fingerprint.profil_sec(aile="bilinmiyor") in fingerprint.CHROME
 
 
+def test_firefox_ailesi_firefox_secer() -> None:
+    for _ in range(50):
+        assert fingerprint.profil_sec(aile="firefox") in fingerprint.FIREFOX
+
+
 def test_safari_ailesi_safari_secer() -> None:
-    assert fingerprint.profil_sec(aile="safari") == "safari17_0"
+    for _ in range(50):
+        assert fingerprint.profil_sec(aile="safari") in fingerprint.SAFARI
 
 
-def test_cerezsiz_havuz_safari_ve_edge_icerir() -> None:
-    secilen = {fingerprint.profil_sec() for _ in range(400)}
-    assert secilen <= set(fingerprint.CHROME + fingerprint.SAFARI + fingerprint.EDGE)
-    assert "safari17_0" in secilen or "edge101" in secilen
+def test_cerezsiz_havuz_tum_alleleri_icerir() -> None:
+    secilen = {fingerprint.profil_sec() for _ in range(600)}
+    izinli = set(fingerprint.CHROME + fingerprint.FIREFOX + fingerprint.SAFARI + fingerprint.EDGE)
+    assert secilen <= izinli
+    assert "safari270" in secilen or "safari260" in secilen
+    assert "firefox155" in secilen or "firefox154" in secilen or "firefox153" in secilen
 
 
-def test_cerezli_havuzda_safari_ve_edge_yok() -> None:
-    secilen = {fingerprint.profil_sec(aile="chrome") for _ in range(400)}
-    assert "safari17_0" not in secilen
-    assert "edge101" not in secilen
+def test_cerezli_havuzda_safari_firefox_edge_yok() -> None:
+    secilen = {fingerprint.profil_sec(aile="chrome") for _ in range(600)}
+    assert secilen <= set(fingerprint.CHROME)
 
 
 def test_mobil_pencere_android_secer() -> None:
-    assert fingerprint.profil_sec(mobil=True) == "chrome99_android"
+    assert fingerprint.profil_sec(mobil=True) == "chrome131_android"
 
 
 def test_onceki_profil_tekrarlanmaz() -> None:
     for _ in range(50):
-        assert fingerprint.profil_sec(haric="chrome124", aile="chrome") != "chrome124"
+        assert fingerprint.profil_sec(haric="chrome152", aile="chrome") != "chrome152"
 
 
 def test_eski_chrome_profili_havuzda_yok() -> None:
     assert "chrome110" not in fingerprint.PROFILLER
-    assert "chrome124" in fingerprint.CHROME
+    assert "chrome124" not in fingerprint.PROFILLER
+    assert "chrome152" in fingerprint.CHROME
+
+
+def test_her_profilin_ua_degeri_var() -> None:
+    for p in fingerprint.PROFILLER:
+        assert fingerprint.ua(p).startswith("Mozilla/5.0")
