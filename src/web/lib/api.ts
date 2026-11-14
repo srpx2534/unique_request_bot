@@ -53,6 +53,43 @@ export async function iste<T>(yol: string, secenek: RequestInit = {}): Promise<T
   return (await yanit.json()) as T;
 }
 /** Sunucudan gelen taze token'ı yazar; giriş sonrası oturum yenilendiğinde gerekir. */
+/** Govdesi FormData olan yukleme; gercek gonderim yuzdesini bildirir. */
+export function dosyaYukle<T>(yol: string, govde: FormData, yuzde: (oran: number) => void): Promise<T> {
+  return new Promise<T>((cozum, red) => {
+    void (async () => {
+      let baslik: string;
+      try {
+        baslik = await tokenAl();
+      } catch (hata) {
+        red(hata);
+        return;
+      }
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${TABAN}${yol}`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("x-csrf-token", baslik);
+      xhr.upload.onprogress = (olay) => {
+        if (olay.lengthComputable) yuzde(olay.loaded / olay.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status === 401) tokenSifirla();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          cozum((xhr.responseText ? JSON.parse(xhr.responseText) : {}) as T);
+          return;
+        }
+        let mesaj: string | undefined;
+        try {
+          mesaj = (JSON.parse(xhr.responseText) as { hata?: string }).hata;
+        } catch {
+          mesaj = undefined;
+        }
+        red(new ApiHatasi(xhr.status, mesaj ?? "yükleme başarısız"));
+      };
+      xhr.onerror = () => red(new ApiHatasi(0, "bağlantı koptu"));
+      xhr.send(govde);
+    })();
+  });
+}
 export function tokenAyarla(deger: string): void {
   token = deger;
 }

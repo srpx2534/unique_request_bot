@@ -22,3 +22,5 @@ coverage/
 # Cerez dosyalari: hesap token'i tasir, repoya girmez.
 cerezler/
 cerez/
+
+cerez_yukleme/

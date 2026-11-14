@@ -11,6 +11,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { Router } from "express";
+import type { Request } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { islem, sorgu, tek, yaz } from "./veritabani.js";
 import { dogrula } from "./dogrula.js";
@@ -303,26 +305,35 @@ async function dosyaAktar(
 }
 
 /** Kuyruğu paketler hâlinde boşaltır; aynı anda tek tur çalışır. */
+let calisma: Promise<void> | null = null;
+
+/** Kuyrugu paketler halinde bosaltir; cagrilar siraya girer, ayni anda tek tur. */
 async function isle(kokDizin: string): Promise<void> {
-  if (durum.calisiyor) return;
-  durum.calisiyor = true;
-  try {
-    for (;;) {
-      const paket = await sorgu<{ id: number; yol: string }>(
-        "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
-        [PAKET],
-      );
-      if (!paket.length) break;
-      for (const satir of paket) {
-        const sonuc = await dosyaAktar(satir.id, satir.yol, kokDizin);
-        durum.islenen += 1;
-        if (sonuc === "mukerrer") durum.mukerrer += 1;
-        if (sonuc === "gecersiz") durum.hatali += 1;
+  const onceki = calisma;
+  const tur = (async () => {
+    if (onceki) await onceki.catch(() => {});
+    durum.calisiyor = true;
+    try {
+      for (;;) {
+        const paket = await sorgu<{ id: number; yol: string }>(
+          "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
+          [PAKET],
+        );
+        if (!paket.length) break;
+        for (const satir of paket) {
+          const sonuc = await dosyaAktar(satir.id, satir.yol, kokDizin);
+          durum.islenen += 1;
+          if (sonuc === "mukerrer") durum.mukerrer += 1;
+          if (sonuc === "gecersiz") durum.hatali += 1;
+        }
       }
+    } finally {
+      durum.calisiyor = false;
     }
-  } finally {
-    durum.calisiyor = false;
-  }
+  })();
+  calisma = tur;
+  await tur;
+  if (calisma === tur) calisma = null;
 }
 
 const yolSemasi = z.object({ yol: z.string().trim().min(1).max(512) });
@@ -453,5 +464,240 @@ yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
     console.error("[cerez] gozat hatasi:", (hata as Error).message);
     yanit.status(500).json({ hata: "klasör seçici açılamadı" });
   }
+});
+const YUKLEME_KOK = path.join(process.cwd(), "cerez_yukleme");
+const PARTI_DOSYA = 500;
+const PARTI_BAYT = 32 * 1024 * 1024;
+
+const yukle = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AZAMI_BOYUT, files: PARTI_DOSYA },
+});
+
+/** Tarayicidan gelen goreli yolu guvenli hale getirir; uzanti tutmuyorsa null. */
+function guvenliYol(ham: string): string | null {
+  const parcalar = String(ham ?? "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((parca) => parca !== "" && parca !== "." && parca !== "..");
+  const temiz = parcalar
+    .map((parca) => parca.replace(/[:*?"<>|]/g, "_").slice(0, 120))
+    .filter((parca) => parca !== "");
+  if (!temiz.length) return null;
+  const son = temiz[temiz.length - 1];
+  if (!son) return null;
+  if (!/\.(json|txt)$/i.test(son)) return null;
+  // Derinlik sinirli: yol sutunu 512 karakter.
+  return temiz.slice(-6).join("/").slice(0, 400);
+}
+
+/** Oturumdaki kullaniciyi kimlige cevirir. */
+async function yukleyenKimlik(istek: Request): Promise<number | null> {
+  const eposta = (istek.session as { kullanici?: { eposta: string } }).kullanici?.eposta;
+  if (!eposta) return null;
+  const satir = await tek<{ id: number }>(
+    "SELECT id FROM kullanici WHERE eposta = ? LIMIT 1",
+    [eposta],
+  );
+  return satir?.id ?? null;
+}
+
+async function yuklemeAl(id: number) {
+  return tek<{ id: number; klasor: string; durum: string }>(
+    "SELECT id, klasor, durum FROM cerez_yukleme WHERE id = ?",
+    [id],
+  );
+}
+
+let sonSupurme = 0;
+
+/** Bir gunden eski bitmis islemlerin gecici klasorunu siler. */
+async function supur(): Promise<void> {
+  if (Date.now() - sonSupurme < 3_600_000) return;
+  sonSupurme = Date.now();
+  const eskiler = await sorgu<{ klasor: string }>(
+    "SELECT klasor FROM cerez_yukleme WHERE durum IN ('bitti','iptal') AND created_at < UTC_TIMESTAMP(3) - INTERVAL 1 DAY",
+  ).catch(() => [] as { klasor: string }[]);
+  for (const satir of eskiler) {
+    await fs.rm(satir.klasor, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Son yukleme islemleri. */
+yonlendirici.get("/cerez/yukleme", async (_istek, yanit) => {
+  void supur();
+  yanit.json(
+    await sorgu(
+      `SELECT y.id, y.dosya_sayisi, y.boyut, y.durum, y.created_at,
+              (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'aktarildi') AS aktarilan
+         FROM cerez_yukleme y ORDER BY y.id DESC LIMIT 10`,
+    ),
+  );
+});
+
+/** Yukleme islemi acar; gecici klasor dondurur. */
+yonlendirici.post("/cerez/yukleme", async (istek, yanit) => {
+  const bilgi = await fs.statfs(YUKLEME_KOK).catch(() => null);
+  if (bilgi && bilgi.bavail * bilgi.bsize < 500 * 1024 * 1024) {
+    yanit.status(507).json({ hata: "sunucuda yeterli disk yok" });
+    return;
+  }
+  await fs.mkdir(YUKLEME_KOK, { recursive: true });
+  const klasor = path.join(
+    YUKLEME_KOK,
+    `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  );
+  await fs.mkdir(klasor, { recursive: true });
+  const kim = await yukleyenKimlik(istek);
+  const id = await islem(async (baglanti) => {
+    const [sonuc] = await baglanti.query(
+      "INSERT INTO cerez_yukleme (kullanici_id, klasor, durum) VALUES (?, ?, 'yukleniyor')",
+      [kim, klasor],
+    );
+    return (sonuc as { insertId: number }).insertId;
+  });
+  yanit.status(201).json({ id, klasor: path.basename(klasor) });
+});
+
+/** Tek parti dosya alir; yollar ayri alanda sirayla gelir. */
+yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSYA), async (istek, yanit) => {
+  const id = Number(istek.params.id);
+  if (!Number.isInteger(id)) {
+    yanit.status(400).json({ hata: "geçersiz işlem" });
+    return;
+  }
+  const kayit = await yuklemeAl(id);
+  if (!kayit) {
+    yanit.status(404).json({ hata: "işlem yok" });
+    return;
+  }
+  if (kayit.durum !== "yukleniyor") {
+    yanit.status(409).json({ hata: "işlem kapalı" });
+    return;
+  }
+  const dosyalar = (istek.files ?? []) as Express.Multer.File[];
+  if (!dosyalar.length) {
+    yanit.status(400).json({ hata: "dosya gelmedi" });
+    return;
+  }
+  const toplamBayt = dosyalar.reduce((toplam, dosya) => toplam + dosya.size, 0);
+  if (toplamBayt > PARTI_BAYT) {
+    yanit.status(413).json({ hata: "parti çok büyük" });
+    return;
+  }
+
+  let yollar: string[] = [];
+  try {
+    const cozulen = JSON.parse(String((istek.body as { yollar?: string }).yollar ?? "[]")) as unknown;
+    if (Array.isArray(cozulen)) yollar = cozulen.map((deger) => String(deger));
+  } catch {
+    yollar = [];
+  }
+
+  let yazilan = 0;
+  for (let i = 0; i < dosyalar.length; i += 1) {
+    const dosya = dosyalar[i];
+    if (!dosya) continue;
+    const goreli = guvenliYol(yollar[i] ?? dosya.originalname);
+    if (!goreli) continue;
+    const hedef = path.join(kayit.klasor, goreli);
+    await fs.mkdir(path.dirname(hedef), { recursive: true });
+    await fs.writeFile(hedef, dosya.buffer);
+    yazilan += 1;
+  }
+  await yaz(
+    "UPDATE cerez_yukleme SET dosya_sayisi = dosya_sayisi + ?, boyut = boyut + ? WHERE id = ?",
+    [yazilan, toplamBayt, id],
+  );
+  const guncel = await tek<{ dosya_sayisi: number; boyut: number }>(
+    "SELECT dosya_sayisi, boyut FROM cerez_yukleme WHERE id = ?",
+    [id],
+  );
+  yanit.json({ alinan: yazilan, atlanan: dosyalar.length - yazilan, toplam: guncel });
+});
+
+/** Islemi kapatir, aktarimi baslatir, bitince gecici klasoru siler. */
+yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
+  const id = Number(istek.params.id);
+  if (!Number.isInteger(id)) {
+    yanit.status(400).json({ hata: "geçersiz işlem" });
+    return;
+  }
+  const kayit = await yuklemeAl(id);
+  if (!kayit) {
+    yanit.status(404).json({ hata: "işlem yok" });
+    return;
+  }
+  if (kayit.durum !== "yukleniyor") {
+    yanit.status(409).json({ hata: "işlem kapalı" });
+    return;
+  }
+  const dosyalar = await dosyalariTopla(kayit.klasor);
+  if (!dosyalar.length) {
+    await yaz("UPDATE cerez_yukleme SET durum = 'bitti' WHERE id = ?", [id]);
+    yanit.json({ kuyruk: 0 });
+    return;
+  }
+  const kim = await yukleyenKimlik(istek);
+  for (const tam of dosyalar) {
+    await yaz(
+      `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, yukleyen, yukleme_id, boyut, ozet, durum)
+       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'yeni')`,
+      [tam, path.basename(tam), kim, id, createHash("sha256").update(tam).digest("hex")],
+    );
+  }
+  await yaz("UPDATE cerez_yukleme SET durum = 'isleniyor', dosya_sayisi = ? WHERE id = ?", [
+    dosyalar.length,
+    id,
+  ]);
+  durum.toplam += dosyalar.length;
+  void (async () => {
+    await isle(kayit.klasor).catch(() => {});
+    await yaz("UPDATE cerez_yukleme SET durum = 'bitti' WHERE id = ?", [id]).catch(() => {});
+    await fs.rm(kayit.klasor, { recursive: true, force: true }).catch(() => {});
+  })();
+  yanit.json({ kuyruk: dosyalar.length });
+});
+
+/** Islem ilerlemesi. */
+yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
+  const id = Number(istek.params.id);
+  if (!Number.isInteger(id)) {
+    yanit.status(400).json({ hata: "geçersiz işlem" });
+    return;
+  }
+  const satir = await tek(
+    `SELECT y.id, y.durum, y.dosya_sayisi, y.boyut,
+            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'yeni') AS bekleyen,
+            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'aktarildi') AS aktarildi,
+            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'mukerrer') AS mukerrer,
+            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'gecersiz') AS gecersiz
+       FROM cerez_yukleme y WHERE y.id = ?`,
+    [id],
+  );
+  if (!satir) {
+    yanit.status(404).json({ hata: "işlem yok" });
+    return;
+  }
+  yanit.json(satir);
+});
+
+/** Islemi iptal eder; henuz aktarilmadiysa klasoru siler. */
+yonlendirici.delete("/cerez/yukleme/:id", async (istek, yanit) => {
+  const id = Number(istek.params.id);
+  if (!Number.isInteger(id)) {
+    yanit.status(400).json({ hata: "geçersiz işlem" });
+    return;
+  }
+  const kayit = await yuklemeAl(id);
+  if (!kayit) {
+    yanit.status(404).json({ hata: "işlem yok" });
+    return;
+  }
+  await yaz("UPDATE cerez_yukleme SET durum = 'iptal' WHERE id = ?", [id]);
+  if (kayit.durum === "yukleniyor") {
+    await fs.rm(kayit.klasor, { recursive: true, force: true }).catch(() => {});
+  }
+  yanit.status(204).end();
 });
 export default yonlendirici;
