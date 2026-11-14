@@ -53,51 +53,51 @@ const ADETLER = [25, 50, 100, 200];
 const TUR_BILGI: Record<string, { ad: string; aciklama: string; sebep: string; onlem: string }> = {
   captcha: {
     ad: "Captcha / engel",
-    aciklama: "Google bot kontrolu gosterdi, hit sayilmadi.",
-    sebep: "Ayni IP'den sIk istek, bayat cookie, datacenter IP veya cok hizli ritim.",
-    onlem: "Saglayiciyi karantinaya al, mobile oranini dusur, dwell suresini artir.",
+    aciklama: "Google bot kontrolü gösterdi, hit sayılmadı.",
+    sebep: "Aynı IP'den sık istek, bayat çerez, datacenter IP veya çok hızlı ritim.",
+    onlem: "Sağlayıcıyı karantinaya al, mobil oranını düşür, dwell süresini artır.",
   },
   provider_down: {
-    ad: "Saglayici dustu",
-    aciklama: "Ust uste basarisiz denemelerden sonra saglayici kullanilamaz sayildi.",
-    sebep: "Gateway kapali, kimlik hatasi, kota tukenmesi.",
-    onlem: "Saglayicilar ekranindan kimligi dene, agirligi dusur veya kapali tut.",
+    ad: "Sağlayıcı düştü",
+    aciklama: "Üst üste başarısız denemelerden sonra sağlayıcı kullanılamaz sayıldı.",
+    sebep: "Gateway kapalı, kimlik hatası, kota tükenmesi.",
+    onlem: "Sağlayıcılar ekranından kimliği dene, ağırlığı düşür veya kapalı tut.",
   },
   queue_lag: {
     ad: "Kuyruk gecikmesi",
-    aciklama: "Bekleyen is sayisi esigi asti; isler sirada bekliyor.",
-    sebep: "Dugum az, eszamanli sinir dusuk veya motor yavas.",
-    onlem: "Dugum ekle, eszamanli siniri yukselt, olcum araligini artir.",
+    aciklama: "Bekleyen iş sayısı eşiği aştı; işler sırada bekliyor.",
+    sebep: "Düğüm az, eşzamanlı sınır düşük veya motor yavaş.",
+    onlem: "Düğüm ekle, eşzamanlı sınırı yükselt, ölçüm aralığını artır.",
   },
   quota: {
     ad: "Kota / hiz siniri",
-    aciklama: "SERP API 429 dondu; arama kotasi veya saniyelik sinir doldu.",
-    sebep: "Aylik kota tukendi ya da cok hizli istek atildi.",
-    onlem: "Olcum araligini artir, anahtari degistir, gereksiz kelimeleri durdur.",
+    aciklama: "SERP API 429 döndü; arama kotası veya saniyelik sınır doldu.",
+    sebep: "Aylık kota tükendi ya da çok hızlı istek atıldı.",
+    onlem: "Ölçüm aralığını artır, anahtarı değiştir, gereksiz kelimeleri durdur.",
   },
   fallback_high: {
-    ad: "Yedek hat yuksek",
-    aciklama: "Hit'lerin buyuk kismi yabanci IP ile atildi; sehir hedefleme tutmadi.",
-    sebep: "TR havuzu tukendi veya saglayicilarda sehir hedefleme yok.",
-    onlem: "TR saglayici ekle, oran ayarlarini ve karantinadaki saglayicilari gozden gecir.",
+    ad: "Yedek hat yüksek",
+    aciklama: "Hit'lerin büyük kısmı yabancı IP ile atıldı; şehir hedefleme tutmadı.",
+    sebep: "TR havuzu tükendi veya sağlayıcılarda şehir hedefleme yok.",
+    onlem: "TR sağlayıcı ekle, oran ayarlarını ve karantinadaki sağlayıcıları gözden geçir.",
   },
   hedef_yok: {
     ad: "Hedef ilk 100'de yok",
-    aciklama: "Alan adi SERP'in ilk 100 sirasinda gorunmedi; hit atilmadan burst kapandi.",
-    sebep: "Kelime o ilde siralamiyor, il yanlis secilmis veya site cezali.",
-    onlem: "Kelime/il ciftini degistir; ust uste tekrarda kelime otomatik durur.",
+    aciklama: "Alan adı SERP'in ilk 100 sırasında görünmedi; hit atılmadan burst kapandı.",
+    sebep: "Kelime o ilde sıralamıyor, il yanlış seçilmiş veya site cezalı.",
+    onlem: "Kelime/il çiftini değiştir; üst üste tekrarda kelime otomatik durur.",
   },
   failover: {
-    ad: "Saglayici degisimi",
-    aciklama: "Bir hit sirasinda saglayici degistirildi; hit yine atildi.",
-    sebep: "Secilen saglayici o an basarisiz oldu.",
-    onlem: "Tekil kayitlar normaldir; siklasirsa saglayiciya bak.",
+    ad: "Sağlayıcı değişimi",
+    aciklama: "Bir hit sırasında sağlayıcı değiştirildi; hit yine atıldı.",
+    sebep: "Seçilen sağlayıcı o an başarısız oldu.",
+    onlem: "Tekil kayıtlar normaldir; sıklaşırsa sağlayıcıya bak.",
   },
   burst_hata: {
     ad: "Burst tamamlanmadi",
-    aciklama: "Burst'un basari orani esigin altinda kaldi.",
+    aciklama: "Burst'ün başarı oranı eşiğin altında kaldı.",
     sebep: "Captcha, timeout veya hata birikimi.",
-    onlem: "Loglara bak, saglayici havuzunu ve ritmi gozden gecir.",
+    onlem: "Loglara bak, sağlayıcı havuzunu ve ritmi gözden geçir.",
   },
 };
 
@@ -232,7 +232,7 @@ export default function Uyarilar() {
               </div>
               <p className="mt-2">{TUR_BILGI[t]?.aciklama}</p>
               <p className="mt-1 text-xs text-solgun">Sebep: {TUR_BILGI[t]?.sebep}</p>
-              <p className="mt-1 text-xs text-solgun">Onlem: {TUR_BILGI[t]?.onlem}</p>
+              <p className="mt-1 text-xs text-solgun">Önlem: {TUR_BILGI[t]?.onlem}</p>
             </li>
           ))}
         </ul>

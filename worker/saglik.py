@@ -48,18 +48,22 @@ def esik_asildi_mi(oran: float, toplam: int, esik: float) -> bool:
     return toplam >= ASGARI_ORNEK and oran > esik
 
 
-def karantina_karari(oran: float, durum: str, suresi_doldu: bool) -> str:
+def karantina_karari(
+    oran: float, durum: str, suresi_doldu: bool, esik: float = GENEL_ESIK
+) -> str:
     """Karantina icin ne yapilacagini soyler.
 
     Args:
         oran: Saglayici genel CAPTCHA yuzdesi.
         durum: Saglayicinin mevcut durumu.
         suresi_doldu: Karantina suresi gecti mi.
+        esik: Yuzde esigi. Panelden gelen deger gecirilir; verilmezse
+            sozlesme degeri kullanilir. Esik iki yerde tutulmaz.
 
     Returns:
         'karantina', 'ac' ya da 'yok'.
     """
-    if durum == "active" and oran > GENEL_ESIK:
+    if durum == "active" and oran > esik:
         return "karantina"
     if durum == "quarantine" and suresi_doldu:
         return "ac"

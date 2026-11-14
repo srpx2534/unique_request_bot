@@ -146,3 +146,45 @@ migration 31, tls 0 hata 0 sapma.
 [System.IO.File]::WriteAllText("$PWD\docs\DEVIR.md", $rapor, $utf8)
 '--- yazildi ---'
 (Get-Item 'docs\DEVIR.md').Length
+
+## Düzeltme turu — 2026-11-14
+
+Kod okuması sonucu çıkan 53 maddelik kaydın kritik ve yüksek grubu kapatıldı.
+
+### Sistem davranışı
+
+- `isci.ts` sahiplenmesi `last_burst_at` damgasına bağlandı; `affectedRows` artık gerçek sahiplenmeyi gösteriyor. Sistem burst'leri silmiyor, satır `running` kilitlenmiyor.
+- Burst kimliği `insertId`'den alınıyor; eşzamanlı burst'te yanlış satıra bağlanma kapandı.
+- Hacim hedefi gerçek `hit` satırlarından (`result='ok'`) sayılıyor; `target_count` planı artık hedefi şişirmiyor.
+- `burst.py` mobil penceresi hit sayısına çevrildi; mobil yol artık ilk hit'te kapanmıyor.
+- `not_found` izleniminde tıklama yapılmıyor, pogo sonucu hit sonucuna yansıyor.
+
+### Veritabanı ve CI
+
+- `028` üç ayrı `ALTER`'a bölündü, sonuna LF eklendi.
+- `029` içindeki FK adı `fk_ck_kullanim_profil` yapıldı; `026` ile ad çakışması giderildi. `veritabani` CI işi bu yüzden yeşile döndü.
+- `032_saglik_pencere.sql` eklendi: devre kesici sayaçları saatlik pencereli.
+- `kurulum_dene.py` zorunlu tablo listesini `verify.py`'den alıyor; `verify` eşiği 32 migration.
+- Sıfırdan kurulum denemesi tam zincirle geçti (32 migration, 24 tablo, geo/uule 81).
+
+### Çerez alt sistemi
+
+- `host_only` yazma, okuma ve yükleme zincirinde taşınıyor.
+- C46 ülke filtresi `cerez_sec` sorgusuna eklendi.
+- Docker'da `CEREZ_YUKLEME_KOK` için volume açıldı; `read_only` kökfs altında yazma çalışıyor.
+- `guvenliYol` il kodunu koruyor; `delete /cerez` yükleme defterini ve geçici klasörleri de siliyor.
+- Ölü uçlar (`/cerez/tara`, `/cerez/aktar`, `/cerez/ilerleme`, `/cerez/gozat`, `klasorSec`) kaldırıldı.
+
+### Panel ve worker
+
+- `provider` kimliği DB'den üretiliyor; karantina ağırlığı yedeğe yazılıyor.
+- PATCH uçlarında 404 kararı varlık kontrolüne bağlandı; aynı değerle güncelleme artık 404 vermiyor.
+- `baslat` önceki kampanyayı kapatıyor, `durdur` 204 dönüyor; kelime metni değişince geo satırları yenileniyor.
+- `/ayar` `oran_*` anahtarlarını atlıyor; oranlar tek uçtan yönetiliyor.
+- `app.py` `/durum` token istiyor; `ayar_db` önbelleği C43 sırasına uyuyor; `durum.py` çift anahtar kullanıyor; `son_mod` globali kırılganlıktan çıkarıldı.
+- SPA derin bağlantısı `index.html`'e düşüyor; saklama sorgusu MariaDB uyumlu.
+- `serp.py` ve `olcum.ts` anahtar sırasını (decodo → serper → searchapi) ve sağlayıcı uçlarını kullanıyor.
+
+### Doğrulama
+
+69 worker testi, 23 arayüz testi, iki `tsc` configi ve `verify.py` temiz. Commit atılmadı; değişiklikler çalışma ağacında.

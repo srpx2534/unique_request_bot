@@ -106,3 +106,16 @@ ama şu koşullarla:
 - `oran_mobil=0` mobil havuzunu tamamen kapatır; doğrulanacak.
 - Oranların toplamı 100 değilse okurken normalize edilir; panelde toplam uyarısı
   gösterilecek.
+
+## Açık işler — 2026-11-14 düzeltme turundan sonra
+
+- `olcum.ts` ve `serp.py` yedek sağlayıcı sırasını kullanıyor ama gerçek anahtarla sınanmadı; Decodo kotası doluyken Serper ile bir ölçüm turu koşulmalı.
+- `oran_mobil` hâlâ 0; açılmadan android profil hiç çıkmaz. Mobil yol canlı istekle doğrulanmalı.
+- Çerez canlılığı ölçülmedi: 22.704 "aktif" profil canlı demek değil.
+- `cerez_suresiz_kullan` kapatıldığında süresi geçmiş profillerin havuza dönüşü sınanmadı.
+- Üst üste `hedef_yok` alan kelimenin otomatik durması (A3) yazılmadı.
+- Partition oluşturma/silme zamanlaması ve `hit` 10 milyon eşiği uygulanmadı.
+- HTTPS/HSTS, Redis `requirepass`, sır saklama (B6/B8/B9) üretim öncesi.
+- Yedek/geri yükleme, metrik ucu, tek örnek kilidi (E1-E7) yok.
+- Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
+- `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.

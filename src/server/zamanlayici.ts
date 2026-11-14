@@ -40,8 +40,30 @@ function rastgeleCooldown(): number {
   return COOLDOWN_MIN_DK + Math.floor(Math.random() * (COOLDOWN_MAX_DK - COOLDOWN_MIN_DK + 1));
 }
 
+// Bakım adımları tur işinden ayrı ve seyrek koşar: toparla, kalp kaybı, eşik ve
+// saklama dakikalık turu geciktirmesin. Ölçüm kendi kapısını taşıdığı için
+// dakikalık döngüde kalır.
+const BAKIM_MS = 5 * 60_000;
+
 let calisiyor = false;
+let calisiyorBakim = false;
 let zaman: NodeJS.Timeout | null = null;
+let bakimZamani: NodeJS.Timeout | null = null;
+
+async function bakim(): Promise<void> {
+  if (calisiyorBakim) return;
+  calisiyorBakim = true;
+  try {
+    await toparla();
+    await kalpKaybiYaz();
+    await esikDenetle();
+    await saklamaDenetle();
+  } catch (hata) {
+    console.error("[bakim]", (hata as Error).message);
+  } finally {
+    calisiyorBakim = false;
+  }
+}
 
 async function tara(): Promise<void> {
   if (calisiyor) return;
@@ -96,11 +118,7 @@ async function tara(): Promise<void> {
 
     if (atilan > 0) console.log(`[zamanlayici] ${atilan} iş kuyruğa atıldı`);
 
-    // Bakım adımları tur işinden sonra koşar: yavaş ölçüm kuyruğu geciktirmez.
-    await toparla();
-    await kalpKaybiYaz();
-    await esikDenetle();
-    await saklamaDenetle();
+    // Ölçüm her dakika denenir; kendi 15 dakika kapısı var (C12).
     await olcumYap();
   } catch (hata) {
     console.error("[zamanlayici]", (hata as Error).message);
@@ -112,13 +130,15 @@ async function tara(): Promise<void> {
 export function zamanlayiciBaslat(): void {
   if (zaman) return;
   zaman = setInterval(() => void tara(), TIK_MS);
+  bakimZamani = setInterval(() => void bakim(), BAKIM_MS);
   console.log("[zamanlayici] başladı");
   // Uzun kapalılıktan sonra geçmiş günler telafi edilir; tur beklemeden.
   void toparla(7).catch((hata: Error) => console.error("[traffic]", hata.message));
 }
 
 export function zamanlayiciDurdur(): void {
-  if (!zaman) return;
-  clearInterval(zaman);
+  if (zaman) clearInterval(zaman);
   zaman = null;
+  if (bakimZamani) clearInterval(bakimZamani);
+  bakimZamani = null;
 }

@@ -3,7 +3,7 @@
  *
  * Oturum kimliği cookie'de, veri Redis'te tutulur; süreç yeniden başlasa da
  * oturum düşmez. Cookie httpOnly ve SameSite=Lax'tır, üretimde Secure olur.
- * Süre 12 saat, hareketsizlikte 2 saat.
+ * Süre 12 saat, hareketsizlikte 8 saat.
  */
 import session from "express-session";
 import { RedisStore } from "connect-redis";

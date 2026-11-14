@@ -210,15 +210,24 @@ def suz(cerezler: list[dict], hedef_domain: str | None = None) -> list[dict]:
 
 
 def oturuma_yukle(oturum, cerezler: list[dict], sadece_hedef: bool = False) -> int:
-    """Cerezleri curl_cffi oturumuna yukler; yuklenen sayiyi dondurur."""
+    """Cerezleri curl_cffi oturumuna yukler; yuklenen sayiyi dondurur.
+
+    `host_only` bayragi alan adina cevrilir: host-only cerez noktasiz
+    yazilir ki alt alan adlarina sizmasin. Alan adi cerezinin yazimi
+    kayitli haliyle birakilir; bayrak yoksa eski davranis korunur.
+    """
     yuklenen = 0
     for cerez in cerezler:
         if sadece_hedef and not _kapsar(cerez["domain"], GOOGLE_ALANLARI):
             continue
         try:
+            ham = cerez.get("host_only")
+            alan = str(cerez["domain"]).strip()
+            if ham is not None and int(ham) and alan.strip("."):
+                alan = alan.lstrip(".")
             oturum.cookies.set(
                 cerez["ad"], cerez["deger"],
-                domain=cerez["domain"], path=cerez["yol"] or "/",
+                domain=alan, path=cerez["yol"] or "/",
             )
             yuklenen += 1
         except Exception:  # noqa: BLE001

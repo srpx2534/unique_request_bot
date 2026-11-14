@@ -12,7 +12,14 @@
  * Kullanım: src/server/zamanlayici.ts.
  */
 import { sorgu, yaz } from "./veritabani.js";
-import { ayarOku } from "./ayar.js";
+import { ayarOku, serpSecim } from "./ayar.js";
+
+// Sağlayıcı uçları (§8): Decodo birincil, Serper ve SearchApi yedek.
+const UCLAR: Record<string, string> = {
+  decodo: "https://data.decodo.com/v1/search",
+  serper: "https://google.serper.dev/search",
+  searchapi: "https://www.searchapi.io/api/v1/search",
+};
 
 const VARSAYILAN_ARALIK_DK = 15; // C12; boşluk üst sınırı
 const TUR_ADET = 3; // tur başına kelime; ölçüm turu kısaltır
@@ -60,19 +67,38 @@ async function adaylar(aralik: number): Promise<Aday[]> {
 }
 
 /** Sırayı sayfa sayfa arar; hedef bulununca erken durur. */
-async function siraBul(anahtar: string, kelime: string, hedefKok: string): Promise<Sira> {
+async function siraBul(
+  saglayici: string,
+  anahtar: string,
+  kelime: string,
+  hedefKok: string,
+): Promise<Sira> {
+  // Govde ve baslik saglayiciya gore degisir; ortak alanlar tek yerde tutulmaz.
+  const govde = (sayfa: number): Record<string, unknown> =>
+    saglayici === "decodo"
+      ? { query: kelime, page: sayfa, locale: "tr-TR", geo: "tr" }
+      : { q: kelime, page: sayfa, gl: "tr", hl: "tr" };
+  const basliklar = (): Record<string, string> =>
+    saglayici === "serper"
+      ? { "X-API-KEY": anahtar, "content-type": "application/json" }
+      : { authorization: `Bearer ${anahtar}`, "content-type": "application/json" };
   for (let sayfa = 1; sayfa <= AZAMI_SAYFA; sayfa += 1) {
-    const cevap = await fetch("https://data.decodo.com/v1/search", {
+    const cevap = await fetch(UCLAR[saglayici] ?? UCLAR.decodo, {
       method: "POST",
-      headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
-      body: JSON.stringify({ query: kelime, page: sayfa, locale: "tr-TR", geo: "tr" }),
+      headers: basliklar(),
+      body: JSON.stringify(govde(sayfa)),
       signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
     });
     if (cevap.status === 429) return { rank: null, kod: 429 };
     if (!cevap.ok) return { rank: null, kod: cevap.status };
 
-    const veri = (await cevap.json()) as { organic?: { link?: string }[] };
-    const liste = veri.organic ?? [];
+    // Saglayicilar farkli anahtar dondurur: decodo/serper `organic`,
+    // searchapi `organic_results`.
+    const veri = (await cevap.json()) as {
+      organic?: { link?: string }[];
+      organic_results?: { link?: string }[];
+    };
+    const liste = veri.organic ?? veri.organic_results ?? [];
     if (liste.length === 0) return { rank: null, kod: 200 };
 
     const ofset = (sayfa - 1) * SAYFA_BASI;
@@ -88,8 +114,9 @@ async function siraBul(anahtar: string, kelime: string, hedefKok: string): Promi
  * @returns Yazılan ölçüm sayısı.
  */
 export async function olcumYap(): Promise<number> {
-  const anahtar = (await ayarOku("serp_decodo", "")).trim();
-  if (!anahtar) return 0; // anahtar yoksa ölçüm beklemede kalır
+  // Saglayici ve anahtar birlikte secilir; birincil bos ise yedek devreye girer.
+  const { saglayici, anahtar } = await serpSecim();
+  if (!anahtar) return 0; // hicbir anahtar yoksa olcum beklemede kalir
 
   const aralik = await aralikDk();
   const liste = await adaylar(aralik);
@@ -100,7 +127,7 @@ export async function olcumYap(): Promise<number> {
     // Bütçe dolduysa kalan kelime sonraki tura bırakılır; tur kilitlenmez.
     if (Date.now() - basladi > TUR_BUTCE_MS) break;
     try {
-      const sonuc = await siraBul(anahtar, aday.text, kok(aday.domain));
+      const sonuc = await siraBul(saglayici, anahtar, aday.text, kok(aday.domain));
       if (sonuc.kod === 429) {
         await uyari("quota", "SERP kotası veya hız sınırı: 429 · ölçüm durdu");
         break;

@@ -10,7 +10,7 @@ CREATE TABLE cookie_kullanim (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (profil_id, site_id, keyword_id),
   KEY idx_ck_cift (site_id, keyword_id),
-  CONSTRAINT fk_ck_profil FOREIGN KEY (profil_id) REFERENCES cookie_profil(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ck_kullanim_profil FOREIGN KEY (profil_id) REFERENCES cookie_profil(id) ON DELETE CASCADE,
   CONSTRAINT fk_ck_site FOREIGN KEY (site_id) REFERENCES site(id) ON DELETE CASCADE,
   CONSTRAINT fk_ck_kelime FOREIGN KEY (keyword_id) REFERENCES keyword(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

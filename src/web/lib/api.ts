@@ -52,8 +52,8 @@ export async function iste<T>(yol: string, secenek: RequestInit = {}): Promise<T
   if (yanit.status === 204) return undefined as T;
   return (await yanit.json()) as T;
 }
-/** Sunucudan gelen taze token'ı yazar; giriş sonrası oturum yenilendiğinde gerekir. */
 /** Govdesi FormData olan yukleme; gercek gonderim yuzdesini bildirir. */
+
 export function dosyaYukle<T>(yol: string, govde: FormData, yuzde: (oran: number) => void): Promise<T> {
   return new Promise<T>((cozum, red) => {
     void (async () => {
@@ -90,6 +90,7 @@ export function dosyaYukle<T>(yol: string, govde: FormData, yuzde: (oran: number
     })();
   });
 }
+/** Sunucudan gelen taze token'ı yazar; giriş sonrası oturum yenilendiğinde gerekir. */
 export function tokenAyarla(deger: string): void {
   token = deger;
 }

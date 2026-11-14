@@ -60,6 +60,11 @@ def maskele(proxy: str | None) -> str:
     if not proxy:
         return "(yok)"
     bas, _, kalan = proxy.partition("://")
+    # Kimlik yoksa (duz proxy) iki nokta da yok: "host:***@" yazmak bozuk durur.
+    if "@" not in kalan:
+        return f"{bas}://{kalan}"
     kimlik, _, host = kalan.partition("@")
-    kullanici, _, _ = kimlik.partition(":")
+    kullanici, ayrac, sifre = kimlik.partition(":")
+    if not ayrac or not sifre:
+        return f"{bas}://{kullanici}@{host}"
     return f"{bas}://{kullanici}:***@{host}"

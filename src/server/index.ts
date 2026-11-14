@@ -9,7 +9,7 @@ import uygulama from "./uygulama.js";
 import { redis } from "./redis.js";
 import { isci } from "./isci.js";
 import { zamanlayiciBaslat, zamanlayiciDurdur } from "./zamanlayici.js";
-import { kuyrukBaslat } from "./cerez.js";
+import { kuyrukBaslat, kuyrukKapat } from "./cerez.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
@@ -43,10 +43,18 @@ sunucu.on("error", (hata: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
-/** Kapanışta zamanlayıcı ve kuyruk tüketicisi düzgün kapatılır. */
+/**
+ * Kapanışta zamanlayıcı, kuyruk tüketicisi, Redis ve HTTP sunucusu kapatılır.
+ *
+ * Sıra önemli: önce yeni iş alımı kesilir, sonra bağlantılar bırakılır,
+ * en son süreç çıkar. Aksi halde Redis bağlantısı açık kalıp süreç asılı kalır.
+ */
 async function kapat(): Promise<void> {
   zamanlayiciDurdur();
-  await isci.close();
+  await isci.close().catch(() => undefined);
+  await kuyrukKapat().catch(() => undefined);
+  await new Promise<void>((cozum) => sunucu.close(() => cozum()));
+  await redis.quit().catch(() => undefined);
   process.exit(0);
 }
 

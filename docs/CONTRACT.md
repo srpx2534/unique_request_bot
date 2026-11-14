@@ -231,7 +231,7 @@ CREATE TABLE burst (
 CREATE TABLE hit (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   burst_id    BIGINT UNSIGNED NOT NULL,
-  provider_id SMALLINT UNSIGNED NOT NULL,
+  provider_id SMALLINT UNSIGNED NULL,
   profile_id  BIGINT UNSIGNED NULL,
   geo_code    TINYINT UNSIGNED NULL,
   geo_mode    ENUM('city','tr_fallback','yabanci') NOT NULL DEFAULT 'tr_fallback',
@@ -306,7 +306,7 @@ CREATE TABLE dugum (
   ram         DECIMAL(5,2) NOT NULL DEFAULT 0,
   surum       VARCHAR(32) NULL,
   son_kalp_at DATETIME(3) NULL,
-  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  kayit_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   KEY idx_secim (durum, son_kalp_at)
 ) ENGINE=InnoDB;
 
@@ -378,7 +378,7 @@ Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - `PATCH /api/site/:id` `{ domain?, label?, active? }`
 - `DELETE /api/site/:id` → 204
 - `GET  /api/kelime?...&sayfa=&adet=` → `{ satirlar, toplam, sayfa, adet }`
-- `POST /api/kelime` `{ site_id, text, geo_scope, home_geo?, volume? }`
+- `POST /api/kelime` `{ site_id, kelime, kapsam, il?, volume? }`
 - `PATCH /api/kelime/:id`
 - `DELETE /api/kelime/:id` → 204
 - `POST /api/kelime/:id/geo-yenile` → `{ geo_adet }`
@@ -412,7 +412,7 @@ Liste uçlarında sayfa 1'den başlar, `adet` 1-500 arasıdır ve varsayılanı 
 
 ### 7.2 Worker uçları
 
-- `GET  /worker/saglik` → sürüm ve doluluk
+- `GET  /health` → sürüm ve doluluk
 - `POST /worker/burst` `{ keyword, target_url, geo_code?, geo_slug?, geo_mode, uule?, size }` → `{ ok, captcha, not_found, timeout, error, elapsed_ms }`
 - `POST /api/worker/kalp` `{ ip, yuk, cpu, ram, surum }` → `{ durum }`. CSRF ve oturum denetiminin dışındadır; düğüm kaydı IP ile eşleşir, eşleşmezse 404.
 - `POST /api/worker/kalp` cevabındaki `durum`, worker'ın iş alıp almayacağını belirler; `durduruldu` iken burst ucu 503 döner.

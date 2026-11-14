@@ -31,3 +31,21 @@ export async function ayarOku(anahtar: string, varsayilan = ""): Promise<string>
 export function ayarOnbellekTemizle(): void {
   onbellek.clear();
 }
+
+// SERP anahtar sırası sözleşmededir (§8): birincil, sonra yedekler.
+const SERP_ANAHTAR_SIRASI = ["serp_decodo", "serp_serper", "serp_searchapi"];
+
+/**
+ * Aktif SERP anahtarını verir.
+ *
+ * Birincil boşsa yedek denenir; tek anahtar bitince ölçüm durmaz.
+ *
+ * @returns anahtar ve sağlayıcı adı; hiçbiri yoksa boş dizeler
+ */
+export async function serpSecim(): Promise<{ saglayici: string; anahtar: string }> {
+  for (const ad of SERP_ANAHTAR_SIRASI) {
+    const deger = (await ayarOku(ad)).trim();
+    if (deger) return { saglayici: ad.replace("serp_", ""), anahtar: deger };
+  }
+  return { saglayici: "", anahtar: "" };
+}

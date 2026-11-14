@@ -18,9 +18,10 @@ def taklit(monkeypatch):
 
     def sahte_serp(*_a, **_k):
         sayac["izlenim"] += 1
-        return {"result": "not_found", "position": None, "url": None,
+        return {"result": "ok", "position": 1, "url": "https://www.google.com/search?q=a",
                 "http_status": 200, "elapsed_ms": 1, "bytes": 1,
-                "profil": "chrome124", "kaynak": "html", "organik": [], "mesaj": ""}
+                "profil": "chrome124", "kaynak": "html",
+                "organik": [{"position": 1, "link": "https://a.com/"}], "mesaj": ""}
 
     def sahte_cozum(*_a, **_k):
         return {"result": "ok", "position": 1, "url": "https://www.google.com/search?q=a",
@@ -161,3 +162,28 @@ def test_web_kelime_mobil_saglayici_zorlamaz(taklit, monkeypatch) -> None:
     sonuc = burst.burst_yap("a", "a.com", 3)
     assert zorlanan == [None] * 3
     assert "chrome131_android" not in {k["profil"] for k in sonuc["hits"]}
+
+def test_not_found_izleniminde_tiklanmaz(taklit, monkeypatch) -> None:
+    """Bos SERP'te tiklama denenmez, hit not_found sayilir (C9)."""
+    def sahte_serp(*_a, **_k):
+        return {"result": "not_found", "position": None, "url": None,
+                "http_status": 200, "elapsed_ms": 1, "bytes": 1,
+                "profil": "chrome124", "kaynak": "html", "organik": [], "mesaj": ""}
+
+    monkeypatch.setattr(serp, "serp_getir_html", sahte_serp)
+    sonuc = burst.burst_yap("a", "a.com", 2)
+    assert sonuc["not_found"] == 2
+    assert sonuc["ok"] == 0
+    assert taklit["tik"] == 0
+
+
+def test_pogo_duserse_hit_hata_sayilir(taklit, monkeypatch) -> None:
+    """Pogo basarisizsa hit ok sayilmaz."""
+    def sahte_pogo(*_a, **_k):
+        return {"result": "error", "http_status": None, "elapsed_ms": 1,
+                "bekleme_ms": 0, "mesaj": "düştü"}
+
+    monkeypatch.setattr(click, "pogo", sahte_pogo)
+    sonuc = burst.burst_yap("a", "a.com", 1)
+    assert sonuc["error"] == 1
+    assert sonuc["ok"] == 0

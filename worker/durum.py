@@ -18,7 +18,7 @@ import pymysql
 from worker import ayar
 
 ONBELLEK_SN = 3  # saniye; durdurma gecikmesi ile sorgu yuku dengesi
-_onbellek: dict[str, tuple[float, bool]] = {}
+_onbellek: dict[tuple[str, str], tuple[float, bool]] = {}
 
 
 def _baglan() -> pymysql.connections.Connection:
@@ -34,18 +34,21 @@ def _baglan() -> pymysql.connections.Connection:
     )
 
 
-def keyword_aktif_mi(kelime: str) -> bool:
+def keyword_aktif_mi(kelime: str, site_domain: str | None = None) -> bool:
     """Kelime hala `active` mi.
 
     Args:
         kelime: Kelime metni.
+        site_domain: Hedef alan adi. Ayni metin iki sitede olabildigi icin
+            onbellek anahtari cifttir; verilmezse yalnizca metne bakilir.
 
     Returns:
         Aktifse True. Sorgu dusse bile True doner: durdurma suphesi burst'u
         kesmemeli.
     """
+    anahtar = (kelime, (site_domain or "").strip().lower())
     simdi = time.monotonic()
-    kayit = _onbellek.get(kelime)
+    kayit = _onbellek.get(anahtar)
     if kayit and simdi - kayit[0] < ONBELLEK_SN:
         return kayit[1]
 
@@ -54,7 +57,15 @@ def keyword_aktif_mi(kelime: str) -> bool:
     try:
         baglanti = _baglan()
         with baglanti.cursor() as imlec:
-            imlec.execute("SELECT state FROM keyword WHERE text = %s LIMIT 1", (kelime,))
+            # Site verildiyse cift ile aranir: ayni metinli iki kayit karismasin.
+            if anahtar[1]:
+                imlec.execute(
+                    "SELECT k.state FROM keyword k JOIN site s ON s.id = k.site_id"
+                    " WHERE k.text = %s AND s.domain = %s LIMIT 1",
+                    (kelime, anahtar[1]),
+                )
+            else:
+                imlec.execute("SELECT state FROM keyword WHERE text = %s LIMIT 1", (kelime,))
             satir = imlec.fetchone()
             if satir:
                 sonuc = satir[0] == "active"
@@ -67,5 +78,5 @@ def keyword_aktif_mi(kelime: str) -> bool:
             except Exception:  # noqa: BLE001
                 pass
 
-    _onbellek[kelime] = (simdi, sonuc)
+    _onbellek[anahtar] = (simdi, sonuc)
     return sonuc

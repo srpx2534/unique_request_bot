@@ -92,6 +92,10 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(200, {"durum": "ayakta"})
             return
         if yol == "/durum":
+            # Sayac ve saglayici durumu disariya acilir; token yoksa verilmez.
+            if not self._yetkili():
+                self._json(401, {"hata": "token geçersiz"})
+                return
             self._durum()
             return
         self._json(404, {"hata": "bilinmeyen uç"})
@@ -152,7 +156,7 @@ class Isleyici(BaseHTTPRequestHandler):
         with _semafor:
             sonuc = burst.burst_yap(
                 kelime, domain, adet, uule=uule, hedef_url=hedef_url,
-                geo_slug=geo_slug, devam=lambda: durum.keyword_aktif_mi(kelime),
+                geo_slug=geo_slug, devam=lambda: durum.keyword_aktif_mi(kelime, domain),
             )
 
         with _kilit:

@@ -47,25 +47,31 @@ def oku(anahtar: str, varsayilan: str = "") -> str:
     simdi = time.monotonic()
     kayit = _onbellek.get(anahtar)
     if kayit and simdi - kayit[0] < ONBELLEK_SN:
+        # Tablodan gelen deger onbellekte; yoksa .env, o da yoksa varsayilan (C43).
         return kayit[1] or ayar.oku(anahtar, varsayilan)
 
-    deger = ""
+    deger: str | None = None
     baglanti = None
     try:
         baglanti = _baglan()
         with baglanti.cursor() as imlec:
             imlec.execute("SELECT deger FROM ayar WHERE anahtar = %s", (anahtar,))
             satir = imlec.fetchone()
+        # Anahtar yoksa None kalir: "yok" ile "okunamadi" ayri dallardir.
         if satir:
             deger = str(satir[0]).strip()
     except Exception:  # noqa: BLE001
-        deger = ""
+        deger = None
     finally:
         if baglanti is not None:
             baglanti.close()
 
-    _onbellek[anahtar] = (simdi, deger)
-    return deger or ayar.oku(anahtar, varsayilan)
+    if deger is not None:
+        # Yalnizca tablodan okunan deger onbelleklenir; tablo hatasi her turda
+        # yeniden denenir, .env okumasi tekrar tekrar yapilmaz.
+        _onbellek[anahtar] = (simdi, deger)
+        return deger or ayar.oku(anahtar, varsayilan)
+    return ayar.oku(anahtar, varsayilan)
 
 
 def temizle() -> None:

@@ -43,6 +43,12 @@ export async function yaz(sql: string, parametreler: unknown[] = []): Promise<nu
   return (sonuc as { affectedRows: number }).affectedRows;
 }
 
+/** Yazma yapar ve yeni satırın kimliğini döndürür. */
+export async function ekle(sql: string, parametreler: unknown[] = []): Promise<number> {
+  const [sonuc] = await havuz.query(sql, parametreler);
+  return (sonuc as { insertId: number }).insertId;
+}
+
 /** Tek bağlantıda işlem çalıştırır; hata olursa geri alır. */
 export async function islem<T>(govde: (baglanti: PoolConnection) => Promise<T>): Promise<T> {
   const baglanti = await havuz.getConnection();

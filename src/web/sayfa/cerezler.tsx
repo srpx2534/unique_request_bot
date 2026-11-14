@@ -224,7 +224,7 @@ export default function Cerezler() {
           </select>
           <Dugme
             gorunum="ikincil"
-            disabled={secili || mesgul}
+            disabled={mesgul}
             onClick={() => {
               if (secici.current) secici.current.value = "";
               secici.current?.click();

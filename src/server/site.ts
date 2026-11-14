@@ -98,9 +98,16 @@ yonlendirici.patch("/site/:id", async (istek, yanit) => {
     return;
   }
 
+  // Ayni degerle gelen PATCH'te MySQL 0 satir dondurur; 404 karari bu yuzden
+  // etkilenen satir sayisina degil varlik kontrolune baglanir.
+  const varMi = await tek<{ id: number }>("SELECT id FROM site WHERE id = ?", [id]);
+  if (!varMi) {
+    yanit.status(404).json({ hata: "site yok" });
+    return;
+  }
   degerler.push(id);
   const etkilenen = await yaz(`UPDATE site SET ${alanlar.join(", ")} WHERE id = ?`, degerler);
-  if (etkilenen === 0) {
+  if (etkilenen === 0 && !varMi) {
     yanit.status(404).json({ hata: "site yok" });
     return;
   }

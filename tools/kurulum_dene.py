@@ -19,11 +19,8 @@ sys.path.insert(0, "tools")
 from db import COLLATION, MIGRATION_DIZINI, _yonetici_adaylari, ayar, sql_dosyasini_ayristir  # noqa: E402
 
 SEMA = "unique_request_bot_kurulum_dene"
-ZORUNLU = (
-    "geo", "site", "keyword", "keyword_geo", "provider", "provider_geo",
-    "serp_provider", "profile", "campaign", "burst", "hit", "position",
-    "traffic_daily", "alert", "audit_log", "kullanici", "dugum", "dugum_olay", "ayar",
-)
+# Zorunlu tablo listesi verify.py'den alinir; iki kopya bayatliyordu.
+from verify import ZORUNLU  # noqa: E402
 
 
 def _baglan():

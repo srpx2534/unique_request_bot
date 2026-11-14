@@ -30,7 +30,10 @@ export default function UstCubuk({
   const oturum = oturumKullan();
   const cikis = cikisKullan();
   const bildir = useBildirim();
-  const git = useNavigate();
+// `navigate(0)` sayfa yeniler ama To tipi sayı kabul etmez; daraltma tek yerde
+// yapılır, çağrılarda `as never` kalmaz.
+type Gezinme = (to: string | number, ayar?: { replace?: boolean }) => void;
+  const git = useNavigate() as Gezinme;
   const tema = temaOku();
   const uyarilar = uyariCanli();
   const acik = uyarilar.data?.filter((u) => !u.acknowledged) ?? [];
@@ -65,7 +68,7 @@ export default function UstCubuk({
               type="button"
               onClick={() => {
                 temaYaz(deger);
-                git(0 as never, { replace: true });
+                git(0, { replace: true });
               }}
               title={ad}
               aria-label={ad}

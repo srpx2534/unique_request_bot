@@ -106,6 +106,23 @@ def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
     try:
         with baglanti.cursor() as imlec:
             # Sayac her hit'te artar; ulusal trafik de devre kesiciye girer.
+            # Pencere dolduysa sayaclar once sifirlanir; yoksa oran seyrelir ve
+            # esik hic asilmaz. Pencere bir saatliktir.
+            imlec.execute(
+                "UPDATE provider SET"
+                " hits_1h = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 0, hits_1h),"
+                " captcha_1h = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 0, captcha_1h),"
+                " sayac_baslangic = COALESCE(sayac_baslangic, UTC_TIMESTAMP(3))"
+                " WHERE id = %s",
+                (saglayici_id,),
+            )
+            imlec.execute(
+                "UPDATE provider SET sayac_baslangic = UTC_TIMESTAMP(3)"
+                " WHERE id = %s AND sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR",
+                (saglayici_id,),
+            )
             imlec.execute(
                 "UPDATE provider SET hits_1h = hits_1h + 1, captcha_1h = captcha_1h + %s"
                 " WHERE id = %s",
@@ -120,10 +137,19 @@ def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
             # Il cifti yalnizca il hedefli hit'te tutulur; anahtar il kodudur.
             if geo_kodu is None:
                 return
+            # Ciftte de saatlik pencere: esik %35 asilana kadar sayac seyrelmemeli.
             imlec.execute(
-                "INSERT INTO provider_geo (provider_id, geo_code, hits_1h, captcha_1h)"
-                " VALUES (%s, %s, 1, %s) ON DUPLICATE KEY UPDATE"
-                " hits_1h = hits_1h + 1, captcha_1h = captcha_1h + VALUES(captcha_1h)",
+                "INSERT INTO provider_geo"
+                " (provider_id, geo_code, hits_1h, captcha_1h, sayac_baslangic)"
+                " VALUES (%s, %s, 1, %s, UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE"
+                " hits_1h = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 1, hits_1h + 1),"
+                " captcha_1h = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, VALUES(captcha_1h),"
+                "   captcha_1h + VALUES(captcha_1h)),"
+                " sayac_baslangic = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR,"
+                "   UTC_TIMESTAMP(3), sayac_baslangic)",
                 (saglayici_id, geo_kodu, captcha),
             )
             imlec.execute(
@@ -179,7 +205,7 @@ def karantina_kontrol(saglayici_id: int) -> None:
 
             # Esik panelden gelir; okunamazsa sozlesme degeri (20) gecerli.
             esik = int(ayar_db.oku("esik_captcha", str(saglik.GENEL_ESIK)) or saglik.GENEL_ESIK)
-            karar = saglik.karantina_karari(oran, durum, suresi_doldu)
+            karar = saglik.karantina_karari(oran, durum, suresi_doldu, esik)
             # Ornek esigin altindaysa yalnizca karantinaya alma ertelenir;
             # suresi dolmus karantina her halukarda acilir.
             if durum == "active" and not saglik.esik_asildi_mi(oran, ornek, esik):

@@ -10,7 +10,7 @@
 import { createHmac } from "node:crypto";
 import { Worker } from "bullmq";
 import { baglanti, type Is } from "./kuyruk.js";
-import { tek, yaz } from "./veritabani.js";
+import { ekle, tek, yaz } from "./veritabani.js";
 import { dugumSec } from "./dugum_sec.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
@@ -76,9 +76,12 @@ async function geriAl(geoId: number, sebep: string): Promise<void> {
 
 /** Hacim hedefi dolduysa kelimeyi durdurur. */
 async function hedefDenetle(keywordId: number): Promise<void> {
+  // Hacim gercek hit ile olculur: burst erken bitse de target_count yazili
+  // kaldigi icin SUM(target_count) hedefi planlanan sayiyla sisiriyordu.
   const hedef = await tek<{ volume: number | null; atilan: number }>(
     `SELECT k.volume,
-            (SELECT COALESCE(SUM(b.target_count), 0) FROM burst b
+            (SELECT COALESCE(SUM(h.result = 'ok'), 0) FROM hit h
+               JOIN burst b ON b.id = h.burst_id
                JOIN keyword_geo g2 ON g2.id = b.keyword_geo_id
               WHERE g2.keyword_id = k.id) AS atilan
        FROM keyword k WHERE k.id = ?`,
@@ -135,30 +138,41 @@ async function calistir(is: Is): Promise<void> {
     burstId = acik.id;
     yeniden = true;
   } else {
-    await yaz(
+    // Kimlik insertId'den alinir: ayni keyword_geo'ya es zamanli iki burst
+    // dusunce "ORDER BY id DESC LIMIT 1" yanlis satiri baglayabiliyordu.
+    const yeniId = await ekle(
       "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count, phase, stats) VALUES (?, ?, ?, ?, ?, ?)",
       [is.campaignId, is.keywordGeoId, adim, adet, satir.burst_count < 3 ? "core" : "broad", "{}"],
     );
-    const burst = await tek<{ id: number }>(
-      "SELECT id FROM burst WHERE keyword_geo_id = ? ORDER BY id DESC LIMIT 1",
-      [is.keywordGeoId],
-    );
-    if (!burst) return;
-    burstId = burst.id;
+    if (!yeniId) return;
+    burstId = yeniId;
   }
 
   // Aynı iş iki kez düşerse satır sahiplenilemez: taze burst silinir, açık burst
   // yeniden sahiplenilir.
+  // Sahiplenme damgasi: last_burst_at her seferinde degisir, boylece
+  // affectedRows gercekten "bu satiri ben aldim" anlamina gelir. Ayni degeri
+  // tekrar yazmak MySQL'de 0 satir dondurur; eski kod bu yuzden her burst'u
+  // silip satiri 'running' birakiyordu ve sistem hic hit atmiyordu.
   const sahiplen = await yaz(
-    "UPDATE keyword_geo SET state = 'running' WHERE id = ? AND state = 'running'",
+    `UPDATE keyword_geo
+        SET state = 'running', last_burst_at = UTC_TIMESTAMP(3)
+      WHERE id = ? AND state = 'running'
+        AND (last_burst_at IS NULL OR last_burst_at < UTC_TIMESTAMP(3) - INTERVAL 5 SECOND)`,
     [is.keywordGeoId],
   );
   if (sahiplen === 0) {
+    // Satir 5 saniye icinde baska bir dagitici tarafindan alindi.
     if (!yeniden) {
       await yaz("DELETE FROM burst WHERE id = ?", [burstId]);
       return;
     }
-    await yaz("UPDATE keyword_geo SET state = 'running' WHERE id = ?", [is.keywordGeoId]);
+    await yaz(
+      `UPDATE keyword_geo
+          SET state = 'running', last_burst_at = UTC_TIMESTAMP(3)
+        WHERE id = ?`,
+      [is.keywordGeoId],
+    );
   }
 
   const adres = await dugumSec();

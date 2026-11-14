@@ -16,7 +16,9 @@ ZORUNLU = (
 )
 
 # Asgari migration sayisi; defter bunun altindaysa kurulum yarim kalmistir.
-ASGARI_MIGRATION = 18
+# Depoda 32 dosya var (001-032); esik gercek sayiya esitlenir ki yarim
+# kurulum sessizce gecmesin.
+ASGARI_MIGRATION = 32
 
 
 def main() -> int:

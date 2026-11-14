@@ -77,8 +77,14 @@ uygulama.use("/api", cerezYonlendirici);
 
 uygulama.use(express.static(path.join(KOK, "dist", "web")));
 
-uygulama.use((_istek, yanit) => {
-  yanit.status(404).json({ hata: "bilinmeyen uç" });
+// /api disindaki bilinmeyen yol SPA'ya duser: /kelimeler adresini yenileyen
+// kullanici JSON 404 ekrani degil uygulamayi gormeli (C42).
+uygulama.use((istek, yanit) => {
+  if (istek.path.startsWith("/api/") || istek.path === "/api") {
+    yanit.status(404).json({ hata: "bilinmeyen uç" });
+    return;
+  }
+  yanit.status(404).sendFile(path.join(KOK, "dist", "web", "index.html"));
 });
 
 uygulama.use(

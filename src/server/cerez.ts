@@ -15,7 +15,6 @@ import type { Request } from "express";
 import multer from "multer";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-const calistir = promisify(execFile);
 import { z } from "zod";
 import { islem, sorgu, tek, yaz } from "./veritabani.js";
 import { dogrula } from "./dogrula.js";
@@ -360,15 +359,15 @@ async function dosyaAktar(
 
       for (let i = 0; i < cerezler.length; i += PAKET) {
         const parca = cerezler.slice(i, i + PAKET);
-        const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
         await baglanti.query(
           `INSERT INTO cookie (profil_id, domain, ad, deger, yol, sona_erme, guvenli, http_only,
-             same_site, oncelik, oturumluk, boyut, kaynak_port, kaynak_sema, same_party, partition_ust)
+             same_site, oncelik, oturumluk, boyut, kaynak_port, kaynak_sema, same_party, partition_ust, host_only)
            VALUES ${yerler}`,
           parca.flatMap((c) => [
             profilId, c.domain, c.ad, c.deger, c.yol, c.sona_erme, c.guvenli, c.http_only,
             c.same_site, c.oncelik, c.oturumluk, c.boyut, c.kaynak_port, c.kaynak_sema,
-            c.same_party, c.partition_ust,
+            c.same_party, c.partition_ust, c.host_only,
           ]),
         );
       }
@@ -469,108 +468,19 @@ yonlendirici.get("/cerez", async (_istek, yanit) => {
   yanit.json({ sayim, durum, hatalilar });
 });
 
-/** Klasoru sayar; yazmaz. */
-yonlendirici.post("/cerez/tara", async (istek, yanit) => {
-  const govde = dogrula(yolSemasi, istek.body, yanit);
-  if (!govde) return;
-  let kokDizin: string;
-  try {
-    kokDizin = await yolDogrula(govde.yol);
-  } catch (hata) {
-    yanit.status(400).json({ hata: (hata as Error).message });
-    return;
-  }
-  const dosyalar = await dosyalariTopla(kokDizin);
-  const dagilim = { json: 0, txt: 0, illi: 0 };
-  for (const tam of dosyalar) {
-    if (/\.json$/i.test(tam)) dagilim.json += 1;
-    else dagilim.txt += 1;
-    if (ilBul(path.relative(kokDizin, tam)) !== null) dagilim.illi += 1;
-  }
-  yanit.json({ kok: kokDizin, toplam: dosyalar.length, dagilim });
-});
-
-/** Dosyalari deftere yazar ve isi baslatir. */
-yonlendirici.post("/cerez/aktar", async (istek, yanit) => {
-  const govde = dogrula(yolSemasi, istek.body, yanit);
-  if (!govde) return;
-  let kokDizin: string;
-  try {
-    kokDizin = await yolDogrula(govde.yol);
-  } catch (hata) {
-    yanit.status(400).json({ hata: (hata as Error).message });
-    return;
-  }
-  const dosyalar = await dosyalariTopla(kokDizin);
-  for (const tam of dosyalar) {
-    await yaz(
-      `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, boyut, ozet, durum)
-       VALUES (?, ?, 'json', 'yol', 0, ?, 'yeni')`,
-      [tam, path.basename(tam), createHash("sha256").update(tam).digest("hex")],
-    );
-  }
-  durum.toplam += dosyalar.length;
-  void isle(kokDizin).catch((hata) => console.error("[cerez] kuyruk:", hata));
-  yanit.json({ kuyruk: dosyalar.length, durum });
-});
-
-/** Ilerleme. */
-yonlendirici.get("/cerez/ilerleme", async (_istek, yanit) => {
-  const bekleyen = await tek<{ sayi: number }>(
-    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('yeni','isleniyor')",
-  );
-  yanit.json({ ...durum, bekleyen: bekleyen?.sayi ?? 0 });
-});
-
 /** Tum cerez defterini siler. */
 yonlendirici.delete("/cerez", async (_istek, yanit) => {
   await yaz("DELETE FROM cookie_dosya");
+  // Yukleme defteri ve gecici klasorler de gider: defter silinince
+  // klasorlerin anlami kalmiyor, diskte sismesin.
+  await yaz("DELETE FROM cerez_yukleme");
+  await fs.rm(YUKLEME_KOK, { recursive: true, force: true });
   durum.toplam = 0;
   durum.islenen = 0;
   durum.mukerrer = 0;
   durum.hatali = 0;
   yanit.status(204).end();
 });
-yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
-  try {
-    const secilen = await klasorSec();
-    if (!secilen) {
-      yanit.json({ iptal: true });
-      return;
-    }
-    yanit.json({ yol: secilen });
-  } catch (hata) {
-    const kod = (hata as NodeJS.ErrnoException).code;
-    if (kod === "ENOENT") {
-      yanit.status(500).json({ hata: "klasör seçici bulunamadı, yolu elle yaz" });
-      return;
-    }
-    console.error("[cerez] gozat hatasi:", (hata as Error).message);
-    yanit.status(500).json({ hata: "klasör seçici açılamadı" });
-  }
-});
-/** Sunucu makinesinde klasor secici acar; iptalde null doner. */
-async function klasorSec(): Promise<string | null> {
-  const win = process.platform === "win32";
-  const komut = win ? "powershell.exe" : "zenity";
-  const argumanlar = win
-    ? [
-        "-NoProfile",
-        "-STA",
-        "-Command",
-        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $p = New-Object System.Windows.Forms.FolderBrowserDialog; $p.ShowNewFolderButton = $false; if ($p.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($p.SelectedPath) }",
-      ]
-    : ["--file-selection", "--directory", "--title=Cerez klasorunu sec"];
-  try {
-    const { stdout } = await calistir(komut, argumanlar, { timeout: 300_000, windowsHide: true });
-    const secilen = stdout.trim();
-    return secilen === "" ? null : secilen;
-  } catch (hata) {
-    const kod = (hata as { code?: number | string }).code;
-    if (kod === 1 || kod === "1") return null;
-    throw hata;
-  }
-}
 const YUKLEME_KOK = process.env.CEREZ_YUKLEME_KOK
   ? path.resolve(process.env.CEREZ_YUKLEME_KOK)
   : path.join(process.cwd(), "cerez_yukleme");
@@ -596,8 +506,10 @@ function guvenliYol(ham: string): string | null {
   const son = temiz[temiz.length - 1];
   if (!son) return null;
   if (!/\.(json|txt)$/i.test(son)) return null;
-  // Derinlik sinirli: yol sutunu 512 karakter.
-  return temiz.slice(-6).join("/").slice(0, 400);
+  // Il kodu ilk klasordedir (or. "34/"); kirpma bastan degil ortadan
+  // yapilir ki il eslesmesi sessizce kaybolmasin.
+  const kirpik = temiz.length > 6 ? [temiz[0], ...temiz.slice(-5)] : temiz;
+  return kirpik.join("/").slice(0, 400);
 }
 
 /** Oturumdaki kullaniciyi kimlige cevirir. */
@@ -818,3 +730,9 @@ yonlendirici.delete("/cerez/yukleme/:id", async (istek, yanit) => {
   yanit.status(204).end();
 });
 export default yonlendirici;
+
+/** Kuyruk tüketicisini ve bağlantısını kapatır; kapanışta çağrılır. */
+export async function kuyrukKapat(): Promise<void> {
+  if (tuketici) await tuketici.close();
+  tuketici = null;
+}

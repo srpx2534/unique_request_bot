@@ -55,8 +55,14 @@ async function bolumDus(): Promise<number> {
   return eski.length;
 }
 
-/** Parçalı siler; etkilenen satır parça boyundan azsa durur. */
-async function parcaliSil(sql: string, gun: number): Promise<number> {
+/**
+ * Parçalı siler; etkilenen satır parça boyundan azsa durur.
+ *
+ * `limitli` false ise tek seferde silinir: alt sorgulu biçimde MariaDB
+ * `LIMIT` kabul etmiyor, orada parçalama yapılamaz.
+ */
+async function parcaliSil(sql: string, gun: number, limitli = true): Promise<number> {
+  if (!limitli) return yaz(sql, [gun]);
   let toplam = 0;
   for (let tur = 0; tur < TUR_TAVANI; tur += 1) {
     const etkilenen = await yaz(`${sql} LIMIT ${PARCA}`, [gun]);
@@ -79,11 +85,13 @@ export async function saklamaYap(): Promise<number> {
   toplam += await parcaliSil(
     "DELETE FROM hit WHERE created_at < UTC_TIMESTAMP(3) - INTERVAL ? DAY", HIT_GUN,
   );
-  // Çok tablolu DELETE LIMIT kabul etmez; alt sorgu biçimi kullanılır.
+  // Alt sorgulu bicimde LIMIT verilemez; tek seferde silinir. burst 90 gunluk
+  // oldugu icin IN listesi sinirlidir.
   toplam += await parcaliSil(
     `DELETE FROM hit WHERE burst_id IN
       (SELECT id FROM burst WHERE started_at < UTC_TIMESTAMP(3) - INTERVAL ? DAY)`,
     BURST_GUN,
+    false,
   );
   toplam += await parcaliSil(
     "DELETE FROM burst WHERE started_at < UTC_TIMESTAMP(3) - INTERVAL ? DAY", BURST_GUN,

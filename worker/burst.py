@@ -70,9 +70,10 @@ def _tek_hit(
         izlenim = serp.serp_getir_html(sorgu, uule=uule, proxy=proxy_adres,
                                        onceki_profil=profil, oturum=oturum)
         kayit["izlenim"] = izlenim["result"]
-        if izlenim["result"] == "captcha":
-            # Duvara carptiysa tiklama denenmez; telemetri izlenimden alinir.
-            kayit["result"] = "captcha"
+        # Duvara carptiysa ya da SERP bos donduyse tiklama denenmez: bos
+        # sayfaya tiklamak hit'i "ok" gosterip C9 olcumunu anlamsizlasiyordu.
+        if izlenim["result"] in ("captcha", "not_found"):
+            kayit["result"] = izlenim["result"]
             kayit["http_status"] = izlenim["http_status"]
             kayit["bytes"] = izlenim["bytes"]
             kayit["latency_ms"] = izlenim["elapsed_ms"]
@@ -97,7 +98,8 @@ def _tek_hit(
         kayit["bytes"] = tik["bytes"]
         kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
 
-    kayit["result"] = "ok"
+    # Pogo basarisizsa hit "ok" sayilmaz: SERP'e donus de kabulun parcasidir.
+    kayit["result"] = "ok" if pog is not None and pog["result"] == "ok" else "error"
     return kayit
 
 def burst_yap(
@@ -163,6 +165,9 @@ def burst_yap(
     geo_kodu = havuz.kod_bul(geo_slug) if geo_slug else None
     # Kelime mobil isaretliyse mobil IP ve android profil zorlanir.
     mobil_hedef = havuz.kelime_mobil(sorgu)
+    # Mobil pencere hit sayisina cevrilir: duvar saatiyle olculunce ilk hit
+    # tek basina pencereyi asiyor ve mobil IP bir daha kullanilmiyordu.
+    mobil_hit_siniri = max(1, min(3, round(MOBIL_PENCERE_SN / 4)))
     for sira in range(1, adet + 1):
         # Durdurma her hit öncesi sorulur: uçan istek kesilmez, yenisi başlamaz.
         if devam is not None and not devam():
@@ -171,7 +176,7 @@ def burst_yap(
 
         # Mobil IP pahalı ve çabuk tükeniyor; yalnızca ilk saniyelerde
         # kullanılır, sonra residential'a düşülür (§8).
-        mobil_acik = (time.perf_counter() - basladi) < MOBIL_PENCERE_SN
+        mobil_acik = sira <= mobil_hit_siniri
 
         kayit: dict = {}
         failover_oldu = False

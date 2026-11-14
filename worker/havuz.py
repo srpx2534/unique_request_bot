@@ -293,14 +293,16 @@ def sec(
     sonuc = sec_mod(geo_slug, mobil_acik)
     return None if sonuc is None else (sonuc[0], sonuc[1])
 # Son seçimin hangi yoldan geldiğini tutar: city, tr_fallback, yabanci.
+# Geriye uyumluluk için duruyor; eşzamanlı burst'te yarışa açıktır, bu yüzden
+# `varsayilan_secici` modu kapanışın kendi içinde taşır.
 son_mod = "yabanci"
 
 
 def varsayilan_secici(geo_slug: str | None = None, mobil_acik: bool = True):
     """Havuzdan seçim yapan kapanış döndürür.
 
-    Seçilen her proxy için `son_mod` güncellenir; böylece çağıran taraf
-    hit kaydına hangi yoldan gidildiğini yazabilir.
+    Seçilen her proxy için mod kapanışın kendi içinde tutulur; global
+    `son_mod` eşzamanlı burst'te başka burst'ün moduyla eziliyordu.
 
     Args:
         geo_slug: İl slug'ı; verilirse önce o il denenir.
@@ -308,6 +310,7 @@ def varsayilan_secici(geo_slug: str | None = None, mobil_acik: bool = True):
 
     Returns:
         Parametresiz çağrılabilir; proxy dizesi ya da None.
+        `secici.mod` son seçimin yolunu taşır (city, tr_fallback, yabanci).
     """
 
     def secici() -> str | None:
@@ -315,9 +318,11 @@ def varsayilan_secici(geo_slug: str | None = None, mobil_acik: bool = True):
         sonuc = sec_mod(geo_slug, mobil_acik)
         if sonuc is None:
             return None
+        secici.mod = sonuc[2]
         son_mod = sonuc[2]
         return sonuc[1]
 
+    secici.mod = "yabanci"
     return secici
 
 
@@ -380,9 +385,11 @@ def _cift_bul(site_domain: str | None, kelime: str | None) -> tuple[int, int] | 
         return None
     try:
         with baglanti.cursor() as imlec:
+            # Sira sabitlenir: ayni metinli iki kayit varsa LIMIT 1 rastgele
+            # satir donduruyor ve yanlis cifte kullanim yaziliyordu.
             imlec.execute(
                 "SELECT k.site_id, k.id FROM keyword k JOIN site s ON s.id = k.site_id"
-                " WHERE s.domain = %s AND k.text = %s LIMIT 1",
+                " WHERE s.domain = %s AND k.text = %s ORDER BY k.id LIMIT 1",
                 (site_domain, kelime),
             )
             satir = imlec.fetchone()
@@ -441,7 +448,14 @@ def cerez_sec(
             gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
             for gecmis in gecmisler:
                 for _ in range(3):
-                    kosullar = ["durum = 'hazir'", "suresi_gecmis = %s"]
+                    # C46: cerez ulkesi IP ulkesiyle eslesmeli. Cerez yalnizca
+                    # TR baglamda yuklendigi icin yabanci cerez disarida kalir;
+                    # ulkesi bilinmeyen (NULL) profil denenmeye devam eder.
+                    kosullar = [
+                        "durum = 'hazir'",
+                        "suresi_gecmis = %s",
+                        "(ulke IS NULL OR ulke = 'TR')",
+                    ]
                     parametreler: list = [gecmis]
                     if cift:
                         kosullar.append(
@@ -495,11 +509,13 @@ def cerez_al(profil_id: int) -> list[dict]:
     try:
         with baglanti.cursor() as imlec:
             imlec.execute(
-                "SELECT domain, ad, deger, yol FROM cookie WHERE profil_id = %s", (profil_id,)
+                "SELECT domain, ad, deger, yol, host_only FROM cookie WHERE profil_id = %s",
+                (profil_id,),
             )
             return [
-                {"domain": d, "ad": a, "deger": dg, "yol": y or "/"}
-                for d, a, dg, y in imlec.fetchall()
+                {"domain": d, "ad": a, "deger": dg, "yol": y or "/",
+                 "host_only": int(h or 0)}
+                for d, a, dg, y, h in imlec.fetchall()
             ]
     except Exception:  # noqa: BLE001
         return []

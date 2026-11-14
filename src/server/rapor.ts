@@ -14,15 +14,15 @@ const yonlendirici = Router();
 function aralik(secim: string | undefined): string {
   switch (secim) {
     case "bugun":
-      return "DATE(b.started_at) = CURDATE()";
+      return "DATE(b.started_at) = UTC_DATE()";
     case "dun":
-      return "DATE(b.started_at) = CURDATE() - INTERVAL 1 DAY";
+      return "DATE(b.started_at) = UTC_DATE() - INTERVAL 1 DAY";
     case "hafta":
-      return "b.started_at >= NOW(3) - INTERVAL 7 DAY";
+      return "b.started_at >= UTC_TIMESTAMP(3) - INTERVAL 7 DAY";
     case "hepsi":
       return "1 = 1";
     default:
-      return "b.started_at >= NOW(3) - INTERVAL 30 DAY";
+      return "b.started_at >= UTC_TIMESTAMP(3) - INTERVAL 30 DAY";
   }
 }
 

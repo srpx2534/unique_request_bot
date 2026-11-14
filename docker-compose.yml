@@ -66,7 +66,8 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "127.0.0.1:8081:8081"
+      # Worker public alt agda calisir (§17.5); panel yerelde kalir.
+      - "8081:8081"
 
   panel:
     build:
@@ -79,6 +80,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       PANEL_HOST: 0.0.0.0
       NODE_ENV: production
+      CEREZ_YUKLEME_KOK: /app/cerez_yukleme
     depends_on:
       mysql:
         condition: service_healthy
@@ -88,6 +90,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # Cerez yuklemesi yazilabilir kalici birime yazilir; read_only kokfs
+      # yuzunden varsayilan /app/cerez_yukleme salt okunur kaliyordu.
+      - cerez_yukleme:/app/cerez_yukleme
     cap_drop:
       - ALL
     security_opt:
@@ -97,3 +103,4 @@ services:
 
 volumes:
   mysql_data:
+  cerez_yukleme:

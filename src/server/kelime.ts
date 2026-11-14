@@ -171,10 +171,17 @@ yonlendirici.patch("/kelime/:id", async (istek, yanit) => {
     return;
   }
 
+  // Ayni degerle gelen PATCH'te MySQL 0 satir dondurur; 404 karari bu yuzden
+  // etkilenen satir sayisina degil varlik kontrolune baglanir.
+  const varMi = await tek<{ id: number }>("SELECT id FROM keyword WHERE id = ?", [id]);
+  if (!varMi) {
+    yanit.status(404).json({ hata: "kelime yok" });
+    return;
+  }
   degerler.push(id);
   try {
     const etkilenen = await yaz(`UPDATE keyword SET ${alanlar.join(", ")} WHERE id = ?`, degerler);
-    if (etkilenen === 0) {
+    if (etkilenen === 0 && !varMi) {
       yanit.status(404).json({ hata: "kelime yok" });
       return;
     }
@@ -184,6 +191,18 @@ yonlendirici.patch("/kelime/:id", async (istek, yanit) => {
       return;
     }
     throw hata;
+  }
+
+  // Metin degisince rotasyon defteri yeni metne bagli kalir: geo satirlari
+  // yeniden uretilmezse kelime hicbir ilde kosmaz ve sessizce olu kalir.
+  if (govde.kelime !== undefined) {
+    const geo = await tek<{ geo_scope: string; home_geo: number | null }>(
+      "SELECT geo_scope, home_geo FROM keyword WHERE id = ?",
+      [id],
+    );
+    if (geo) {
+      await geoUret(id, geo.geo_scope as "national" | "province", geo.home_geo);
+    }
   }
 
   await denetim(istek, "kelime-guncelle", "keyword", id);
@@ -248,15 +267,22 @@ yonlendirici.post("/kelime/:id/baslat", async (istek, yanit) => {
     return;
   }
 
-  await islem(async (baglanti) => {
+  // Onceki kampanya kapatilir: acik birakilirsa her baslat yeni kampanya acar,
+  // eskiler sonsuza kadar acik kalir ve hacim gecmisi siser.
+  const yeniKampanya = await islem(async (baglanti) => {
     await baglanti.execute("UPDATE keyword SET state = 'active' WHERE id = ?", [id]);
     await baglanti.execute(
+      "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3) WHERE keyword_id = ? AND stopped_at IS NULL",
+      [id],
+    );
+    const [sonuc] = await baglanti.execute(
       "INSERT INTO campaign (keyword_id, step_size, config) VALUES (?, ?, ?)",
       [id, 30, "{}"],
     );
+    return (sonuc as { insertId: number }).insertId;
   });
   await denetim(istek, "kelime-baslat", "keyword", id);
-  yanit.json({ id, state: "active" });
+  yanit.json({ id, state: "active", campaign_id: yeniKampanya });
 });
 
 yonlendirici.post("/kelime/:id/durdur", async (istek, yanit) => {
@@ -265,17 +291,19 @@ yonlendirici.post("/kelime/:id/durdur", async (istek, yanit) => {
     yanit.status(400).json({ hata: "geçersiz kelime kimliği" });
     return;
   }
-  const etkilenen = await yaz("UPDATE keyword SET state = 'paused' WHERE id = ?", [id]);
-  if (etkilenen === 0) {
+  // Zaten durmus kelimede affectedRows 0 doner; 404 karari varliga baglanir.
+  const varMi = await tek<{ id: number }>("SELECT id FROM keyword WHERE id = ?", [id]);
+  if (!varMi) {
     yanit.status(404).json({ hata: "kelime yok" });
     return;
   }
+  await yaz("UPDATE keyword SET state = 'paused' WHERE id = ?", [id]);
   await yaz(
-    "UPDATE campaign SET stopped_at = NOW(3) WHERE keyword_id = ? AND stopped_at IS NULL",
+    "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3) WHERE keyword_id = ? AND stopped_at IS NULL",
     [id],
   );
   await denetim(istek, "kelime-durdur", "keyword", id);
-  yanit.json({ id, state: "paused" });
+  yanit.status(204).end();
 });
 
 export default yonlendirici;

@@ -51,15 +51,41 @@ def zorunlu(anahtar: str) -> str:
         raise RuntimeError(f".env içinde {anahtar} boş")
     return deger
 
+# SERP anahtar sırası: birincil, sonra yedekler (§8). İlk dolu anahtar döner.
+SERP_ANAHTAR_SIRASI = ("serp_decodo", "serp_serper", "serp_searchapi")
+
+
 def serp_anahtari() -> str:
     """Aktif SERP anahtarını verir.
 
-    Önce ayar tablosu, sonra .env okunur. ayar_db, ayar modülünü içe aktardığı
-    için burada gecikmeli içe aktarma yapılır.
+    Sıra sözleşmededir: Decodo birincil, Serper ve SearchApi yedek. Birincil
+    boşsa yedek denenir, böylece tek anahtar bitince ölçüm durmaz.
 
     Returns:
-        Anahtar; tanımlı değilse boş dize.
+        Anahtar; hiçbiri tanımlı değilse boş dize.
     """
     from worker import ayar_db
 
-    return ayar_db.oku("serp_decodo")
+    for anahtar in SERP_ANAHTAR_SIRASI:
+        deger = (ayar_db.oku(anahtar) or "").strip()
+        if deger:
+            return deger
+    return ""
+
+
+def serp_secim() -> tuple[str, str]:
+    """Aktif SERP sağlayıcısını ve anahtarını verir.
+
+    Sağlayıcı adı anahtar adından türetilir (`serp_decodo` → `decodo`); uç
+    nokta ve gövde biçimi sağlayıcıya göre değiştiği için birlikte döner.
+
+    Returns:
+        (sağlayıcı, anahtar); hiçbiri yoksa ("", "").
+    """
+    from worker import ayar_db
+
+    for anahtar in SERP_ANAHTAR_SIRASI:
+        deger = (ayar_db.oku(anahtar) or "").strip()
+        if deger:
+            return anahtar.removeprefix("serp_"), deger
+    return "", ""

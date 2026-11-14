@@ -24,7 +24,13 @@ from curl_cffi import requests
 
 from worker import ayar, fingerprint, saglik_db
 
+# Saglayici uclari (§8): Decodo birincil, Serper ve SearchApi yedek.
 API_URL = "https://data.decodo.com/v1/search"
+UCLAR = {
+    "decodo": API_URL,
+    "serper": "https://google.serper.dev/search",
+    "searchapi": "https://www.searchapi.io/api/v1/search",
+}
 ZAMAN_ASIMI = 25  # saniye; üstü burst'ü geciktirir
 SAYFA_BASI = 10  # API'nin tek yanıtta döndürdüğü sonuç sayısı
 AZAMI_SAYFA = 10  # 10 x 10 = ilk 100 sıra
@@ -106,23 +112,53 @@ def _bos_sonuc() -> dict:
     }
 
 
+def _govde_kur(saglayici: str, sorgu: str, sayfa: int, dil: str, ulke: str,
+               uule: str | None) -> dict:
+    """Sağlayıcının beklediği istek gövdesini kurar.
+
+    Üç sağlayıcının alan adları farklıdır; ortak gövde tek yerde tutulmaz.
+    """
+    if saglayici == "serper":
+        govde = {"q": sorgu, "page": sayfa, "gl": ulke, "hl": dil}
+        if uule:
+            govde["uule"] = uule
+        return govde
+    if saglayici == "searchapi":
+        govde = {"q": sorgu, "page": sayfa, "gl": ulke, "hl": dil}
+        if uule:
+            govde["uule"] = uule
+        return govde
+    govde = {"query": sorgu, "page": sayfa, "locale": f"{dil}-{ulke.upper()}",
+             "geo": ulke}
+    if uule:
+        govde["uule"] = uule
+    return govde
+
+
+def _basliklar(saglayici: str, anahtar: str) -> dict:
+    """Sağlayıcının kimlik başlığını kurar."""
+    if saglayici == "serper":
+        return {"X-API-KEY": anahtar, "Content-Type": "application/json"}
+    if saglayici == "searchapi":
+        return {"Authorization": f"Bearer {anahtar}"}
+    return {"authorization": f"Bearer {anahtar}"}
+
+
 def _sayfa_cek(sorgu: str, sayfa: int, anahtar: str, dil: str, ulke: str,
-               uule: str | None) -> tuple[list[dict], dict]:
+               uule: str | None, saglayici: str = "decodo"
+               ) -> tuple[list[dict], dict]:
     """Tek sayfayı API'den çeker.
 
     Returns:
         (organik liste, ham yanıt bilgisi) demeti.
     """
-    govde = {"query": sorgu, "page": sayfa, "locale": f"{dil}-{ulke.upper()}",
-             "geo": ulke}
-    if uule:
-        govde["uule"] = uule
+    govde = _govde_kur(saglayici, sorgu, sayfa, dil, ulke, uule)
 
     basladi = time.perf_counter()
     try:
         yanit = requests.post(
-            API_URL, json=govde,
-            headers={"authorization": f"Bearer {anahtar}"},
+            UCLAR.get(saglayici, API_URL), json=govde,
+            headers=_basliklar(saglayici, anahtar),
             impersonate="chrome", timeout=ZAMAN_ASIMI,
         )
     except Exception as hata:  # noqa: BLE001
@@ -151,7 +187,9 @@ def _sayfa_cek(sorgu: str, sayfa: int, anahtar: str, dil: str, ulke: str,
         bilgi["durum"], bilgi["mesaj"] = "error", "gövde JSON değil"
         return [], bilgi
 
-    organik = veri.get("organic") or veri.get("results", {}).get("organic") or []
+    organik = (veri.get("organic")
+               or veri.get("organic_results")
+               or veri.get("results", {}).get("organic") or [])
     bilgi["url"] = veri.get("url")
     return organik, bilgi
 
@@ -189,22 +227,24 @@ def serp_getir(
     sonuc = _bos_sonuc()
     sonuc["kaynak"] = "api"
 
-    anahtar = ayar.serp_anahtari()
+    # Saglayici ve anahtar birlikte secilir: birincil bos ise yedek devreye girer.
+    saglayici, anahtar = ayar.serp_secim()
     if not anahtar:
         sonuc["result"] = "anahtar_yok"
-        sonuc["mesaj"] = "ayar tablosunda serp_decodo boş"
+        sonuc["mesaj"] = "ayar tablosunda SERP anahtari bos"
         return sonuc
+    sonuc["kaynak"] = saglayici
 
     aranan = _kok(hedef_domain) if hedef_domain else ""
     toplam_ms = 0
 
     for sayfa in range(1, azami_sayfa + 1):
-        organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule)
+        organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici)
         # Sonraki sayfa 503/429 ile düşerse bir kez, kısa beklemeden sonra
         # tekrar denenir. 503 burada hız sınırıdır, kalıcı engel değildir.
         if bilgi["durum"] in ("captcha", "error") and sayfa > 1:
             time.sleep(SAYFA_ARASI_MAX)
-            organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule)
+            organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici)
         toplam_ms += bilgi["ms"]
         sonuc["elapsed_ms"] = toplam_ms
         sonuc["http_status"] = bilgi["http"]
