@@ -66,12 +66,17 @@ const CEREZ_ALANLARI: MantiksalAlan[] = [
     etiket: "Süresi geçmiş çerezleri de kullan",
     aciklama: "Önce süresi dolmamış çerezler denenir; tükendiyse süresi geçmişler kullanılır.",
   },
+  {
+    anahtar: "cerez_kendi",
+    etiket: "Yalnızca kendi çerezlerimi gör",
+    aciklama: "Havuz ortak kalır; yalnızca çerezler ekranındaki sayımlar kendi yüklediklerinle sınırlanır.",
+  },
 ];
 
 const SERP = [
   { anahtar: "serp_decodo", ad: "Decodo", not: "sıralama ölçümü · birincil" },
-  { anahtar: "serp_serper", ad: "Serper", not: "yedek · henüz bağlı değil" },
-  { anahtar: "serp_searchapi", ad: "SearchApi", not: "yedek · henüz bağlı değil" },
+  { anahtar: "serp_serper", ad: "Serper", not: "yedek" },
+  { anahtar: "serp_searchapi", ad: "SearchApi", not: "yedek" },
 ];
 
 const GIZLI = new Set(SERP.map((s) => s.anahtar));

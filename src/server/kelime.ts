@@ -94,6 +94,9 @@ yonlendirici.get("/kelime", async (istek, yanit) => {
     `SELECT k.id, k.site_id, s.domain, k.text, k.geo_scope, k.home_geo, k.tier, k.mobil, k.state,
             k.created_at,
             (SELECT COUNT(*) FROM keyword_geo g WHERE g.keyword_id = k.id) AS geo_adet,
+            (SELECT p.rank FROM position p WHERE p.keyword_id = k.id AND p.channel = 'clean'
+              ORDER BY p.checked_at DESC LIMIT 1) AS son_sira,
+            (SELECT COUNT(*) FROM position p WHERE p.keyword_id = k.id AND p.channel = 'clean') AS olcum_adet,
             il.name AS il_adi, s.active AS site_active
        FROM keyword k
        JOIN site s ON s.id = k.site_id
@@ -222,6 +225,83 @@ yonlendirici.delete("/kelime/:id", async (istek, yanit) => {
   }
   await denetim(istek, "kelime-sil", "keyword", id);
   yanit.status(204).end();
+});
+
+/**
+ * Kelimenin sıralama ve ilerleme özeti.
+ *
+ * Panelde "özet" düğmesi bunu açar: ilk ölçülen sıra, şu anki sıra, hit
+ * sayacı ve burst geçmişi tek yanıtta gelir. Sıralama yoksa null döner,
+ * "hiç ölçülmedi" ile karışmasın diye ölçüm sayısı da verilir.
+ */
+yonlendirici.get("/kelime/:id/ozet", async (istek, yanit) => {
+  const id = kimlik(istek.params.id);
+  if (id === null) {
+    yanit.status(400).json({ hata: "geçersiz kelime kimliği" });
+    return;
+  }
+  const kelime = await tek<{ text: string; state: string; volume: number | null }>(
+    "SELECT text, state, volume FROM keyword WHERE id = ?",
+    [id],
+  );
+  if (!kelime) {
+    yanit.status(404).json({ hata: "kelime yok" });
+    return;
+  }
+
+  // Siralama gecmisi: en eski ve en yeni kayit; trend bu ikisinden cikar.
+  const gecmis = await sorgu<{ rank: number | null; checked_at: string }>(
+    `SELECT rank, checked_at FROM position WHERE keyword_id = ? AND channel = 'clean'
+      ORDER BY checked_at ASC LIMIT 500`,
+    [id],
+  );
+  const olcum = gecmis.filter((g) => g.rank !== null);
+  const ilk = olcum[0] ?? null;
+  const son = olcum[olcum.length - 1] ?? null;
+
+  const hitler = await tek<{ ok: number; fail: number; toplam: number }>(
+    `SELECT
+       (SELECT COUNT(*) FROM hit h JOIN burst b ON b.id = h.burst_id
+          JOIN keyword_geo g ON g.id = b.keyword_geo_id
+         WHERE g.keyword_id = ? AND h.result = 'ok') AS ok,
+       (SELECT COUNT(*) FROM hit h JOIN burst b ON b.id = h.burst_id
+          JOIN keyword_geo g ON g.id = b.keyword_geo_id
+         WHERE g.keyword_id = ? AND h.result <> 'ok') AS fail,
+       (SELECT COUNT(*) FROM burst b JOIN keyword_geo g ON g.id = b.keyword_geo_id
+         WHERE g.keyword_id = ?) AS toplam`,
+    [id, id, id],
+  );
+
+  const burstlar = await sorgu(
+    `SELECT b.id, b.step, b.target_count, b.phase, b.started_at, b.ended_at
+       FROM burst b JOIN keyword_geo g ON g.id = b.keyword_geo_id
+      WHERE g.keyword_id = ? ORDER BY b.id DESC LIMIT 20`,
+    [id],
+  );
+
+  yanit.json({
+    kelime: kelime.text,
+    state: kelime.state,
+    volume: kelime.volume,
+    olcum_sayisi: olcum.length,
+    ilk_sira: ilk?.rank ?? null,
+    ilk_at: ilk?.checked_at ?? null,
+    son_sira: son?.rank ?? null,
+    son_at: son?.checked_at ?? null,
+    trend:
+      ilk && son && ilk.rank !== null && son.rank !== null
+        ? ilk.rank === son.rank
+          ? "sabit"
+          : son.rank < ilk.rank
+            ? "yukari"
+            : "asagi"
+        : "yok",
+    hit_ok: hitler?.ok ?? 0,
+    hit_fail: hitler?.fail ?? 0,
+    burst_adet: hitler?.toplam ?? 0,
+    burstlar,
+    seri: gecmis.slice(-60),
+  });
 });
 
 yonlendirici.post("/kelime/:id/geo-yenile", async (istek, yanit) => {

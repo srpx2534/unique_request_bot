@@ -70,11 +70,17 @@ export default function Cerezler() {
   const [islemId, setIslemId] = useState<number | null>(null);
   const [islem, setIslem] = useState<Islem | null>(null);
   const [silinecek, setSilinecek] = useState(false);
+  const [hataliSilinecek, setHataliSilinecek] = useState(false);
 
   const ozet = useQuery<Ozet, ApiHatasi>({
     queryKey: ["cerez"],
     queryFn: () => iste("/cerez"),
-    refetchInterval: (sorgu) => (sorgu.state.data?.durum.calisiyor ? 1_500 : 10_000),
+    // Yukleme/aktarim surerken havuz sayaclari hizli tazelenir; kullanici
+    // sayinin degistigini gorur, ekrani elle yenilemek zorunda kalmaz.
+    refetchInterval: (sorgu) =>
+      asama === "yukleniyor" || asama === "aktarim" || sorgu.state.data?.durum.calisiyor
+        ? 1_000
+        : 10_000,
   });
 
   const temizle = useMutation<unknown, ApiHatasi>({
@@ -83,6 +89,15 @@ export default function Cerezler() {
       setSilinecek(false);
       void istemci.invalidateQueries({ queryKey: ["cerez"] });
       bildir("Çerez defteri silindi");
+    },
+  });
+
+  const hatalilariSil = useMutation<{ silinen: number }, ApiHatasi>({
+    mutationFn: () => iste("/cerez/hatali", { method: "DELETE" }),
+    onSuccess: (sonuc) => {
+      setHataliSilinecek(false);
+      void istemci.invalidateQueries({ queryKey: ["cerez"] });
+      bildir(`${sonuc.silinen} hatalı kayıt silindi`);
     },
   });
 
@@ -213,18 +228,10 @@ export default function Cerezler() {
           {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={modalite}
-            onChange={(o) => setModalite(o.target.value === "1" ? 1 : 0)}
-            disabled={mesgul}
-            className="h-9 rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-2 text-sm"
-          >
-            <option value="0">Web</option>
-            <option value="1">Mobil</option>
-          </select>
+
           <Dugme
             gorunum="ikincil"
-            disabled={mesgul}
+            disabled={secili || mesgul}
             onClick={() => {
               if (secici.current) secici.current.value = "";
               secici.current?.click();
@@ -361,7 +368,17 @@ export default function Cerezler() {
         </div>
       </Kart>
 
-      <Kart baslik="Hatalı dosyalar" aciklama="Biçim tanınmayan, boş ya da bozuk dosyalar.">
+      <Kart
+        baslik="Hatalı dosyalar"
+        aciklama="Biçim tanınmayan, boş ya da bozuk dosyalar."
+      >
+        {sayim?.gecersiz ? (
+          <div className="mb-2 flex justify-end">
+            <Dugme gorunum="ikincil" className="h-7 px-2 text-xs" onClick={() => setHataliSilinecek(true)}>
+              hatalıları sil
+            </Dugme>
+          </div>
+        ) : null}
         {ozet.data?.hatalilar.length ? (
           <ul className="divide-y divide-kenar text-xs">
             {ozet.data.hatalilar.map((hata) => (
@@ -385,6 +402,16 @@ export default function Cerezler() {
         kapat={() => setSilinecek(false)}
         bekle={temizle.isPending}
         onayla={() => temizle.mutate()}
+      />
+
+      <Onay
+        acik={hataliSilinecek}
+        baslik="Hatalı kayıtları sil"
+        dugmeEtiketi="Sil"
+        metin={`${sayim?.gecersiz ?? 0} hatalı dosya kaydı silinir. Havuzdaki sağlam çerezler etkilenmez.`}
+        kapat={() => setHataliSilinecek(false)}
+        bekle={hatalilariSil.isPending}
+        onayla={() => hatalilariSil.mutate()}
       />
     </div>
   );

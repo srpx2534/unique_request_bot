@@ -12,6 +12,23 @@ import { ApiHatasi, iste } from "@/lib/api";
 
 type Site = { id: number; domain: string };
 type Il = { code: number; name: string };
+type Ozet = {
+  kelime: string;
+  state: string;
+  volume: number | null;
+  olcum_sayisi: number;
+  ilk_sira: number | null;
+  ilk_at: string | null;
+  son_sira: number | null;
+  son_at: string | null;
+  trend: "yukari" | "asagi" | "sabit" | "yok";
+  hit_ok: number;
+  hit_fail: number;
+  burst_adet: number;
+  burstlar: { id: number; step: number; target_count: number; phase: string; started_at: string; ended_at: string | null }[];
+  seri: { rank: number | null; checked_at: string }[];
+};
+
 type Kelime = {
   id: number;
   text: string;
@@ -22,6 +39,8 @@ type Kelime = {
   mobil: number;
   state: string;
   geo_adet: number;
+  son_sira: number | null;
+  olcum_adet: number;
   site_active: number;
 };
 
@@ -44,6 +63,14 @@ export default function Kelimeler() {
   const [arama, setArama] = useState("");
   const [duzenlenen, setDuzenlenen] = useState<Kelime | null>(null);
   const [silinecek, setSilinecek] = useState<Kelime | null>(null);
+  const [ozetlenen, setOzetlenen] = useState<Kelime | null>(null);
+
+  // Ozet yalnizca pencere acikken cekilir; her satir icin onceden sorgu gitmez.
+  const ozet = useQuery<Ozet, ApiHatasi>({
+    queryKey: ["kelime-ozet", ozetlenen?.id],
+    queryFn: () => iste<Ozet>(`/kelime/${ozetlenen?.id}/ozet`),
+    enabled: ozetlenen !== null,
+  });
 
   const siteler = useQuery<{ satirlar: Site[] }, ApiHatasi>({ queryKey: ["site"], queryFn: () => iste<{ satirlar: Site[] }>("/site") });
   const iller = useQuery<Il[], ApiHatasi>({ queryKey: ["geo"], queryFn: () => iste<Il[]>("/geo"), staleTime: 600_000 });
@@ -132,7 +159,7 @@ export default function Kelimeler() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-solgun">
-              <tr><th className="py-2">Kelime</th><th>Site</th><th>Kapsam</th><th>İl</th><th>Geo</th><th>Hacim</th><th>Mod</th><th>Durum</th><th /></tr>
+              <tr><th className="py-2">Kelime</th><th>Site</th><th>Kapsam</th><th>İl</th><th>Geo</th><th>Sıra</th><th>Hacim</th><th>Mod</th><th>Durum</th><th /></tr>
             </thead>
             <tbody className="divide-y divide-kenar">
               {liste.data?.satirlar.map((k) => (
@@ -142,6 +169,9 @@ export default function Kelimeler() {
                   <td className="text-solgun">{k.geo_scope}</td>
                   <td className="text-solgun">{k.il_adi ?? "—"}</td>
                   <td className="text-solgun">{k.geo_adet}</td>
+                  <td className="text-solgun">
+                    {k.olcum_adet === 0 ? "—" : k.son_sira === null ? "100+" : k.son_sira}
+                  </td>
                   <td className="text-solgun">{k.volume ?? "—"}</td>
                   <td>
                     <Dugme
@@ -160,6 +190,7 @@ export default function Kelimeler() {
                   </td>
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
+                      <Dugme gorunum="sade" className="h-8 px-2 text-xs" onClick={() => setOzetlenen(k)}>Özet</Dugme>
                       <Dugme gorunum="sade" className="h-8 px-2 text-xs" onClick={() => setDuzenlenen(k)}>Düzenle</Dugme>
                       {k.state === "active" ? (
                         <Dugme gorunum="ikincil" className="h-8 px-2 text-xs" onClick={() => islem.mutate({ yol: `/kelime/${k.id}/durdur`, yontem: "POST" })}>Durdur</Dugme>
@@ -210,6 +241,59 @@ export default function Kelimeler() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal acik={ozetlenen !== null} kapat={() => setOzetlenen(null)} baslik="İlerleme özeti">
+        {ozet.isPending ? (
+          <p className="py-4 text-sm text-solgun">Yükleniyor…</p>
+        ) : ozet.data ? (
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-solgun break-all">{ozet.data.kelime}</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-[var(--radius-kutu)] bg-yuzey-2 p-2">
+                <p className="text-solgun">İlk ölçülen sıra</p>
+                <p className="text-lg">{ozet.data.ilk_sira ?? "100+ / yok"}</p>
+                <p className="text-solgun">{ozet.data.ilk_at?.slice(5, 16).replace("T", " ") ?? "—"}</p>
+              </div>
+              <div className="rounded-[var(--radius-kutu)] bg-yuzey-2 p-2">
+                <p className="text-solgun">Şu anki sıra</p>
+                <p className="text-lg">{ozet.data.son_sira ?? "100+ / yok"}</p>
+                <p className="text-solgun">{ozet.data.son_at?.slice(5, 16).replace("T", " ") ?? "—"}</p>
+              </div>
+            </div>
+            <p className="text-xs">
+              Trend: <Etiket ton={ozet.data.trend === "yukari" ? "basari" : ozet.data.trend === "asagi" ? "tehlike" : "notr"}>{ozet.data.trend}</Etiket>
+              {" · "}ölçüm {ozet.data.olcum_sayisi} · başarılı hit {ozet.data.hit_ok} · başarısız {ozet.data.hit_fail} · burst {ozet.data.burst_adet}
+            </p>
+            <div>
+              <p className="mb-1 text-xs text-solgun">Sıralama serisi (son 60 ölçüm)</p>
+              <div className="flex h-16 items-end gap-0.5">
+                {ozet.data.seri.map((n, i) => (
+                  <div
+                    key={i}
+                    title={`${n.checked_at.slice(5, 16).replace("T", " ")} · ${n.rank ?? "100+"}`}
+                    className="w-1.5 rounded-t bg-vurgu"
+                    style={{ height: `${Math.max(4, 100 - Math.min(100, n.rank ?? 100))}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-xs text-solgun">Burst geçmişi</p>
+              <ul className="max-h-40 divide-y divide-kenar overflow-y-auto text-xs">
+                {ozet.data.burstlar.map((b) => (
+                  <li key={b.id} className="flex justify-between py-1">
+                    <span>#{b.id} · adım {b.step} · hedef {b.target_count} · {b.phase}</span>
+                    <span className="text-solgun">{b.started_at.slice(5, 16).replace("T", " ")}</span>
+                  </li>
+                ))}
+                {!ozet.data.burstlar.length ? <li className="py-1 text-solgun">Burst yok.</li> : null}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <p className="py-4 text-sm text-tehlike">Özet okunamadı.</p>
+        )}
       </Modal>
 
       <Onay

@@ -67,6 +67,10 @@ async function adaylar(aralik: number): Promise<Aday[]> {
 }
 
 /** Sırayı sayfa sayfa arar; hedef bulununca erken durur. */
+/** Sağlayıcının uç noktası; tanınmıyorsa birincil uç. */
+function uc(saglayici: string): string {
+  return UCLAR[saglayici] ?? "https://data.decodo.com/v1/search";
+}
 async function siraBul(
   saglayici: string,
   anahtar: string,
@@ -83,7 +87,7 @@ async function siraBul(
       ? { "X-API-KEY": anahtar, "content-type": "application/json" }
       : { authorization: `Bearer ${anahtar}`, "content-type": "application/json" };
   for (let sayfa = 1; sayfa <= AZAMI_SAYFA; sayfa += 1) {
-    const cevap = await fetch(UCLAR[saglayici] ?? UCLAR.decodo, {
+    const cevap = await fetch(uc(saglayici), {
       method: "POST",
       headers: basliklar(),
       body: JSON.stringify(govde(sayfa)),

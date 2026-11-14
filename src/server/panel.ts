@@ -9,7 +9,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { dogrula } from "./dogrula.js";
 import { denetim } from "./denetim.js";
-import { sorgu, tek, yaz } from "./veritabani.js";
+import { ekle, sorgu, tek, yaz } from "./veritabani.js";
 
 const yonlendirici = Router();
 

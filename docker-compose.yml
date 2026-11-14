@@ -15,6 +15,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_turkish_ci
       - --default-time-zone=+00:00
+      - --innodb-buffer-pool-size=256M
     ports:
       # YalnÄ±zca yerel makineye aÃ§Ä±lÄ±r
       - "127.0.0.1:3306:3306"

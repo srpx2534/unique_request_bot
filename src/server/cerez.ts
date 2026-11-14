@@ -17,6 +17,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { islem, sorgu, tek, yaz } from "./veritabani.js";
+import { ayarOku } from "./ayar.js";
 import { dogrula } from "./dogrula.js";
 
 const AZAMI_BOYUT = 2 * 1024 * 1024; // dosya basi bayt
@@ -288,6 +289,23 @@ function icerikOzeti(metin: string): string {
  * Aynı içerik başka dosyada aktarılmışsa satır `mukerrer` olur ve özeti yol
  * özetine çevrilir, böylece tekil kalır.
  */
+/**
+ * Dosyadan modalite çıkarır: mobil çerez mi, web mi.
+ *
+ * Toplu yüklemede kullanıcı seçim yapamadığı için ayrım içerikten türetilir.
+ * Önce JSON içindeki userAgent alanı, sonra dosya yolu denenir; işaret yoksa
+ * web sayılır.
+ *
+ * @param ham dosya içeriği
+ * @param goreli köke göreli yol
+ * @returns 1 mobil, 0 web
+ */
+function modaliteBul(ham: string, goreli: string): 0 | 1 {
+  const ua = /"(?:user_?agent)"\s*:\s*"([^"]{0,300})"/i.exec(ham);
+  const metin = `${ua?.[1] ?? ""} ${goreli}`.toLowerCase();
+  return /android|iphone|ipad|ipod|mobile|mobil|telefon/.test(metin) ? 1 : 0;
+}
+
 async function dosyaAktar(
   id: number,
   tam: string,
@@ -339,6 +357,8 @@ async function dosyaAktar(
   const il = ilBul(path.relative(kokDizin, tam));
   const ulke = ulkeBul(cerezler.map((c) => c.domain));
   const aile = aileBul(cerezler);
+  const mobil = modaliteBul(ham, path.relative(kokDizin, tam));
+
 
   try {
     await islem(async (baglanti) => {
@@ -347,13 +367,11 @@ async function dosyaAktar(
            il_kodu = ?, durum = 'aktarildi', hata = NULL WHERE id = ?`,
         [bicim, bilgi.size, ozet, cerezler.length, il, id],
       );
-      // Modalite yukleme kaydindan gelir: cerezler ait oldugu moda yazilir.
+      // Modalite dosyadan cikarilir: toplu yuklemede kullanici secemez.
       const [profil] = await baglanti.query(
         `INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, mobil, sona_erme, suresi_gecmis)
-         SELECT ?, ?, ?, ?, ?, COALESCE(y.modalite, 0), ?, ?
-           FROM cookie_dosya d LEFT JOIN cerez_yukleme y ON y.id = d.yukleme_id
-          WHERE d.id = ?`,
-        [id, path.basename(tam), il, ulke, aile, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0, id],
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, path.basename(tam), il, ulke, aile, mobil, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
       );
       const profilId = (profil as { insertId: number }).insertId;
 
@@ -398,18 +416,22 @@ async function isle(kokDizin: string): Promise<void> {
               + " OR isleniyor_at < UTC_TIMESTAMP(3) - INTERVAL ? MINUTE)",
             [KIRALAMA_DK],
           );
+          // MariaDB `FOR UPDATE SKIP LOCKED` bilmiyor; sahiplenme kosullu
+          // UPDATE ile yapilir. Once adaylar okunur, sonra durum 'yeni'
+          // kalanlar tek tek alinir: baskasi almissa 0 doner ve atlanir.
           const [satirlar] = await baglanti.query(
-            "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ? FOR UPDATE SKIP LOCKED",
+            "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
             [PAKET],
           );
-          const secilen = satirlar as { id: number; yol: string }[];
-          if (secilen.length) {
-            await baglanti.query(
-              `UPDATE cookie_dosya SET durum = 'isleniyor', isleniyor_at = UTC_TIMESTAMP(3) WHERE id IN (${secilen
-                .map(() => "?")
-                .join(",")})`,
-              secilen.map((satir) => satir.id),
+          const adaylar = satirlar as { id: number; yol: string }[];
+          const secilen: { id: number; yol: string }[] = [];
+          for (const aday of adaylar) {
+            const [sonuc] = await baglanti.query(
+              "UPDATE cookie_dosya SET durum = 'isleniyor', isleniyor_at = UTC_TIMESTAMP(3)"
+                + " WHERE id = ? AND durum = 'yeni'",
+              [aday.id],
             );
+            if ((sonuc as { affectedRows: number }).affectedRows === 1) secilen.push(aday);
           }
           return secilen;
         });
@@ -447,33 +469,114 @@ export async function kuyrukBaslat(): Promise<void> {
 const yolSemasi = z.object({ yol: z.string().trim().min(1).max(512) });
 
 /** Ozet sayilar. */
-yonlendirici.get("/cerez", async (_istek, yanit) => {
+yonlendirici.get("/cerez", async (istek, yanit) => {
+  // `cerez_kendi` acikken yalnizca kullanicinin kendi yukledigi dosyalar
+  // sayilir; havuz ortak olsa da kisi kendi emegini gorur.
+  const kim = await yukleyenKimlik(istek);
+  const kendi = kim !== null && (await ayarOku("cerez_kendi", "0")) === "1";
+  const suzgec = kendi ? " AND yukleyen = ?" : "";
+  const suzgecDeger = kendi ? [kim] : [];
+  // Profil satirlarinda yukleyen yok; dosya uzerinden suzulur.
+  const suzgecProfil = kendi
+    ? " AND EXISTS (SELECT 1 FROM cookie_dosya d2 WHERE d2.id = cookie_profil.dosya_id AND d2.yukleyen = ?)"
+    : "";
+
   const sayim = await tek<Record<string, number>>(
     `SELECT
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'aktarildi') AS dosya,
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'gecersiz') AS gecersiz,
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'mukerrer') AS mukerrer,
-       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 0) AS aktif,
-       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 1) AS suresi_gecmis,
-       (SELECT COUNT(*) FROM cookie_profil WHERE ulke = 'TR') AS ulke_tr,
-       (SELECT COUNT(*) FROM cookie_profil WHERE ulke IS NOT NULL AND ulke <> 'TR') AS ulke_yabanci,
-       (SELECT COUNT(*) FROM cookie_profil) AS toplam,
-       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL) AS illi,
-    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 1) AS mobil,
-    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 0) AS web`,
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'aktarildi'${suzgec}) AS dosya,
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'gecersiz'${suzgec}) AS gecersiz,
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'mukerrer'${suzgec}) AS mukerrer,
+       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 0${suzgecProfil}) AS aktif,
+       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 1${suzgecProfil}) AS suresi_gecmis,
+       (SELECT COUNT(*) FROM cookie_profil WHERE ulke = 'TR'${suzgecProfil}) AS ulke_tr,
+       (SELECT COUNT(*) FROM cookie_profil WHERE ulke IS NOT NULL AND ulke <> 'TR'${suzgecProfil}) AS ulke_yabanci,
+       (SELECT COUNT(*) FROM cookie_profil WHERE 1 = 1${suzgecProfil}) AS toplam,
+       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL${suzgecProfil}) AS illi,
+    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 1${suzgecProfil}) AS mobil,
+    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 0${suzgecProfil}) AS web`,
+    [
+      // Sirayla: 3 dosya sayimi, 8 profil sayimi.
+      ...suzgecDeger, ...suzgecDeger, ...suzgecDeger,
+      ...suzgecDeger, ...suzgecDeger, ...suzgecDeger,
+      ...suzgecDeger, ...suzgecDeger, ...suzgecDeger,
+      ...suzgecDeger, ...suzgecDeger,
+    ],
   );
   const hatalilar = await sorgu(
-    "SELECT id, ad, hata, created_at FROM cookie_dosya WHERE durum = 'gecersiz' ORDER BY id DESC LIMIT 20",
+    `SELECT id, ad, hata, created_at FROM cookie_dosya
+      WHERE durum = 'gecersiz'${suzgec} ORDER BY id DESC LIMIT 20`,
+    suzgecDeger,
   );
   yanit.json({ sayim, durum, hatalilar });
 });
 
+const SIL_PROFIL = 400; // parti basina profil; kilit tablosunu sisirmemek icin
+const SIL_DOSYA = 1000; // parti basina dosya satiri
+
+/**
+ * Verilen secimle gelen profilleri ve cerezlerini parti parti siler.
+ *
+ * Tek ifadede milyonlarca satir silmek kilit tablosunu tasiyor (1206);
+ * bu yuzden cocuk satir once ve kucuk partilerle silinir, her adim ayri
+ * islemde commit olur. Donus: silinen profil sayisi.
+ */
+async function profilPartiliSil(secim: string, deger: unknown[]): Promise<number> {
+  let silinen = 0;
+  for (;;) {
+    const idler = await sorgu<{ id: number }>(`${secim} LIMIT ${SIL_PROFIL}`, deger);
+    if (!idler.length) break;
+    const liste = idler.map((satir) => satir.id);
+    const yer = liste.map(() => "?").join(",");
+    await yaz(`DELETE FROM cookie WHERE profil_id IN (${yer})`, liste);
+    await yaz(`DELETE FROM cookie_profil WHERE id IN (${yer})`, liste);
+    silinen += liste.length;
+    if (idler.length < SIL_PROFIL) break;
+  }
+  return silinen;
+}
+
+/** Kosula uyan dosya satirlarini parti parti siler. */
+async function dosyaPartiliSil(kosul: string, deger: unknown[]): Promise<number> {
+  let silinen = 0;
+  for (;;) {
+    const sonuc = await yaz(`DELETE FROM cookie_dosya WHERE ${kosul} LIMIT ${SIL_DOSYA}`, deger);
+    silinen += sonuc;
+    if (sonuc < SIL_DOSYA) break;
+  }
+  return silinen;
+}
+
+/** Kullanim ciftlerini parti parti siler; yalnizca tam temizlikte cagrilir. */
+async function kullanimPartiliSil(): Promise<void> {
+  for (;;) {
+    const sonuc = await yaz(`DELETE FROM cookie_kullanim LIMIT ${SIL_DOSYA}`);
+    if (sonuc < SIL_DOSYA) break;
+  }
+}
+
+/** Hatali dosya kayitlarini ve onlarin profillerini siler. */
+yonlendirici.delete("/cerez/hatali", async (_istek, yanit) => {
+  // Cascade tek ifadede tum agaci silip kilit tablosunu dolduruyor;
+  // once profil ve cerezler partili gider, dosya satiri en sonda kalir.
+  await profilPartiliSil(
+    "SELECT p.id FROM cookie_profil p JOIN cookie_dosya d ON d.id = p.dosya_id WHERE d.durum = 'gecersiz' ORDER BY p.id",
+    [],
+  );
+  const silinen = await dosyaPartiliSil("durum = 'gecersiz'", []);
+  yanit.json({ silinen });
+});
+
 /** Tum cerez defterini siler. */
 yonlendirici.delete("/cerez", async (_istek, yanit) => {
-  await yaz("DELETE FROM cookie_dosya");
+  await profilPartiliSil("SELECT id FROM cookie_profil ORDER BY id", []);
+  await dosyaPartiliSil("1 = 1", []);
+  await kullanimPartiliSil();
+  for (;;) {
+    const sonuc = await yaz(`DELETE FROM cerez_yukleme LIMIT ${SIL_DOSYA}`);
+    if (sonuc < SIL_DOSYA) break;
+  }
   // Yukleme defteri ve gecici klasorler de gider: defter silinince
   // klasorlerin anlami kalmiyor, diskte sismesin.
-  await yaz("DELETE FROM cerez_yukleme");
   await fs.rm(YUKLEME_KOK, { recursive: true, force: true });
   durum.toplam = 0;
   durum.islenen = 0;
@@ -731,8 +834,8 @@ yonlendirici.delete("/cerez/yukleme/:id", async (istek, yanit) => {
 });
 export default yonlendirici;
 
-/** Kuyruk tüketicisini ve bağlantısını kapatır; kapanışta çağrılır. */
+/** Çalışan aktarım turu varsa bitmesini bekler; kapanışta çağrılır. */
 export async function kuyrukKapat(): Promise<void> {
-  if (tuketici) await tuketici.close();
-  tuketici = null;
+  // Yarim dosya birakilmasin: tur kendi finally'sinde durumu temizler.
+  if (calisma) await calisma.catch(() => {});
 }
