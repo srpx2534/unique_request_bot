@@ -25,8 +25,13 @@ const sunucu = uygulama.listen(PORT, HOST, () => {
   // Zamanlayıcı ve kuyruk tüketicisi yalnızca sunucu sürecinde başlar;
   // testler uygulamayı doğrudan yüklediği için ikisi de dışarıda kalır.
   zamanlayiciBaslat();
-  void kuyrukBaslat();
+  void kuyrukBaslat().catch((hata) => console.error("[panel] kuyruk:", hata));
 });
+
+// Yukleme uzun surer; varsayilan govde suresi ve keep-alive yetmez.
+sunucu.requestTimeout = 15 * 60 * 1000;
+sunucu.headersTimeout = 65 * 1000;
+sunucu.keepAliveTimeout = 65 * 1000;
 
 // Port doluysa ikinci süreç sessizce ölmesin: hangi sürecin çalıştığı belli olsun.
 sunucu.on("error", (hata: NodeJS.ErrnoException) => {
@@ -44,6 +49,14 @@ async function kapat(): Promise<void> {
   await isci.close();
   process.exit(0);
 }
+
+// Beklenmeyen hata sureci oldurmesin: panel ayakta kalsin, sebep loglansin.
+process.on("unhandledRejection", (sebep) => {
+  console.error("[panel] islenmeyen reddetme:", sebep);
+});
+process.on("uncaughtException", (hata) => {
+  console.error("[panel] yakalanmayan istisna:", hata);
+});
 
 process.on("SIGINT", () => void kapat());
 process.on("SIGTERM", () => void kapat());

@@ -11,7 +11,7 @@ import type { RequestHandler } from "express";
 import { redis } from "./redis.js";
 
 const SURE_MS = 12 * 60 * 60 * 1000; // 12 saat; tam oturum ömrü
-const BOSLUK_MS = 2 * 60 * 60 * 1000; // 2 saat; hareketsizlik sınırı
+const BOSLUK_MS = 8 * 60 * 60 * 1000; // 8 saat; hareketsizlik sınırı
 
 const gizli = process.env.SESSION_SECRET;
 if (!gizli) throw new Error(".env içinde SESSION_SECRET boş");
@@ -34,8 +34,10 @@ export const oturum: RequestHandler = session({
 /** Hareketsizlik sınırını uygular; süre dolduysa oturumu kapatır. */
 export const boslukDenetimi: RequestHandler = (istek, yanit, sonraki) => {
   const oturumVerisi = istek.session as { son?: number };
+  // Yukleme akisi kendi basina canli: uzun surse de oturum dusmesin.
+  const yuklemeAkisi = istek.originalUrl.includes("/cerez/yukleme");
   const simdi = Date.now();
-  if (oturumVerisi.son && simdi - oturumVerisi.son > BOSLUK_MS) {
+  if (!yuklemeAkisi && oturumVerisi.son && simdi - oturumVerisi.son > BOSLUK_MS) {
     istek.session.destroy(() => yanit.status(401).json({ hata: "oturum süresi doldu" }));
     return;
   }

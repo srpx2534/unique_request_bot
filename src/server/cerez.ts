@@ -1,11 +1,11 @@
-/**
- * Çerez defteri uçları.
+﻿/**
+ * Ã‡erez defteri uÃ§larÄ±.
  *
- * Klasör yolu taranır, dosyalar arka planda sırayla aktarılır. Aynı içerik
- * özetten yakalanır ve tekrar aktarılmaz. Aktarım kesilirse `yeni` satırlardan
- * devam eder; düğüm sayısı arttıkça havuz ortak kullanılır.
+ * KlasÃ¶r yolu taranÄ±r, dosyalar arka planda sÄ±rayla aktarÄ±lÄ±r. AynÄ± iÃ§erik
+ * Ã¶zetten yakalanÄ±r ve tekrar aktarÄ±lmaz. AktarÄ±m kesilirse `yeni` satÄ±rlardan
+ * devam eder; dÃ¼ÄŸÃ¼m sayÄ±sÄ± arttÄ±kÃ§a havuz ortak kullanÄ±lÄ±r.
  *
- * Kullanım: src/server/uygulama.ts
+ * KullanÄ±m: src/server/uygulama.ts
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -26,7 +26,7 @@ const PAKET = 200; // dosya basi islem
 
 const yonlendirici = Router();
 
-/** İlerleme durumu; süreç içinde tutulur. */
+/** Ä°lerleme durumu; sÃ¼reÃ§ iÃ§inde tutulur. */
 const durum = { calisiyor: false, toplam: 0, islenen: 0, mukerrer: 0, hatali: 0 };
 
 type Cerez = {
@@ -49,7 +49,7 @@ type Cerez = {
   host_only: number;
 };
 
-/** Alan adını sadeleştirir: baş nokta ve www. atılır. */
+/** Alan adÄ±nÄ± sadeleÅŸtirir: baÅŸ nokta ve www. atÄ±lÄ±r. */
 function kok(alan: string): string {
   const ham = alan.trim().toLowerCase().replace(/^\.+/, "");
   return ham.startsWith("www.") ? ham.slice(4) : ham;
@@ -172,7 +172,7 @@ function jsonCoz(metin: string): Cerez[] {
   }
   return cerezler;
 }
-/** Netscape biçimini çözer. */
+/** Netscape biÃ§imini Ã§Ã¶zer. */
 function netscapeCoz(metin: string): Cerez[] {
   const cerezler: Cerez[] = [];
   for (const satir of metin.split(/\r?\n/)) {
@@ -205,11 +205,11 @@ function netscapeCoz(metin: string): Cerez[] {
       }),
     );
   }
-  if (!cerezler.length) throw new Error("geçerli satır yok");
+  if (!cerezler.length) throw new Error("geÃ§erli satÄ±r yok");
   return cerezler;
 }
 
-/** İçeriğe bakarak biçimi bulur. */
+/** Ä°Ã§eriÄŸe bakarak biÃ§imi bulur. */
 function bicimBul(metin: string): "json" | "netscape" | null {
   if (metin.trimStart().startsWith("{")) return "json";
   for (const satir of metin.split(/\r?\n/)) {
@@ -222,7 +222,7 @@ function bicimBul(metin: string): "json" | "netscape" | null {
   return null;
 }
 
-/** Dosya adından il kodu (1-81). */
+/** Dosya adÄ±ndan il kodu (1-81). */
 function ilBul(ad: string): number | null {
   const bulunan = ad.match(/(?:^|[^0-9])(0?[1-9]|[1-7][0-9]|8[01])(?:[^0-9]|$)/);
   if (!bulunan) return null;
@@ -230,15 +230,15 @@ function ilBul(ad: string): number | null {
   return kod >= 1 && kod <= 81 ? kod : null;
 }
 
-/** Klasörü doğrular ve gerçek yolunu döndürür. */
+/** KlasÃ¶rÃ¼ doÄŸrular ve gerÃ§ek yolunu dÃ¶ndÃ¼rÃ¼r. */
 async function yolDogrula(ham: string): Promise<string> {
   const tam = path.resolve(ham);
   const bilgi = await fs.stat(tam);
-  if (!bilgi.isDirectory()) throw new Error("yol klasör değil");
+  if (!bilgi.isDirectory()) throw new Error("yol klasÃ¶r deÄŸil");
   return fs.realpath(tam);
 }
 
-/** Klasörü özyinelemeli tarar; yalnızca .json/.txt dosyaları. */
+/** KlasÃ¶rÃ¼ Ã¶zyinelemeli tarar; yalnÄ±zca .json/.txt dosyalarÄ±. */
 async function dosyalariTopla(kokDizin: string): Promise<string[]> {
   const bulunan: string[] = [];
   const gez = async (dizin: string): Promise<void> => {
@@ -254,7 +254,7 @@ async function dosyalariTopla(kokDizin: string): Promise<string[]> {
   return bulunan;
 }
 
-/** İçerik özeti. */
+/** Ä°Ã§erik Ã¶zeti. */
 /** Cerez alan adlarindan ulke kodu cikarir; bilinmiyorsa null. */
 function ulkeBul(domainler: string[]): string | null {
   for (const domain of domainler) {
@@ -271,11 +271,11 @@ function icerikOzeti(metin: string): string {
 }
 
 /**
- * Tek dosyayı aktarır ve defter satırını yerinde kapatır.
+ * Tek dosyayÄ± aktarÄ±r ve defter satÄ±rÄ±nÄ± yerinde kapatÄ±r.
  *
- * `yeni` satır silinip yenisi yazılmaz; aynı satır sonuçla güncellenir.
- * Aynı içerik başka dosyada aktarılmışsa satır `mukerrer` olur ve özeti yol
- * özetine çevrilir, böylece tekil kalır.
+ * `yeni` satÄ±r silinip yenisi yazÄ±lmaz; aynÄ± satÄ±r sonuÃ§la gÃ¼ncellenir.
+ * AynÄ± iÃ§erik baÅŸka dosyada aktarÄ±lmÄ±ÅŸsa satÄ±r `mukerrer` olur ve Ã¶zeti yol
+ * Ã¶zetine Ã§evrilir, bÃ¶ylece tekil kalÄ±r.
  */
 async function dosyaAktar(
   id: number,
@@ -298,13 +298,13 @@ async function dosyaAktar(
 
   const bilgi = await fs.stat(tam).catch(() => null);
   if (!bilgi || bilgi.size === 0 || bilgi.size > AZAMI_BOYUT) {
-    return kapat("gecersiz", "boyut sınırı ya da dosya yok");
+    return kapat("gecersiz", "boyut sÄ±nÄ±rÄ± ya da dosya yok");
   }
   const ham = await fs.readFile(tam, "utf8").catch(() => null);
-  if (ham === null) return kapat("gecersiz", "okunamadı");
+  if (ham === null) return kapat("gecersiz", "okunamadÄ±");
 
   const bicim = bicimBul(ham);
-  if (!bicim) return kapat("gecersiz", "biçim tanınmadı");
+  if (!bicim) return kapat("gecersiz", "biÃ§im tanÄ±nmadÄ±");
 
   let cerezler: Cerez[];
   try {
@@ -312,7 +312,7 @@ async function dosyaAktar(
   } catch (hata) {
     return kapat("gecersiz", (hata as Error).message.slice(0, 255));
   }
-  if (!cerezler.length) return kapat("gecersiz", "kullanılabilir çerez yok");
+  if (!cerezler.length) return kapat("gecersiz", "kullanÄ±labilir Ã§erez yok");
 
   const ozet = icerikOzeti(ham);
   const ayni = await tek<{ id: number }>(
@@ -327,6 +327,7 @@ async function dosyaAktar(
   }, null);
   const il = ilBul(path.relative(kokDizin, tam));
   const ulke = ulkeBul(cerezler.map((c) => c.domain));
+  const aile = aileBul(cerezler);
 
   try {
     await islem(async (baglanti) => {
@@ -336,8 +337,8 @@ async function dosyaAktar(
         [bicim, bilgi.size, ozet, cerezler.length, il, id],
       );
       const [profil] = await baglanti.query(
-        "INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, sona_erme, suresi_gecmis) VALUES (?, ?, ?, ?, ?, ?)",
-        [id, path.basename(tam), il, ulke, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
+        "INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, sona_erme, suresi_gecmis) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, path.basename(tam), il, ulke, aile, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
       );
       const profilId = (profil as { insertId: number }).insertId;
 
@@ -363,7 +364,7 @@ async function dosyaAktar(
   }
 }
 
-/** Kuyruğu paketler hâlinde boşaltır; aynı anda tek tur çalışır. */
+/** KuyruÄŸu paketler hÃ¢linde boÅŸaltÄ±r; aynÄ± anda tek tur Ã§alÄ±ÅŸÄ±r. */
 let calisma: Promise<void> | null = null;
 
 /** Kuyrugu kirali paketler halinde bosaltir; cagrilar siraya girer. */
@@ -403,6 +404,8 @@ async function isle(kokDizin: string): Promise<void> {
           durum.islenen += 1;
           if (sonuc === "mukerrer") durum.mukerrer += 1;
           if (sonuc === "gecersiz") durum.hatali += 1;
+          // Istekler arada islensin: agir aktarim olay dongusunu kilitlemesin.
+          await new Promise((coz) => setImmediate(coz));
         }
       }
     } finally {
@@ -426,6 +429,90 @@ export async function kuyrukBaslat(): Promise<void> {
   console.log(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
   void isle(ilk?.yol ? path.dirname(ilk.yol) : YUKLEME_KOK);
 }
+const yolSemasi = z.object({ yol: z.string().trim().min(1).max(512) });
+
+/** Ozet sayilar. */
+yonlendirici.get("/cerez", async (_istek, yanit) => {
+  const sayim = await tek<Record<string, number>>(
+    `SELECT
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'aktarildi') AS dosya,
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'gecersiz') AS gecersiz,
+       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'mukerrer') AS mukerrer,
+       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 0) AS aktif,
+       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 1) AS suresi_gecmis,
+       (SELECT COUNT(*) FROM cookie_profil WHERE ulke = 'TR') AS ulke_tr,
+       (SELECT COUNT(*) FROM cookie_profil WHERE ulke IS NOT NULL AND ulke <> 'TR') AS ulke_yabanci,
+       (SELECT COUNT(*) FROM cookie_profil) AS toplam,
+       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL) AS illi`,
+  );
+  const hatalilar = await sorgu(
+    "SELECT id, ad, hata, created_at FROM cookie_dosya WHERE durum = 'gecersiz' ORDER BY id DESC LIMIT 20",
+  );
+  yanit.json({ sayim, durum, hatalilar });
+});
+
+/** Klasoru sayar; yazmaz. */
+yonlendirici.post("/cerez/tara", async (istek, yanit) => {
+  const govde = dogrula(yolSemasi, istek.body, yanit);
+  if (!govde) return;
+  let kokDizin: string;
+  try {
+    kokDizin = await yolDogrula(govde.yol);
+  } catch (hata) {
+    yanit.status(400).json({ hata: (hata as Error).message });
+    return;
+  }
+  const dosyalar = await dosyalariTopla(kokDizin);
+  const dagilim = { json: 0, txt: 0, illi: 0 };
+  for (const tam of dosyalar) {
+    if (/\.json$/i.test(tam)) dagilim.json += 1;
+    else dagilim.txt += 1;
+    if (ilBul(path.relative(kokDizin, tam)) !== null) dagilim.illi += 1;
+  }
+  yanit.json({ kok: kokDizin, toplam: dosyalar.length, dagilim });
+});
+
+/** Dosyalari deftere yazar ve isi baslatir. */
+yonlendirici.post("/cerez/aktar", async (istek, yanit) => {
+  const govde = dogrula(yolSemasi, istek.body, yanit);
+  if (!govde) return;
+  let kokDizin: string;
+  try {
+    kokDizin = await yolDogrula(govde.yol);
+  } catch (hata) {
+    yanit.status(400).json({ hata: (hata as Error).message });
+    return;
+  }
+  const dosyalar = await dosyalariTopla(kokDizin);
+  for (const tam of dosyalar) {
+    await yaz(
+      `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, boyut, ozet, durum)
+       VALUES (?, ?, 'json', 'yol', 0, ?, 'yeni')`,
+      [tam, path.basename(tam), createHash("sha256").update(tam).digest("hex")],
+    );
+  }
+  durum.toplam += dosyalar.length;
+  void isle(kokDizin).catch((hata) => console.error("[cerez] kuyruk:", hata));
+  yanit.json({ kuyruk: dosyalar.length, durum });
+});
+
+/** Ilerleme. */
+yonlendirici.get("/cerez/ilerleme", async (_istek, yanit) => {
+  const bekleyen = await tek<{ sayi: number }>(
+    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('yeni','isleniyor')",
+  );
+  yanit.json({ ...durum, bekleyen: bekleyen?.sayi ?? 0 });
+});
+
+/** Tum cerez defterini siler. */
+yonlendirici.delete("/cerez", async (_istek, yanit) => {
+  await yaz("DELETE FROM cookie_dosya");
+  durum.toplam = 0;
+  durum.islenen = 0;
+  durum.mukerrer = 0;
+  durum.hatali = 0;
+  yanit.status(204).end();
+});
 yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
   try {
     const secilen = await klasorSec();
@@ -437,11 +524,11 @@ yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
   } catch (hata) {
     const kod = (hata as NodeJS.ErrnoException).code;
     if (kod === "ENOENT") {
-      yanit.status(500).json({ hata: "klasör seçici bulunamadı, yolu elle yaz" });
+      yanit.status(500).json({ hata: "klasÃ¶r seÃ§ici bulunamadÄ±, yolu elle yaz" });
       return;
     }
     console.error("[cerez] gozat hatasi:", (hata as Error).message);
-    yanit.status(500).json({ hata: "klasör seçici açılamadı" });
+    yanit.status(500).json({ hata: "klasÃ¶r seÃ§ici aÃ§Ä±lamadÄ±" });
   }
 });
 /** Sunucu makinesinde klasor secici acar; iptalde null doner. */
@@ -567,16 +654,16 @@ yonlendirici.post("/cerez/yukleme", async (istek, yanit) => {
 yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSYA), async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geçersiz işlem" });
+    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "işlem yok" });
+    yanit.status(404).json({ hata: "iÅŸlem yok" });
     return;
   }
   if (kayit.durum !== "yukleniyor") {
-    yanit.status(409).json({ hata: "işlem kapalı" });
+    yanit.status(409).json({ hata: "iÅŸlem kapalÄ±" });
     return;
   }
   const dosyalar = (istek.files ?? []) as Express.Multer.File[];
@@ -586,7 +673,7 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
   }
   const toplamBayt = dosyalar.reduce((toplam, dosya) => toplam + dosya.size, 0);
   if (toplamBayt > PARTI_BAYT) {
-    yanit.status(413).json({ hata: "parti çok büyük" });
+    yanit.status(413).json({ hata: "parti Ã§ok bÃ¼yÃ¼k" });
     return;
   }
 
@@ -616,7 +703,7 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
     yazilan += 1;
   }
   durum.toplam += yazilan;
-  void isle(kayit.klasor);
+  void isle(kayit.klasor).catch((hata) => console.error("[cerez] kuyruk:", hata));
   await yaz(
     "UPDATE cerez_yukleme SET dosya_sayisi = dosya_sayisi + ?, boyut = boyut + ? WHERE id = ?",
     [yazilan, toplamBayt, id],
@@ -632,16 +719,16 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
 yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geçersiz işlem" });
+    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "işlem yok" });
+    yanit.status(404).json({ hata: "iÅŸlem yok" });
     return;
   }
   if (kayit.durum !== "yukleniyor") {
-    yanit.status(409).json({ hata: "işlem kapalı" });
+    yanit.status(409).json({ hata: "iÅŸlem kapalÄ±" });
     return;
   }
   const dosyalar = await dosyalariTopla(kayit.klasor);
@@ -675,7 +762,7 @@ yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
 yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geçersiz işlem" });
+    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
     return;
   }
   const satir = await tek(
@@ -688,7 +775,7 @@ yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
     [id],
   );
   if (!satir) {
-    yanit.status(404).json({ hata: "işlem yok" });
+    yanit.status(404).json({ hata: "iÅŸlem yok" });
     return;
   }
   yanit.json(satir);
@@ -698,12 +785,12 @@ yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
 yonlendirici.delete("/cerez/yukleme/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geçersiz işlem" });
+    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "işlem yok" });
+    yanit.status(404).json({ hata: "iÅŸlem yok" });
     return;
   }
   await yaz("UPDATE cerez_yukleme SET durum = 'iptal' WHERE id = ?", [id]);
