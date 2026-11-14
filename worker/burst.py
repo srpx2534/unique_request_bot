@@ -161,6 +161,8 @@ def burst_yap(
     failover_uyarildi = False
     # İl kodu bir kez çözülür; her hit'te sorgu açmamak için.
     geo_kodu = havuz.kod_bul(geo_slug) if geo_slug else None
+    # Kelime mobil isaretliyse mobil IP ve android profil zorlanir.
+    mobil_hedef = havuz.kelime_mobil(sorgu)
     for sira in range(1, adet + 1):
         # Durdurma her hit öncesi sorulur: uçan istek kesilmez, yenisi başlamaz.
         if devam is not None and not devam():
@@ -182,7 +184,7 @@ def burst_yap(
             else:
                 # sec_mod ucuncu eleman olarak hangi yoldan gidildigini verir.
                 # Paylasilan son_mod globali eszamanli burst'te karisirdi.
-                secim = havuz.sec_mod(geo_slug, mobil_acik)
+                secim = havuz.sec_mod(geo_slug, mobil_acik, "mobile" if mobil_hedef else None)
                 proxy_adres = secim[1] if secim else None
                 saglayici_id = secim[0] if secim else None
                 geo_mod = secim[2] if secim else None
@@ -193,13 +195,13 @@ def burst_yap(
             cerezler: list[dict] = []
             aile: str | None = None
             if geo_mod in ("city", "tr_fallback"):
-                secilen = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu)
+                secilen = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu, mobil_hedef)
                 if secilen is not None:
                     cerez_profil, aile = secilen
                     cerezler = cookie.suz(havuz.cerez_al(cerez_profil), hedef_domain)
 
             # Cerez varsa parmak izi o cerezin ailesine sabit; yoksa rastgele.
-            mobil_profil = bool(mobil_acik and tur == 'mobile')
+            mobil_profil = bool(mobil_hedef or (mobil_acik and tur == "mobile"))
             profil = fingerprint.profil_sec(haric=onceki_profil, aile=aile, mobil=mobil_profil)
             onceki_profil = profil
             kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)

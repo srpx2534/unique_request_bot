@@ -18,6 +18,8 @@ import { ApiHatasi, dosyaYukle, iste } from "@/lib/api";
 const PARTI = 200;
 
 type Sayim = {
+  mobil: number;
+  web: number;
   dosya: number;
   gecersiz: number;
   mukerrer: number;
@@ -153,6 +155,8 @@ export default function Cerezler() {
     if (secici.current) secici.current.value = "";
   }
 
+  const [modalite, setModalite] = useState<0 | 1>(0);
+
   async function yukle(): Promise<void> {
     if (!dosyalar.length) return;
     iptal.current = false;
@@ -161,7 +165,7 @@ export default function Cerezler() {
     try {
       const acilis = await iste<{ id: number }>("/cerez/yukleme", {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ modalite }),
       });
       setIslemId(acilis.id);
       for (let i = 0; i < dosyalar.length; i += PARTI) {
@@ -209,6 +213,15 @@ export default function Cerezler() {
           {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
         />
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={modalite}
+            onChange={(o) => setModalite(o.target.value === "1" ? 1 : 0)}
+            disabled={mesgul}
+            className="h-9 rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-2 text-sm"
+          >
+            <option value="0">Web</option>
+            <option value="1">Mobil</option>
+          </select>
           <Dugme
             gorunum="ikincil"
             disabled={secili || mesgul}
@@ -335,6 +348,7 @@ export default function Cerezler() {
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-solgun">
           <Etiket ton={calisiyor ? "vurgu" : "notr"}>{calisiyor ? "aktarım sürüyor" : "beklemede"}</Etiket>
           <span>· işlenen {ozet.data?.durum.islenen ?? 0}</span>
+          <span>· mobil {sayim?.mobil ?? 0} · web {sayim?.web ?? 0}</span>
           <span>· mükerrer {sayim?.mukerrer ?? 0}</span>
           <span>· hatalı {sayim?.gecersiz ?? 0}</span>
           <button

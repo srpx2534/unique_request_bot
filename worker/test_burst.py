@@ -128,3 +128,36 @@ def test_ikinci_deneme_de_duserse_hata_sayilir(taklit, monkeypatch) -> None:
 
     assert sonuc["error"] == 1
     assert sayac["n"] == 2
+
+def test_mobil_kelime_mobil_saglayici_ve_android_profil_secer(taklit, monkeypatch) -> None:
+    """Mobil isaretli kelime mobile saglayiciyi zorlar ve android profil kullanir."""
+    zorlanan: list = []
+
+    def sahte_sec_mod(_geo, _mobil_acik, zorunlu_tur=None):
+        zorlanan.append(zorunlu_tur)
+        return 1, "http://proxy", "city", "mobile"
+
+    monkeypatch.setattr(burst.havuz, "kelime_mobil", lambda _k: True)
+    monkeypatch.setattr(burst.havuz, "sec_mod", sahte_sec_mod)
+    monkeypatch.setattr(burst.havuz, "cerez_sec", lambda *_a, **_k: None)
+
+    sonuc = burst.burst_yap("a", "a.com", 3)
+    assert zorlanan == ["mobile"] * 3
+    assert {k["profil"] for k in sonuc["hits"]} == {"chrome131_android"}
+
+
+def test_web_kelime_mobil_saglayici_zorlamaz(taklit, monkeypatch) -> None:
+    """Mobil olmayan kelimede zorunlu tur gecilmez, web profili secilir."""
+    zorlanan: list = []
+
+    def sahte_sec_mod(_geo, _mobil_acik, zorunlu_tur=None):
+        zorlanan.append(zorunlu_tur)
+        return 1, "http://proxy", "city", "residential"
+
+    monkeypatch.setattr(burst.havuz, "kelime_mobil", lambda _k: False)
+    monkeypatch.setattr(burst.havuz, "sec_mod", sahte_sec_mod)
+    monkeypatch.setattr(burst.havuz, "cerez_sec", lambda *_a, **_k: None)
+
+    sonuc = burst.burst_yap("a", "a.com", 3)
+    assert zorlanan == [None] * 3
+    assert "chrome131_android" not in {k["profil"] for k in sonuc["hits"]}

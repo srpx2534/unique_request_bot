@@ -1,6 +1,6 @@
 # SÖZLEŞME — Unique Request Bot
 
-Sürüm: 1.5 (kilitli)
+Sürüm: 1.6 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan
         request-burst motoru
 Veritabanı: MySQL 8.0.16+
@@ -36,6 +36,7 @@ Worker kuralına üç istisna vardır:
 - Sağlayıcı seçimi için `provider`, `provider_geo`, `geo` tabloları salt okunur.
 - Ayar okuma için `ayar` tablosu salt okunur; SERP anahtarı ve pencere değerleri buradan gelir.
 - Hit sonrası yalnızca `provider_geo` ve `alert` toplu tablolarına yazılır.
+- Cookie havuzu için `cookie_profil`, `cookie` ve `cookie_kullanim` tabloları okunur; `cookie_profil` sahiplenme durumu ve `cookie_kullanim` çift kaydı worker tarafından yazılır (§26).
 
 Bunun dışındaki tüm durum control plane'de kalır.
 
@@ -80,6 +81,7 @@ ORDER BY -LOG(RAND()) / g.weight LIMIT 1
 Sağlayıcı seed'i `005_provider.sql` ile yüklenir. `city_capable` yalnızca il hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2 gereği ulusal moda düşer.
 
 Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır (`oran_residential`, `oran_mobil`, `oran_datacenter`) ve panelden düzenlenir. Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o türde `state='active'`, karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP yalnızca burst'ün ilk 8 saniyesinde devreye girer.
+Çerez seçimi kelimenin modalitesine göre yapılır. Mobil işaretli kelimede önce `mobile` türü sağlayıcı denenir, yoksa normal sıraya düşülür ve android profil kullanılır (C48). Çerez önceliği sabittir: aktif+il, aktif TR, diğer aktifler; aktifler bittiğinde süresi geçmişler aynı iç sırayla (C45). Mobil kelimede aynı sıra mobil çerezler öne alınarak uygulanır.
 
 Sağlayıcı satırı `ulke` taşır; Türkiye IP'si veren sağlayıcılar `ulke='TR'` ile işaretlenir ve `tr_fallback` adımında yalnızca bunlar aranır.
 
@@ -119,6 +121,7 @@ CREATE TABLE keyword (
   home_geo   TINYINT UNSIGNED NULL,
   volume     INT UNSIGNED NULL,
   tier       TINYINT UNSIGNED NULL,
+  mobil      TINYINT(1) NOT NULL DEFAULT 0,
   state      ENUM('idle','active','paused','retired') NOT NULL DEFAULT 'idle',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   UNIQUE KEY uq_site_text (site_id, text),
@@ -347,7 +350,7 @@ CREATE TABLE ayar (
 
 - `geo` tablosu 81 kayıtla seed edilir: code, name, slug, population, lat, lon. Core tier nüfusa göre ilk 10 ildir: 34, 6, 35, 16, 7, 42, 1, 63, 27, 41. `uule` her il için bir kez üretilip yazılır.
 - Nüfus değerleri TÜİK güncel verisiyle değiştirilebilir, yaklaşık değer kabul edilir.
-- `ayar` tablosu şu anahtarlarla seed edilir: `oran_residential`, `oran_mobil`, `oran_datacenter`, `mobil_pencere_sn`, `olcum_araligi_dk`, `serp_decodo`, `serp_serper`, `serp_searchapi`. SERP anahtarları boş başlar, panelden doldurulur.
+- `ayar` tablosu şu anahtarlarla seed edilir: `oran_residential`, `oran_mobil`, `oran_datacenter`, `olcum_araligi_dk`, `serp_decodo`, `serp_serper`, `serp_searchapi`. SERP anahtarları boş başlar, panelden doldurulur.
 
 ### 6.3 Saklama süreleri
 
@@ -397,7 +400,15 @@ Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - `PATCH /api/ayar` → gövdedeki anahtarları yazar; maskeli değer geri gönderilirse atlanır
 - `POST /api/ayar/serp-dene` `{ anahtar }` → `{ ok, organik?, kod?, sure_ms }`
 
-Liste uçlarında `sayfa` 1'den başlar, `adet` 1-500 arasıdır ve varsayılanı 50'dir.
+- `POST /api/cerez/yukleme` `{ modalite }` → `{ id, klasor }`; tarayıcıdan parti parti yükleme
+- `POST /api/cerez/yukleme/:id/parti` multipart → parti alındı
+- `POST /api/cerez/yukleme/:id/baslat` → içe aktarma kuyruğa girer
+- `GET  /api/cerez/yukleme/:id` → ilerleme ve havuz sayaçları
+- `DELETE /api/cerez/yukleme/:id` → iptal, geçici klasör silinir
+- `GET  /api/cerez` → havuz sayımı, durum ve son hatalı dosyalar
+- `DELETE /api/cerez` → havuzu boşalt
+
+Liste uçlarında sayfa 1'den başlar, `adet` 1-500 arasıdır ve varsayılanı 50'dir.
 
 ### 7.2 Worker uçları
 
@@ -441,6 +452,7 @@ Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlan
 - Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
 - API sayfaları arası bekleme: 0,6-1,3 saniye
 - Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie sürekliliği korunur, oturum hit sonunda kapanır
+- Mobil pencere: burst'ün ilk 8 saniyesi; pencere kapanınca mobil IP kullanılmaz
 
 ## 10. Raporlama
 
@@ -472,8 +484,8 @@ Panel kelime başına şunları gösterir: başarı oranı, yedek oranı, sıral
 - C1 — Panelde site ve kelime CRUD, start/stop, canlı log çalışır.
 - C2 — `start` verildikten sonra ilk hit 30 saniyenin altında atılır.
 - C3 — Worker `/burst` p95 süresi 45 saniyenin altındadır.
-- C4 — Her hit yeni UA, yeni IP, taze cookie ve Chrome JA3 ile gider; oran %100'dür.
-- C5 — Parmak izi gerçek Chrome ile birebir eşleşir. Ölçüt küme üyeliğidir: ölçülen ja4 ve ja3, `docs/tls_reference.json` içindeki profilin kümelerinde bulunmalıdır. Chromium 110+ uzantı sırasını karıştırdığı için ja3 bağlantı başına değişir, JA4 ise ALPN/SNI varyansıyla birden fazla değer alabilir. edge101 ve safari17_0 sabittir. Kanıt: `python tools/tls_check.py --all`.
+- C4 — Her hit yeni IP ve taze cookie ile gider; parmak izi çerez profilinde sabittir ve oturumun üç adımında da aynı profil kullanılır. Oran %100'dür.
+- C5 — Parmak izi gerçek tarayıcı ile birebir eşleşir. Ölçüt küme üyeliğidir: ölçülen ja4 ve ja3, `docs/tls_reference.json` içindeki profilin kümelerinde bulunmalıdır. Chromium 110+ uzantı sırasını karıştırdığı için ja3 bağlantı başına değişir, JA4 ise ALPN/SNI varyansıyla birden fazla değer alabilir. Havuz güncel Chrome (142-152), Firefox (153-155), Safari (260/270) ve mobil için `chrome131_android` taşır; Safari, Firefox ve Edge yalnızca çerezsiz durumda seçilir. Kanıt: `python tools/tls_check.py --all`.
 - C6 — Sağlayıcı failover 10 saniyenin altında tamamlanır.
 - C7 — CAPTCHA oranı pilotta %12'nin altındadır.
 - C8 — CAPTCHA oranı tam kapasitede %8'in altındadır.
@@ -512,6 +524,12 @@ Panel kelime başına şunları gösterir: başarı oranı, yedek oranı, sıral
 - C41 — Her uyarı satırı `keyword_id` ve `site_id` taşır; liste site ve kelimeyi gösterir.
 - C42 — Yıkıcı işlemler (silme, toplu kapatma) onay ister; bilinmeyen yol 404 ekranına düşer.
 - C43 — `ayar` okuması worker'da önbelleklidir; tablo okunamazsa `.env`, o da yoksa varsayılan devreye girer ve iş durmaz.
+- C44 — Çerez, site+kelime çiftinde bir kez kullanılır; farklı sitede aynı kelime için yeniden kullanılabilir. Çift kaydı `cookie_kullanim` ile tutulur.
+- C45 — Çerez önceliği sabittir: aktif+il, aktif TR, diğer aktifler, sonra süresi geçmiş aynı iç sırayla. Süresi geçmişler aktifler bitmeden devreye girmez.
+- C46 — Çerez ülkesi IP ülkesiyle eşleşmeden çerez yüklenmez; yabancı çıkışta çerez kullanılmaz.
+- C47 — Çerez profili parmak izi ailesini (`chrome`, `firefox`, `safari`, `bilinmiyor`) taşır; istek o aileyle gider, çerez yoksa profil rastgele seçilir.
+- C48 — Mobil işaretli kelimede önce mobil çerez ve `mobile` sağlayıcı denenir; mobil sağlayıcı yoksa iş durmaz, normal proxy'ye düşer ve android profil kullanılır.
+- C49 — Havuz boşken veya çerez kapalıyken iş hiçbir yolda durmaz; çerez yüklenemezse istek çerezsiz devam eder.
 
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 
@@ -636,6 +654,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.2 — Tablosuz sözleşme; tüm listeler madde işaretine çevrildi.
 - 1.3 — §18 Windows/Linux ayrımı, §19 `.gitattributes`, §20 yasak yapılar, §23 kodlama kuralları, §24 cookie politikası, C5 güncellendi. Google'ın JavaScript zorunluluğu §4'e işlendi.
 - 1.4 — §3 worker yazma istisnası, §5 sağlayıcı seçimi ve tür oranları, §6 kimlik sütunları ve ayar tablosu, §8 iki seviyeli devre kesici, §11 C31-C34, alert türleri genişletildi.
+- 1.6 — §3 cookie tablosu istisnası, §5 mobil öncelik, §6 `keyword.mobil` ve cookie tabloları, §7 cookie uçları, §9 mobil pencere, §11 C4/C5 güncellendi, C44-C49, §24 yeniden yazıldı, §26 cookie alt sistemi.
 - 1.5 — §3 `ayar` okuma istisnası, §4 düğüm seçimi, §5 `geo_mode` üç değeri ve `provider.ulke`, §6 `dugum`, `dugum_olay`, `alert` bağlam sütunları, §7 panel ve worker uçlarının tamamı ile sayfalama, §8 SERP anahtarlarının veritabanında tutulması, §9 ölçüm aralığının ayara taşınması, §10 CSV, §11 C35-C43, §14 anahtar değişiminin panelden yapılması, §18.4 `.env` disiplini.
 
 ## 23. Kodlama kuralları (bağlayıcı)
@@ -687,11 +706,26 @@ Paralı kaynağa yalnızca şu üç durumda geçilir:
 - Her istek taze oturumla başlar; SOCS ve CONSENT onay duvarını atlar.
 - Aynı hit içinde oturum korunur, AEC/NID gibi cookie'ler tıklamaya taşınır.
 - Statik NID yapıştırılmaz; Google'ın üretmesine izin verilir.
-- Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi, dosya başına tek profil, dosya adında il kodu, hit başına bir kez tüketim.
+- Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi ve EditThisCookie JSON; dosya başına tek profil.
+- Çerez, site+kelime çiftinde bir kez kullanılır; farklı sitede tekrar kullanılabilir. Kullanım `cookie_kullanim` ile kayıt altındadır.
+- Çerez ülkesi cookie alan adlarından türetilir; yabancı çıkışta çerez yüklenmez.
+- Süresi geçmiş çerezler silinmez; aktifler tükendiğinde `cerez_suresiz_kullan` açıksa kullanılır.
+- İçe aktarımda profil parmak izi ailesi atanır ve istek boyunca değişmez.
+- Yükleme tarayıcıdan yapılır: parti parti multipart, geçici klasör, canlı ilerleme, iptal. Sunucu yolu paylaşılmaz.
+- Havuz boşken sistem çerezsiz çalışmaya devam eder; çerez yokluğu hata değildir.
 - Cookie dosyaları repoya girmez.
 - Cookie'ler JavaScript duvarını aşmaz; sonuç listesi yine API'den gelir.
+## 25. Değişiklik özeti (1.6)
 
-## 25. Değişiklik özeti (1.5)
+- §3: cookie tabloları için worker istisnası
+- §5: mobil öncelik ve çerez önceliği sırası
+- §6: `keyword.mobil`, `cookie_profil.mobil/ulke/parmak_izzi`, `cerez_yukleme.modalite`
+- §7: cookie yükleme uçları
+- §9: mobil pencere
+- §11: C4/C5 güncellendi, C44-C49 eklendi
+- §22: 1.6 kaydı
+- §24: cookie politikası yeniden yazıldı
+- §26: cookie alt sistemi
 
 - §3: `ayar` salt okuma istisnası ve `ayar_db` önbelleği
 - §4: düğüm kayıt defterinden seçim, boş defterde yerel varsayılan
@@ -705,3 +739,101 @@ Paralı kaynağa yalnızca şu üç durumda geçilir:
 - §11: C35-C43
 - §14: anahtar değişiminin panelden yapılması
 - §18.4: `.env` disiplini, türetilebilir değerlerin dosyadan çıkarılması
+
+## 26. Cookie alt sistemi
+
+Çerez havuzu, gerçek tarayıcıdan alınmış dökümlerin panelden yüklenmesiyle beslenir. Panel dosyaları ayrıştırır ve MySQL'e yazar; worker yalnızca sahiplenir ve okur. Havuz boşken sistem çerezsiz çalışmaya devam eder.
+
+### 26.1 Şema
+
+```sql
+CREATE TABLE cookie_dosya (
+  id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ad            VARCHAR(255) NOT NULL,
+  tur           VARCHAR(16) NULL,
+  boyut         INT UNSIGNED NULL,
+  ozet          CHAR(64) NULL,
+  satir_sayisi  INT UNSIGNED NULL,
+  il_kodu       TINYINT UNSIGNED NULL,
+  durum         ENUM('bekliyor','isleniyor','aktarildi','mukerrer','gecersiz') NOT NULL DEFAULT 'bekliyor',
+  hata          VARCHAR(255) NULL,
+  kaynak        VARCHAR(16) NOT NULL DEFAULT 'tarayici',
+  yukleyen      BIGINT UNSIGNED NULL,
+  yukleme_id    BIGINT UNSIGNED NULL,
+  isleniyor_at  DATETIME(3) NULL,
+  created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_cd_durum (durum, isleniyor_at),
+  KEY idx_cd_ozet (ozet)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE cerez_yukleme (
+  id           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  kullanici_id BIGINT UNSIGNED NULL,
+  klasor       VARCHAR(255) NOT NULL,
+  modalite     TINYINT(1) NOT NULL DEFAULT 0,
+  durum        ENUM('yukleniyor','hazir','aktarim','bitti','iptal') NOT NULL DEFAULT 'yukleniyor',
+  created_at   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE cookie_profil (
+  id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  dosya_id      BIGINT UNSIGNED NOT NULL,
+  ad            VARCHAR(191) NOT NULL,
+  il_kodu       TINYINT UNSIGNED NULL,
+  ulke          CHAR(2) NULL,
+  parmak_izzi   VARCHAR(16) NULL,
+  mobil         TINYINT(1) NOT NULL DEFAULT 0,
+  sona_erme     DATETIME(3) NULL,
+  suresi_gecmis TINYINT(1) NOT NULL DEFAULT 0,
+  durum         ENUM('hazir','kullaniliyor','bozuk') NOT NULL DEFAULT 'hazir',
+  kullanim      INT UNSIGNED NOT NULL DEFAULT 0,
+  dugum_id      SMALLINT UNSIGNED NULL,
+  alindi_at     DATETIME(3) NULL,
+  created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_cp_secim (durum, suresi_gecmis, ulke),
+  KEY idx_cp_mobil (durum, mobil),
+  KEY idx_cd_dosya (dosya_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE cookie (
+  id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profil_id     BIGINT UNSIGNED NOT NULL,
+  domain        VARCHAR(191) NOT NULL,
+  ad            VARCHAR(191) NOT NULL,
+  deger         TEXT NOT NULL,
+  yol           VARCHAR(255) NOT NULL DEFAULT '/',
+  sona_erme     DATETIME(3) NULL,
+  guvenli       TINYINT(1) NOT NULL DEFAULT 0,
+  http_only     TINYINT(1) NOT NULL DEFAULT 0,
+  same_site     VARCHAR(8) NULL,
+  oncelik       VARCHAR(8) NULL,
+  oturumluk     TINYINT(1) NOT NULL DEFAULT 0,
+  partition_ust VARCHAR(191) NULL,
+  partition_ata TINYINT(1) NULL,
+  same_party    TINYINT(1) NOT NULL DEFAULT 0,
+  boyut         INT UNSIGNED NULL,
+  kaynak_port   SMALLINT UNSIGNED NULL,
+  kaynak_sema   VARCHAR(8) NULL,
+  KEY idx_profil (profil_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE cookie_kullanim (
+  profil_id  BIGINT UNSIGNED NOT NULL,
+  site_id    BIGINT UNSIGNED NOT NULL,
+  keyword_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (profil_id, site_id, keyword_id),
+  KEY idx_ck_cift (site_id, keyword_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 26.2 Kurallar
+
+- `tukendi` durumu yoktur; profil kullanımdan sonra `hazir`a döner, tükenme çift bazındadır.
+- `cookie_kullanim` birincil anahtarı çifti taşır; aynı profil aynı çiftte ikinci kez seçilmez.
+- Kuyruk kiralamalıdır: sahiplenme `durum` ve `isleniyor_at` ile yapılır, `FOR UPDATE SKIP LOCKED` kullanılır, çöken düğümün satırı geri alınır.
+- İçe aktarım `parmak_izzi` ailesini cookie adlarından türetir: `__Secure-BUCKET` firefox; `SIDCC`, `__Host-GAPS`, `SEARCH_SAMESITE`, `AEC` chrome; işaret yoksa bilinmiyor.
+- Ülke cookie alan adlarından türetilir; TR ve yabancı ayrımı IP eşleşmesinde kullanılır.
+- `mobil` alanı yükleme kaydından gelir; mobil kelimede mobil çerezler öne alınır.
+- Geçici klasör `CEREZ_YUKLEME_KOK` altındadır ve kalıcı birimde durur; düğüm kimliği `DUGUM_ADI` ile verilir.
+- `temizle` globaldir ve geri alınamaz; onay ister.

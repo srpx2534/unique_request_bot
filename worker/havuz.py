@@ -153,7 +153,7 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
 
 
 def sec_mod(
-    geo_slug: str | None = None, mobil_acik: bool = True
+    geo_slug: str | None = None, mobil_acik: bool = True, zorunlu_tur: str | None = None
 ) -> tuple[int, str, str, str] | None:
     """Bir sağlayıcı seçer ve proxy dizesi üretir.
 
@@ -161,6 +161,7 @@ def sec_mod(
         geo_slug: İl slug'ı; verilirse yalnızca il hedefleyebilenler arasından
             seçilir. Uygun yoksa ulusal seçime düşülür.
         mobil_acik: Mobil havuzu katılsın mı.
+        zorunlu_tur: Mobil kelimede "mobile" gecilir; o tur once denenir, yoksa normal siraya dusulur.
 
     Returns:
         (sağlayıcı kimliği, proxy dizesi) ya da hiçbiri yoksa None.
@@ -169,7 +170,7 @@ def sec_mod(
     istenen = tur_sec(oranlar, mobil_acik)
 
     # Sıra: istenen tür, sonra residential, sonra datacenter. Boş tür atlanır.
-    sira = [t for t in (istenen, "residential", "datacenter") if t]
+    sira = [t for t in (zorunlu_tur, istenen, "residential", "datacenter") if t]
     sira = list(dict.fromkeys(sira))
 
     try:
@@ -203,6 +204,23 @@ def sec_mod(
     finally:
         baglanti.close()
     return None
+
+def kelime_mobil(kelime: str) -> bool:
+    """Kelimenin mobil isaretini okur; okunamazsa False."""
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute("SELECT mobil FROM keyword WHERE text = %s LIMIT 1", (kelime,))
+            satir = imlec.fetchone()
+            return bool(satir and satir[0])
+    except Exception:  # noqa: BLE001
+        return False
+    finally:
+        baglanti.close()
+
 
 def slug_bul(geo_kodu: int) -> str | None:
     """İl kodundan slug üretir.
@@ -379,6 +397,7 @@ def cerez_sec(
     geo_kodu: int | None = None,
     site_domain: str | None = None,
     kelime: str | None = None,
+    mobil: bool = False,
 ) -> tuple[int, str | None] | None:
     """Havuzdan bir cerez profili sahiplenir.
 
@@ -431,11 +450,13 @@ def cerez_sec(
                             " AND ck.site_id = %s AND ck.keyword_id = %s)"
                         )
                         parametreler.extend([cift[0], cift[1]])
+                    parametreler.append(1 if mobil else 0)
                     parametreler.append(geo_kodu or 0)
                     imlec.execute(
                         "SELECT id, parmak_izzi FROM cookie_profil WHERE "
                         + " AND ".join(kosullar)
-                        + " ORDER BY (il_kodu = %s) DESC, (ulke = 'TR') DESC,"
+                        + " ORDER BY (COALESCE(mobil, 0) = %s) DESC, (il_kodu = %s) DESC,"
+                        + " (ulke = 'TR') DESC,"
                         " kullanim ASC, id ASC LIMIT 1",
                         tuple(parametreler),
                     )

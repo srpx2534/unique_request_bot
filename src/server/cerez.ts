@@ -348,9 +348,13 @@ async function dosyaAktar(
            il_kodu = ?, durum = 'aktarildi', hata = NULL WHERE id = ?`,
         [bicim, bilgi.size, ozet, cerezler.length, il, id],
       );
+      // Modalite yukleme kaydindan gelir: cerezler ait oldugu moda yazilir.
       const [profil] = await baglanti.query(
-        "INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, sona_erme, suresi_gecmis) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [id, path.basename(tam), il, ulke, aile, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
+        `INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, mobil, sona_erme, suresi_gecmis)
+         SELECT ?, ?, ?, ?, ?, COALESCE(y.modalite, 0), ?, ?
+           FROM cookie_dosya d LEFT JOIN cerez_yukleme y ON y.id = d.yukleme_id
+          WHERE d.id = ?`,
+        [id, path.basename(tam), il, ulke, aile, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0, id],
       );
       const profilId = (profil as { insertId: number }).insertId;
 
@@ -455,7 +459,9 @@ yonlendirici.get("/cerez", async (_istek, yanit) => {
        (SELECT COUNT(*) FROM cookie_profil WHERE ulke = 'TR') AS ulke_tr,
        (SELECT COUNT(*) FROM cookie_profil WHERE ulke IS NOT NULL AND ulke <> 'TR') AS ulke_yabanci,
        (SELECT COUNT(*) FROM cookie_profil) AS toplam,
-       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL) AS illi`,
+       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL) AS illi,
+    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 1) AS mobil,
+    (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 0) AS web`,
   );
   const hatalilar = await sorgu(
     "SELECT id, ad, hata, created_at FROM cookie_dosya WHERE durum = 'gecersiz' ORDER BY id DESC LIMIT 20",
@@ -654,8 +660,8 @@ yonlendirici.post("/cerez/yukleme", async (istek, yanit) => {
   const kim = await yukleyenKimlik(istek);
   const id = await islem(async (baglanti) => {
     const [sonuc] = await baglanti.query(
-      "INSERT INTO cerez_yukleme (kullanici_id, klasor, durum) VALUES (?, ?, 'yukleniyor')",
-      [kim, klasor],
+      "INSERT INTO cerez_yukleme (kullanici_id, klasor, modalite, durum) VALUES (?, ?, ?, 'yukleniyor')",
+      [kim, klasor, istek.body?.modalite === 1 || istek.body?.modalite === true ? 1 : 0],
     );
     return (sonuc as { insertId: number }).insertId;
   });

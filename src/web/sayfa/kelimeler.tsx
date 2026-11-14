@@ -19,6 +19,7 @@ type Kelime = {
   geo_scope: string;
   il_adi: string | null;
   volume: number | null;
+  mobil: number;
   state: string;
   geo_adet: number;
   site_active: number;
@@ -62,6 +63,8 @@ export default function Kelimeler() {
     onError: (hata) => bildir(hata.message, "hata"),
   });
 
+  const [mobil, setMobil] = useState(false);
+
   function ekle(olay: FormEvent) {
     olay.preventDefault();
     if (!siteId) {
@@ -69,7 +72,7 @@ export default function Kelimeler() {
       return;
     }
     islem.mutate(
-      { yol: "/kelime", yontem: "POST", govde: { site_id: siteId, kelime: metin, kapsam, il: kapsam === "province" ? Number(il) : null, volume: hacim ? Number(hacim) : null } },
+      { yol: "/kelime", yontem: "POST", govde: { site_id: siteId, kelime: metin, kapsam, il: kapsam === "province" ? Number(il) : null, volume: hacim ? Number(hacim) : null, mobil } },
       { onSuccess: () => setMetin("") },
     );
   }
@@ -89,6 +92,14 @@ export default function Kelimeler() {
           <label className="w-56 text-sm">
             <span className="text-solgun">Kelime</span>
             <Girdi value={metin} onChange={(o) => setMetin(o.target.value)} className="mt-1" />
+          </label>
+          <label className="w-24 text-sm">
+            <span className="text-solgun">Mod</span>
+            <select value={mobil ? "1" : "0"} onChange={(o) => setMobil(o.target.value === "1")}
+              className="mt-1 block h-10 w-full rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-3 text-sm">
+              <option value="0">Web</option>
+              <option value="1">Mobil</option>
+            </select>
           </label>
           <label className="w-32 text-sm">
             <span className="text-solgun">Kapsam</span>
@@ -121,7 +132,7 @@ export default function Kelimeler() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-solgun">
-              <tr><th className="py-2">Kelime</th><th>Site</th><th>Kapsam</th><th>İl</th><th>Geo</th><th>Hacim</th><th>Durum</th><th /></tr>
+              <tr><th className="py-2">Kelime</th><th>Site</th><th>Kapsam</th><th>İl</th><th>Geo</th><th>Hacim</th><th>Mod</th><th>Durum</th><th /></tr>
             </thead>
             <tbody className="divide-y divide-kenar">
               {liste.data?.satirlar.map((k) => (
@@ -132,6 +143,15 @@ export default function Kelimeler() {
                   <td className="text-solgun">{k.il_adi ?? "—"}</td>
                   <td className="text-solgun">{k.geo_adet}</td>
                   <td className="text-solgun">{k.volume ?? "—"}</td>
+                  <td>
+                    <Dugme
+                      gorunum="sade"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => islem.mutate({ yol: `/kelime/${k.id}`, yontem: "PATCH", govde: { mobil: k.mobil !== 1 } })}
+                    >
+                      {k.mobil === 1 ? "Mobil" : "Web"}
+                    </Dugme>
+                  </td>
                   <td>
                     <div className="flex flex-col items-start gap-1">
                       <Etiket ton={DURUM_TON[k.state] ?? "notr"}>{k.state}</Etiket>
@@ -150,8 +170,7 @@ export default function Kelimeler() {
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              ))}            </tbody>
           </table>
         </div>
         {!liste.data?.satirlar.length ? <p className="mt-3 text-sm text-solgun">Kayıt yok.</p> : null}
@@ -161,7 +180,7 @@ export default function Kelimeler() {
         {duzenlenen ? (
           <div className="space-y-3">
             <p className="text-xs text-solgun">
-              Durum: <Etiket ton={DURUM_TON[duzenlenen.state] ?? "notr"}>{duzenlenen.state}</Etiket> — buradan değişmez, listeden başlat/durdur.
+              Durum: <Etiket ton={DURUM_TON[duzenlenen.state] ?? "notr"}>{duzenlenen.state}</Etiket> — buradan değişmez, listeden başlat/durdur. Mobil kelime mobil IP ve android profil ister; mobil IP yoksa normal proxy kullanılır.
             </p>
             <label className="block text-sm">
               <span className="text-solgun">Kelime</span>
@@ -173,9 +192,18 @@ export default function Kelimeler() {
               <Girdi value={duzenlenen.volume ?? ""} className="mt-1"
                 onChange={(o) => setDuzenlenen({ ...duzenlenen, volume: o.target.value ? Number(o.target.value) : null })} />
             </label>
+            <label className="block text-sm">
+              <span className="text-solgun">Mod</span>
+              <select value={duzenlenen.mobil === 1 ? "1" : "0"}
+                onChange={(o) => setDuzenlenen({ ...duzenlenen, mobil: o.target.value === "1" ? 1 : 0 })}
+                className="mt-1 block h-10 w-full rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-3 text-sm">
+                <option value="0">Web</option>
+                <option value="1">Mobil</option>
+              </select>
+            </label>
             <div className="flex gap-2">
               <Dugme disabled={islem.isPending}
-                onClick={() => islem.mutate({ yol: `/kelime/${duzenlenen.id}`, yontem: "PATCH", govde: { kelime: duzenlenen.text, volume: duzenlenen.volume } })}>
+                onClick={() => islem.mutate({ yol: `/kelime/${duzenlenen.id}`, yontem: "PATCH", govde: { kelime: duzenlenen.text, volume: duzenlenen.volume, mobil: duzenlenen.mobil === 1 } })}>
                 Kaydet
               </Dugme>
               <Dugme gorunum="sade" onClick={() => setDuzenlenen(null)}>Vazgeç</Dugme>

@@ -25,6 +25,7 @@ const eklemeSemasi = z
     il: z.number().int().min(1).max(81).nullable().optional(),
     tier: z.number().int().min(1).max(3).nullable().optional(),
     volume: z.number().int().positive().nullable().optional(),
+    mobil: z.boolean().optional(),
   })
   .refine((v) => (v.kapsam === "province" ? Boolean(v.il) : !v.il), {
     message: "province için il zorunlu, national için boş olmalı",
@@ -35,6 +36,7 @@ const guncellemeSemasi = z.object({
   kelime: z.string().trim().min(2).max(191).optional(),
   tier: z.number().int().min(1).max(3).nullable().optional(),
   volume: z.number().int().positive().nullable().optional(),
+  mobil: z.boolean().optional(),
 });
 
 function kimlik(deger: string | undefined): number | null {
@@ -89,7 +91,7 @@ yonlendirici.get("/kelime", async (istek, yanit) => {
 
   const toplam = await tek<{ sayi: number }>(`SELECT COUNT(*) AS sayi FROM keyword k JOIN site s ON s.id = k.site_id ${nerede}`, degerler);
   const satirlar = await sorgu(
-    `SELECT k.id, k.site_id, s.domain, k.text, k.geo_scope, k.home_geo, k.tier, k.state,
+    `SELECT k.id, k.site_id, s.domain, k.text, k.geo_scope, k.home_geo, k.tier, k.mobil, k.state,
             k.created_at,
             (SELECT COUNT(*) FROM keyword_geo g WHERE g.keyword_id = k.id) AS geo_adet,
             il.name AS il_adi, s.active AS site_active
@@ -119,8 +121,8 @@ yonlendirici.post("/kelime", async (istek, yanit) => {
   try {
     kelimeId = await islem(async (baglanti) => {
       const [sonuc] = await baglanti.execute(
-        "INSERT INTO keyword (site_id, text, geo_scope, home_geo, tier, volume) VALUES (?, ?, ?, ?, ?, ?)",
-        [govde.site_id, govde.kelime, govde.kapsam, govde.il ?? null, govde.tier ?? null, govde.volume ?? null],
+        "INSERT INTO keyword (site_id, text, geo_scope, home_geo, tier, volume, mobil) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [govde.site_id, govde.kelime, govde.kapsam, govde.il ?? null, govde.tier ?? null, govde.volume ?? null, govde.mobil ? 1 : 0],
       );
       return (sonuc as { insertId: number }).insertId;
     });
@@ -160,6 +162,10 @@ yonlendirici.patch("/kelime/:id", async (istek, yanit) => {
     alanlar.push("volume = ?");
     degerler.push(govde.volume);
   }
+  if (govde.mobil !== undefined) {
+    alanlar.push("mobil = ?");
+    degerler.push(govde.mobil ? 1 : 0);
+  }
   if (alanlar.length === 0) {
     yanit.status(400).json({ hata: "güncellenecek alan yok" });
     return;
@@ -181,7 +187,7 @@ yonlendirici.patch("/kelime/:id", async (istek, yanit) => {
   }
 
   await denetim(istek, "kelime-guncelle", "keyword", id);
-  yanit.json(await tek("SELECT id, site_id, text, tier, volume, state FROM keyword WHERE id = ?", [id]));
+  yanit.json(await tek("SELECT id, site_id, text, tier, volume, mobil, state FROM keyword WHERE id = ?", [id]));
 });
 
 yonlendirici.delete("/kelime/:id", async (istek, yanit) => {
