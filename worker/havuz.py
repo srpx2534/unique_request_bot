@@ -328,7 +328,7 @@ def cerez_aktif() -> bool:
 
 
 def _dugum_id() -> int | None:
-    """Bu dugumun kayit kimligi; bir kez cozulur."""
+    """Bu dugumun kayit kimligi; ad varsa ad, yoksa IP ile cozulur."""
     if _dugum_onbellek:
         return _dugum_onbellek[0]
     kimlik: int | None = None
@@ -338,7 +338,11 @@ def _dugum_id() -> int | None:
         baglanti = _baglan()
         try:
             with baglanti.cursor() as imlec:
-                imlec.execute("SELECT id FROM dugum WHERE ip = %s LIMIT 1", (kalp._ip(),))
+                ad = (ayar.oku("DUGUM_ADI") or "").strip()
+                if ad:
+                    imlec.execute("SELECT id FROM dugum WHERE ad = %s LIMIT 1", (ad,))
+                else:
+                    imlec.execute("SELECT id FROM dugum WHERE ip = %s LIMIT 1", (kalp._ip(),))
                 satir = imlec.fetchone()
                 kimlik = int(satir[0]) if satir else None
         finally:
@@ -348,22 +352,54 @@ def _dugum_id() -> int | None:
     _dugum_onbellek.append(kimlik)
     return kimlik
 
+def _cift_bul(site_domain: str | None, kelime: str | None) -> tuple[int, int] | None:
+    """Site alan adi ve kelime metninden (site_id, keyword_id) ciftini bulur."""
+    if not site_domain or not kelime:
+        return None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT k.site_id, k.id FROM keyword k JOIN site s ON s.id = k.site_id"
+                " WHERE s.domain = %s AND k.text = %s LIMIT 1",
+                (site_domain, kelime),
+            )
+            satir = imlec.fetchone()
+            return (int(satir[0]), int(satir[1])) if satir else None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        baglanti.close()
 
-def cerez_sec(geo_kodu: int | None = None) -> int | None:
+
+def cerez_sec(
+    geo_kodu: int | None = None,
+    site_domain: str | None = None,
+    kelime: str | None = None,
+) -> int | None:
     """Havuzdan bir cerez profili sahiplenir.
 
-    Once suresi dolmamis profiller, ayar aciksa sonra suresi gecmisler
-    denenir; her ikisinde de en az kullanilan once gelir. Sahiplenme
-    kosullu UPDATE ile yapilir, iki dugum ayni profili alamaz.
+    Kural: ayni profil ayni site-kelime ciftinde ikinci kez kullanilmaz;
+    farkli sitede ayni kelime icin kullanilabilir.
+
+    Sira: aktif il eslesen, aktif TR, diger aktifler; ancak o grup bitince
+    suresi gecmisler ayni ic sirayla. Grup icinde en az kullanilan secilir.
+    Sahiplenme kosullu UPDATE ile atomiktir.
 
     Args:
-        geo_kodu: Il kodu; verilirse il etiketli profiller one alinir.
+        geo_kodu: Il kodu; il bazli islemde o ilin cerezleri one alinir.
+        site_domain: Hedef alan adi; cifti bulmak icin.
+        kelime: Aranan kelime; cifti bulmak icin.
 
     Returns:
         Profil kimligi; havuz bossa ya da cerez kapaliysa None.
     """
     if not cerez_aktif():
         return None
+    cift = _cift_bul(site_domain, kelime)
     try:
         baglanti = _baglan()
     except Exception:  # noqa: BLE001
@@ -386,11 +422,22 @@ def cerez_sec(geo_kodu: int | None = None) -> int | None:
             gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
             for gecmis in gecmisler:
                 for _ in range(3):
+                    kosullar = ["durum = 'hazir'", "suresi_gecmis = %s"]
+                    parametreler: list = [gecmis]
+                    if cift:
+                        kosullar.append(
+                            "NOT EXISTS (SELECT 1 FROM cookie_kullanim ck"
+                            " WHERE ck.profil_id = cookie_profil.id"
+                            " AND ck.site_id = %s AND ck.keyword_id = %s)"
+                        )
+                        parametreler.extend([cift[0], cift[1]])
+                    parametreler.append(geo_kodu or 0)
                     imlec.execute(
-                        "SELECT id FROM cookie_profil WHERE durum = 'hazir'"
-                        " AND suresi_gecmis = %s AND (il_kodu IS NULL OR il_kodu = %s)"
-                        " ORDER BY kullanim ASC, id ASC LIMIT 1",
-                        (gecmis, geo_kodu or 0),
+                        "SELECT id FROM cookie_profil WHERE "
+                        + " AND ".join(kosullar)
+                        + " ORDER BY (il_kodu = %s) DESC, (ulke = 'TR') DESC,"
+                        " kullanim ASC, id ASC LIMIT 1",
+                        tuple(parametreler),
                     )
                     satir = imlec.fetchone()
                     if not satir:
@@ -401,8 +448,15 @@ def cerez_sec(geo_kodu: int | None = None) -> int | None:
                         " alindi_at = UTC_TIMESTAMP(3) WHERE id = %s AND durum = 'hazir'",
                         (_dugum_id(), profil_id),
                     )
-                    if imlec.rowcount:
-                        return profil_id
+                    if not imlec.rowcount:
+                        continue
+                    if cift:
+                        imlec.execute(
+                            "INSERT IGNORE INTO cookie_kullanim (profil_id, site_id, keyword_id)"
+                            " VALUES (%s, %s, %s)",
+                            (profil_id, cift[0], cift[1]),
+                        )
+                    return profil_id
             return None
     except Exception:  # noqa: BLE001
         return None
@@ -432,7 +486,7 @@ def cerez_al(profil_id: int) -> list[dict]:
 
 
 def cerez_birak(profil_id: int) -> None:
-    """Profili tukendi olarak kapatir ve kullanimi artirir."""
+    """Profili yeniden havuza birakir ve kullanimi artirir."""
     try:
         baglanti = _baglan()
     except Exception:  # noqa: BLE001
@@ -440,7 +494,7 @@ def cerez_birak(profil_id: int) -> None:
     try:
         with baglanti.cursor() as imlec:
             imlec.execute(
-                "UPDATE cookie_profil SET durum = 'tukendi', kullanim = kullanim + 1,"
+                "UPDATE cookie_profil SET durum = 'hazir', kullanim = kullanim + 1,"
                 " dugum_id = NULL WHERE id = %s",
                 (profil_id,),
             )

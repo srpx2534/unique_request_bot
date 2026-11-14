@@ -9,6 +9,7 @@ import uygulama from "./uygulama.js";
 import { redis } from "./redis.js";
 import { isci } from "./isci.js";
 import { zamanlayiciBaslat, zamanlayiciDurdur } from "./zamanlayici.js";
+import { kuyrukBaslat } from "./cerez.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
@@ -24,6 +25,7 @@ const sunucu = uygulama.listen(PORT, HOST, () => {
   // Zamanlayıcı ve kuyruk tüketicisi yalnızca sunucu sürecinde başlar;
   // testler uygulamayı doğrudan yüklediği için ikisi de dışarıda kalır.
   zamanlayiciBaslat();
+  void kuyrukBaslat();
 });
 
 // Port doluysa ikinci süreç sessizce ölmesin: hangi sürecin çalıştığı belli olsun.

@@ -190,7 +190,7 @@ def burst_yap(
             cerez_profil: int | None = None
             cerezler: list[dict] = []
             if geo_mod in ("city", "tr_fallback"):
-                cerez_profil = havuz.cerez_sec(geo_kodu)
+                cerez_profil = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu)
                 if cerez_profil is not None:
                     cerezler = cookie.suz(havuz.cerez_al(cerez_profil), hedef_domain)
 

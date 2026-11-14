@@ -13,6 +13,9 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import type { Request } from "express";
 import multer from "multer";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const calistir = promisify(execFile);
 import { z } from "zod";
 import { islem, sorgu, tek, yaz } from "./veritabani.js";
 import { dogrula } from "./dogrula.js";
@@ -84,47 +87,91 @@ function kayit(alanlar: Partial<Cerez> & { domain: string; ad: string }): Cerez 
   };
 }
 
-/** JSON biçimini çözer. */
+/** Ardisik JSON belgelerini ayirir; bazi dosyalar birlestirilmis gelir. */
+function jsonParcalari(metin: string): unknown[] {
+  const parcalar: unknown[] = [];
+  let derinlik = 0;
+  let bas = -1;
+  let metinIcinde = false;
+  let kacis = false;
+  for (let i = 0; i < metin.length; i += 1) {
+    const karakter = metin[i];
+    if (metinIcinde) {
+      if (kacis) kacis = false;
+      else if (karakter === "\\") kacis = true;
+      else if (karakter === '"') metinIcinde = false;
+      continue;
+    }
+    if (karakter === '"') {
+      metinIcinde = true;
+      continue;
+    }
+    if (karakter === "{") {
+      if (derinlik === 0) bas = i;
+      derinlik += 1;
+      continue;
+    }
+    if (karakter === "}") {
+      derinlik -= 1;
+      if (derinlik === 0 && bas >= 0) {
+        try {
+          parcalar.push(JSON.parse(metin.slice(bas, i + 1)));
+        } catch {
+          // bozuk parca atlanir
+        }
+        bas = -1;
+      }
+    }
+  }
+  return parcalar;
+}
+
+/** JSON bicimini cozer; birlestirilmis belgeleri de ayirir. */
 function jsonCoz(metin: string): Cerez[] {
-  const veri = JSON.parse(metin) as unknown;
-  const ham = Array.isArray(veri)
-    ? veri
-    : (veri as { cookies?: unknown }).cookies;
-  if (!Array.isArray(ham)) throw new Error("cookies dizisi yok");
+  let kokler: unknown[];
+  try {
+    kokler = [JSON.parse(metin)];
+  } catch {
+    kokler = jsonParcalari(metin);
+  }
 
   const cerezler: Cerez[] = [];
-  for (const hamKayit of ham) {
-    const k = hamKayit as Record<string, unknown>;
-    const ad = String(k.name ?? "").trim();
-    const domain = kok(String(k.domain ?? ""));
-    if (!ad || !domain) continue;
-    const bolum = (k.partitionKey ?? {}) as Record<string, unknown>;
-    cerezler.push(
-      kayit({
-        domain,
-        ad: ad.slice(0, 191),
-        deger: String(k.value ?? ""),
-        yol: String(k.path ?? "/").slice(0, 255),
-        sona_erme: zaman(k.expires),
-        guvenli: bayrak(k.secure),
-        http_only: bayrak(k.httpOnly),
-        same_site: k.sameSite ? String(k.sameSite).toLowerCase() : null,
-        oncelik: k.priority ? String(k.priority).toLowerCase() : null,
-        oturumluk: bayrak(k.session),
-        boyut: Number.isFinite(Number(k.size)) ? Number(k.size) : null,
-        kaynak_port: Number.isFinite(Number(k.sourcePort)) ? Number(k.sourcePort) : null,
-        kaynak_sema: k.sourceScheme ? String(k.sourceScheme).toLowerCase() : null,
-        same_party: bayrak(k.sameParty),
-        partition_ust: bolum.topLevelSite ? String(bolum.topLevelSite).slice(0, 191) : null,
-        partition_ata:
-          "hasCrossSiteAncestor" in bolum ? Number(Boolean(bolum.hasCrossSiteAncestor)) : null,
-        host_only: String(k.domain ?? "").startsWith(".") ? 0 : 1,
-      }),
-    );
+  for (const belge of kokler) {
+    const ham = Array.isArray(belge) ? belge : (belge as { cookies?: unknown }).cookies;
+    if (!Array.isArray(ham)) continue;
+    for (const hamKayit of ham) {
+      const k = hamKayit as Record<string, unknown>;
+      const ad = String(k.name ?? "").trim();
+      const domain = kok(String(k.domain ?? ""));
+      if (!ad || !domain) continue;
+      const hamBolum = k.partitionKey;
+      const bolum = (hamBolum && typeof hamBolum === "object" ? hamBolum : {}) as Record<string, unknown>;
+      cerezler.push(
+        kayit({
+          domain,
+          ad: ad.slice(0, 191),
+          deger: String(k.value ?? ""),
+          yol: String(k.path ?? "/").slice(0, 255),
+          sona_erme: zaman(k.expires),
+          guvenli: bayrak(k.secure),
+          http_only: bayrak(k.httpOnly),
+          same_site: k.sameSite ? String(k.sameSite).toLowerCase() : null,
+          oncelik: k.priority ? String(k.priority).toLowerCase() : null,
+          oturumluk: bayrak(k.session),
+          boyut: Number.isFinite(Number(k.size)) ? Number(k.size) : null,
+          kaynak_port: Number.isFinite(Number(k.sourcePort)) ? Number(k.sourcePort) : null,
+          kaynak_sema: k.sourceScheme ? String(k.sourceScheme).toLowerCase() : null,
+          same_party: bayrak(k.sameParty),
+          partition_ust: bolum.topLevelSite ? String(bolum.topLevelSite).slice(0, 191) : null,
+          partition_ata:
+            "hasCrossSiteAncestor" in bolum ? Number(Boolean(bolum.hasCrossSiteAncestor)) : null,
+          host_only: String(k.domain ?? "").startsWith(".") ? 0 : 1,
+        }),
+      );
+    }
   }
   return cerezler;
 }
-
 /** Netscape biçimini çözer. */
 function netscapeCoz(metin: string): Cerez[] {
   const cerezler: Cerez[] = [];
@@ -208,6 +255,17 @@ async function dosyalariTopla(kokDizin: string): Promise<string[]> {
 }
 
 /** İçerik özeti. */
+/** Cerez alan adlarindan ulke kodu cikarir; bilinmiyorsa null. */
+function ulkeBul(domainler: string[]): string | null {
+  for (const domain of domainler) {
+    if (domain.split(".").pop() === "tr") return "TR";
+  }
+  for (const domain of domainler) {
+    const son = domain.split(".").pop() ?? "";
+    if (son.length === 2) return son.toUpperCase();
+  }
+  return null;
+}
 function icerikOzeti(metin: string): string {
   return createHash("sha256").update(metin).digest("hex");
 }
@@ -268,6 +326,7 @@ async function dosyaAktar(
     return !en || c.sona_erme > en ? c.sona_erme : en;
   }, null);
   const il = ilBul(path.relative(kokDizin, tam));
+  const ulke = ulkeBul(cerezler.map((c) => c.domain));
 
   try {
     await islem(async (baglanti) => {
@@ -277,8 +336,8 @@ async function dosyaAktar(
         [bicim, bilgi.size, ozet, cerezler.length, il, id],
       );
       const [profil] = await baglanti.query(
-        "INSERT INTO cookie_profil (dosya_id, ad, il_kodu, sona_erme, suresi_gecmis) VALUES (?, ?, ?, ?, ?)",
-        [id, path.basename(tam), il, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
+        "INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, sona_erme, suresi_gecmis) VALUES (?, ?, ?, ?, ?, ?)",
+        [id, path.basename(tam), il, ulke, enGec, enGec && enGec.getTime() < Date.now() ? 1 : 0],
       );
       const profilId = (profil as { insertId: number }).insertId;
 
@@ -307,7 +366,7 @@ async function dosyaAktar(
 /** Kuyruğu paketler hâlinde boşaltır; aynı anda tek tur çalışır. */
 let calisma: Promise<void> | null = null;
 
-/** Kuyrugu paketler halinde bosaltir; cagrilar siraya girer, ayni anda tek tur. */
+/** Kuyrugu kirali paketler halinde bosaltir; cagrilar siraya girer. */
 async function isle(kokDizin: string): Promise<void> {
   const onceki = calisma;
   const tur = (async () => {
@@ -315,10 +374,29 @@ async function isle(kokDizin: string): Promise<void> {
     durum.calisiyor = true;
     try {
       for (;;) {
-        const paket = await sorgu<{ id: number; yol: string }>(
-          "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
-          [PAKET],
-        );
+        const paket = await islem(async (baglanti) => {
+          // Coken dugumun kiralari duser; satir baska dugumce alinabilir.
+          await baglanti.query(
+            "UPDATE cookie_dosya SET durum = 'yeni', isleniyor_at = NULL"
+              + " WHERE durum = 'isleniyor' AND (isleniyor_at IS NULL"
+              + " OR isleniyor_at < UTC_TIMESTAMP(3) - INTERVAL ? MINUTE)",
+            [KIRALAMA_DK],
+          );
+          const [satirlar] = await baglanti.query(
+            "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ? FOR UPDATE SKIP LOCKED",
+            [PAKET],
+          );
+          const secilen = satirlar as { id: number; yol: string }[];
+          if (secilen.length) {
+            await baglanti.query(
+              `UPDATE cookie_dosya SET durum = 'isleniyor', isleniyor_at = UTC_TIMESTAMP(3) WHERE id IN (${secilen
+                .map(() => "?")
+                .join(",")})`,
+              secilen.map((satir) => satir.id),
+            );
+          }
+          return secilen;
+        });
         if (!paket.length) break;
         for (const satir of paket) {
           const sonuc = await dosyaAktar(satir.id, satir.yol, kokDizin);
@@ -336,117 +414,18 @@ async function isle(kokDizin: string): Promise<void> {
   if (calisma === tur) calisma = null;
 }
 
-const yolSemasi = z.object({ yol: z.string().trim().min(1).max(512) });
-
-/** Özet sayılar. */
-yonlendirici.get("/cerez", async (_istek, yanit) => {
-  const sayim = await tek<Record<string, number>>(
-    `SELECT
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'aktarildi') AS dosya,
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'gecersiz') AS gecersiz,
-       (SELECT COUNT(*) FROM cookie_dosya WHERE durum = 'mukerrer') AS mukerrer,
-       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 0) AS aktif,
-       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'hazir' AND suresi_gecmis = 1) AS suresi_gecmis,
-       (SELECT COUNT(*) FROM cookie_profil WHERE durum = 'tukendi') AS tukenen,
-       (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL) AS illi`,
-  );
-  const hatalilar = await sorgu(
-    "SELECT id, ad, hata, created_at FROM cookie_dosya WHERE durum = 'gecersiz' ORDER BY id DESC LIMIT 20",
-  );
-  yanit.json({ sayim, durum, hatalilar });
-});
-
-/** Klasörü sayar; yazmaz. */
-yonlendirici.post("/cerez/tara", async (istek, yanit) => {
-  const govde = dogrula(yolSemasi, istek.body, yanit);
-  if (!govde) return;
-  let kokDizin: string;
-  try {
-    kokDizin = await yolDogrula(govde.yol);
-  } catch (hata) {
-    yanit.status(400).json({ hata: (hata as Error).message });
-    return;
-  }
-  const dosyalar = await dosyalariTopla(kokDizin);
-  const dagilim = { json: 0, txt: 0, illi: 0 };
-  for (const tam of dosyalar) {
-    if (/\.json$/i.test(tam)) dagilim.json += 1;
-    else dagilim.txt += 1;
-    if (ilBul(path.relative(kokDizin, tam)) !== null) dagilim.illi += 1;
-  }
-  yanit.json({ kok: kokDizin, toplam: dosyalar.length, dagilim });
-});
-
-/** Dosyaları deftere yazar ve işi başlatır. */
-yonlendirici.post("/cerez/aktar", async (istek, yanit) => {
-  const govde = dogrula(yolSemasi, istek.body, yanit);
-  if (!govde) return;
-  let kokDizin: string;
-  try {
-    kokDizin = await yolDogrula(govde.yol);
-  } catch (hata) {
-    yanit.status(400).json({ hata: (hata as Error).message });
-    return;
-  }
-  const dosyalar = await dosyalariTopla(kokDizin);
-  for (const tam of dosyalar) {
-    await yaz(
-      "INSERT IGNORE INTO cookie_dosya (yol, ad, tur, boyut, ozet, durum) VALUES (?, ?, 'json', 0, ?, 'yeni')",
-      [tam, path.basename(tam), createHash("sha256").update(tam).digest("hex")],
-    );
-  }
-  durum.toplam += dosyalar.length;
-  void isle(kokDizin);
-  yanit.json({ kuyruk: dosyalar.length, durum });
-});
-
-/** İlerleme. */
-yonlendirici.get("/cerez/ilerleme", async (_istek, yanit) => {
+/** Acilista yarim kalan kuyrugu devam ettirir. */
+export async function kuyrukBaslat(): Promise<void> {
   const bekleyen = await tek<{ sayi: number }>(
-    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum = 'yeni'",
-  );
-  yanit.json({ ...durum, bekleyen: bekleyen?.sayi ?? 0 });
-});
-
-/** Tüm çerez defterini siler. */
-yonlendirici.delete("/cerez", async (_istek, yanit) => {
-  await yaz("DELETE FROM cookie_dosya");
-  durum.toplam = 0;
-  durum.islenen = 0;
-  durum.mukerrer = 0;
-  durum.hatali = 0;
-  yanit.status(204).end();
-});
-
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const calistir = promisify(execFile);
-
-/** Sunucu makinesinde klasör seçici açar; iptalde null döner. */
-async function klasorSec(): Promise<string | null> {
-  const win = process.platform === "win32";
-  const komut = win ? "powershell.exe" : "zenity";
-  const argumanlar = win
-    ? [
-        "-NoProfile",
-        "-STA",
-        "-Command",
-        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $p = New-Object System.Windows.Forms.FolderBrowserDialog; $p.Description = 'Cerez klasorunu sec'; $p.ShowNewFolderButton = $false; if ($p.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($p.SelectedPath) }",
-      ]
-    : ["--file-selection", "--directory", "--title=Cerez klasorunu sec"];
-  try {
-    const { stdout } = await calistir(komut, argumanlar, { timeout: 300_000, windowsHide: true });
-    const secilen = stdout.trim();
-    return secilen === "" ? null : secilen;
-  } catch (hata) {
-    const kod = (hata as { code?: number | string }).code;
-    // zenity iptalde 1 ile cikar.
-    if (kod === 1 || kod === "1") return null;
-    throw hata;
-  }
+    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('yeni','isleniyor')",
+  ).catch(() => null);
+  if (!bekleyen?.sayi) return;
+  const ilk = await tek<{ yol: string }>(
+    "SELECT yol FROM cookie_dosya WHERE durum IN ('yeni','isleniyor') ORDER BY id LIMIT 1",
+  ).catch(() => null);
+  console.log(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
+  void isle(ilk?.yol ? path.dirname(ilk.yol) : YUKLEME_KOK);
 }
-
 yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
   try {
     const secilen = await klasorSec();
@@ -465,9 +444,34 @@ yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
     yanit.status(500).json({ hata: "klasör seçici açılamadı" });
   }
 });
-const YUKLEME_KOK = path.join(process.cwd(), "cerez_yukleme");
+/** Sunucu makinesinde klasor secici acar; iptalde null doner. */
+async function klasorSec(): Promise<string | null> {
+  const win = process.platform === "win32";
+  const komut = win ? "powershell.exe" : "zenity";
+  const argumanlar = win
+    ? [
+        "-NoProfile",
+        "-STA",
+        "-Command",
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $p = New-Object System.Windows.Forms.FolderBrowserDialog; $p.ShowNewFolderButton = $false; if ($p.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($p.SelectedPath) }",
+      ]
+    : ["--file-selection", "--directory", "--title=Cerez klasorunu sec"];
+  try {
+    const { stdout } = await calistir(komut, argumanlar, { timeout: 300_000, windowsHide: true });
+    const secilen = stdout.trim();
+    return secilen === "" ? null : secilen;
+  } catch (hata) {
+    const kod = (hata as { code?: number | string }).code;
+    if (kod === 1 || kod === "1") return null;
+    throw hata;
+  }
+}
+const YUKLEME_KOK = process.env.CEREZ_YUKLEME_KOK
+  ? path.resolve(process.env.CEREZ_YUKLEME_KOK)
+  : path.join(process.cwd(), "cerez_yukleme");
 const PARTI_DOSYA = 500;
 const PARTI_BAYT = 32 * 1024 * 1024;
+const KIRALAMA_DK = 10; // dakika; olu dugumun kiraladigi satir geri alinir
 
 const yukle = multer({
   storage: multer.memoryStorage(),
@@ -595,6 +599,7 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
   }
 
   let yazilan = 0;
+  const kim = await yukleyenKimlik(istek);
   for (let i = 0; i < dosyalar.length; i += 1) {
     const dosya = dosyalar[i];
     if (!dosya) continue;
@@ -603,8 +608,15 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
     const hedef = path.join(kayit.klasor, goreli);
     await fs.mkdir(path.dirname(hedef), { recursive: true });
     await fs.writeFile(hedef, dosya.buffer);
+    await yaz(
+      `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, yukleyen, yukleme_id, boyut, ozet, durum)
+       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'yeni')`,
+      [hedef, path.basename(hedef), kim, id, createHash("sha256").update(hedef).digest("hex")],
+    );
     yazilan += 1;
   }
+  durum.toplam += yazilan;
+  void isle(kayit.klasor);
   await yaz(
     "UPDATE cerez_yukleme SET dosya_sayisi = dosya_sayisi + ?, boyut = boyut + ? WHERE id = ?",
     [yazilan, toplamBayt, id],
@@ -650,7 +662,7 @@ yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
     dosyalar.length,
     id,
   ]);
-  durum.toplam += dosyalar.length;
+
   void (async () => {
     await isle(kayit.klasor).catch(() => {});
     await yaz("UPDATE cerez_yukleme SET durum = 'bitti' WHERE id = ?", [id]).catch(() => {});

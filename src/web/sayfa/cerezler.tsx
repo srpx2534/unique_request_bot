@@ -2,8 +2,8 @@
  * Çerezler: tarayıcıdan klasör yükleme, yükleme ve aktarım ilerlemesi.
  *
  * Dosyalar kullanıcının bilgisayarından partiler hâlinde gönderilir; sunucuda
- * geçici klasöre yazılır, aktarım bitince silinir. Havuz boşken sistem
- * çerezsiz çalışmaya devam eder.
+ * geçici klasöre yazılır, her parti hemen aktarıma girer, bitince klasör
+ * silinir. Havuz boşken sistem çerezsiz çalışmaya devam eder.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
@@ -23,8 +23,10 @@ type Sayim = {
   mukerrer: number;
   aktif: number;
   suresi_gecmis: number;
-  tukenen: number;
   illi: number;
+  ulke_tr: number;
+  ulke_yabanci: number;
+  toplam: number;
 };
 
 type Ozet = {
@@ -57,7 +59,10 @@ export default function Cerezler() {
 
   const [dosyalar, setDosyalar] = useState<File[]>([]);
   const [secim, setSecim] = useState<Secim | null>(null);
-  const [asama, setAsama] = useState<"bos" | "hazir" | "yukleniyor" | "aktarim" | "bitti">("bos");
+  const [klasorAdi, setKlasorAdi] = useState("");
+  const [asama, setAsama] = useState<
+    "bos" | "hazirlaniyor" | "hazir" | "yukleniyor" | "aktarim" | "bitti"
+  >("bos");
   const [oran, setOran] = useState(0);
   const [gonderilen, setGonderilen] = useState(0);
   const [islemId, setIslemId] = useState<number | null>(null);
@@ -67,7 +72,7 @@ export default function Cerezler() {
   const ozet = useQuery<Ozet, ApiHatasi>({
     queryKey: ["cerez"],
     queryFn: () => iste("/cerez"),
-    refetchInterval: (sorgu) => (sorgu.state.data?.durum.calisiyor ? 2_000 : 10_000),
+    refetchInterval: (sorgu) => (sorgu.state.data?.durum.calisiyor ? 1_500 : 10_000),
   });
 
   const temizle = useMutation<unknown, ApiHatasi>({
@@ -103,26 +108,32 @@ export default function Cerezler() {
     };
   }, [asama, islemId, istemci]);
 
-  function secildi(olay: ChangeEvent<HTMLInputElement>): void {
-    const liste = Array.from(olay.target.files ?? []).filter((dosya) =>
-      /\.(json|txt)$/i.test(dosya.name),
-    );
-    setDosyalar(liste);
+  async function secildi(olay: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const ham = Array.from(olay.target.files ?? []);
+    setAsama("hazirlaniyor");
+    setSecim(null);
+    setKlasorAdi("");
     setIslem(null);
     ilerlemeSifirla();
-    const ilk = liste[0]?.webkitRelativePath ?? "";
-    setKlasorAdi(ilk.includes("/") ? ilk.slice(0, ilk.indexOf("/")) : liste[0]?.name ?? "");
+    // Çizim önce gitsin: büyük klasörde sayım ana iş parçacığını meşgul eder.
+    await new Promise((coz) => window.setTimeout(coz, 40));
+    const liste = ham.filter((dosya) => /\.(json|txt)$/i.test(dosya.name));
+    setDosyalar(liste);
     if (!liste.length) {
-      setSecim(null);
       setAsama("bos");
       return;
     }
-    setSecim({
-      toplam: liste.length,
-      json: liste.filter((dosya) => /\.json$/i.test(dosya.name)).length,
-      txt: liste.filter((dosya) => /\.txt$/i.test(dosya.name)).length,
-      boyut: liste.reduce((toplam, dosya) => toplam + dosya.size, 0),
-    });
+    const ilk = liste[0]?.webkitRelativePath ?? "";
+    setKlasorAdi(ilk.includes("/") ? ilk.slice(0, ilk.indexOf("/")) : liste[0]?.name ?? "");
+    let json = 0;
+    let txt = 0;
+    let boyut = 0;
+    for (const dosya of liste) {
+      if (/\.json$/i.test(dosya.name)) json += 1;
+      else txt += 1;
+      boyut += dosya.size;
+    }
+    setSecim({ toplam: liste.length, json, txt, boyut });
     setAsama("hazir");
   }
 
@@ -130,6 +141,16 @@ export default function Cerezler() {
     setOran(0);
     setGonderilen(0);
     setIslemId(null);
+  }
+
+  function temizleSecim(): void {
+    setDosyalar([]);
+    setSecim(null);
+    setKlasorAdi("");
+    setIslem(null);
+    ilerlemeSifirla();
+    setAsama("bos");
+    if (secici.current) secici.current.value = "";
   }
 
   async function yukle(): Promise<void> {
@@ -170,13 +191,14 @@ export default function Cerezler() {
 
   const sayim = ozet.data?.sayim;
   const calisiyor = ozet.data?.durum.calisiyor ?? false;
-  const mesgul = asama === "yukleniyor" || asama === "aktarim";
+  const secili = dosyalar.length > 0;
+  const mesgul = asama !== "bos" && asama !== "hazir" && asama !== "bitti";
 
   return (
     <div className="space-y-4">
       <Kart
         baslik="Çerez yükle"
-        aciklama="Kendi bilgisayarından klasör seç. Dosyalar sunucuya gönderilir; yalnızca .json ve .txt alınır, aynı içerik iki kez aktarılmaz."
+        aciklama="Kendi bilgisayarından klasör seç. Dosyalar sunucuya gönderilir, yüklenirken hemen havuza işlenir; yalnızca .json ve .txt alınır."
       >
         <input
           ref={secici}
@@ -189,7 +211,7 @@ export default function Cerezler() {
         <div className="flex flex-wrap items-center gap-2">
           <Dugme
             gorunum="ikincil"
-            disabled={mesgul}
+            disabled={secili || mesgul}
             onClick={() => {
               if (secici.current) secici.current.value = "";
               secici.current?.click();
@@ -197,7 +219,7 @@ export default function Cerezler() {
           >
             Klasör seç
           </Dugme>
-          <Dugme disabled={!dosyalar.length || mesgul} onClick={() => void yukle()}>
+          <Dugme disabled={!secili || mesgul} onClick={() => void yukle()}>
             Yükle
           </Dugme>
           {mesgul ? (
@@ -240,17 +262,19 @@ export default function Cerezler() {
           <p className="mt-3 text-xs text-solgun">Henüz klasör seçilmedi.</p>
         )}
 
+        {asama === "hazirlaniyor" ? (
+          <p className="mt-3 text-xs text-solgun">Klasör okunuyor, bekleyin…</p>
+        ) : null}
+
         {asama === "yukleniyor" ? (
           <div className="mt-3 space-y-2">
             <div className="h-2 overflow-hidden rounded-full bg-yuzey-2">
-              <div
-                className="h-full bg-vurgu"
-                style={{ width: `${Math.round(oran * 100)}%` }}
-              />
+              <div className="h-full bg-vurgu" style={{ width: `${Math.round(oran * 100)}%` }} />
             </div>
             <p className="text-xs text-solgun">
               {gonderilen} / {dosyalar.length} dosya gönderildi · %{Math.round(oran * 100)}
             </p>
+            <p className="text-xs text-solgun">Yüklenen dosyalar havuza işleniyor, sayaçlara bakabilirsin.</p>
           </div>
         ) : null}
 
@@ -282,7 +306,7 @@ export default function Cerezler() {
       </Kart>
 
       <Kart baslik="Havuz" aciklama="Önce süresi dolmamış çerezler kullanılır; ayar açıksa süresi geçmişler de devreye girer.">
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <p className="text-xs text-solgun">aktif</p>
             <p className="text-lg font-medium text-basari">{sayim?.aktif ?? 0}</p>
@@ -292,15 +316,22 @@ export default function Cerezler() {
             <p className="text-lg font-medium text-uyari">{sayim?.suresi_gecmis ?? 0}</p>
           </div>
           <div>
-            <p className="text-xs text-solgun">tükenen</p>
-            <p className="text-lg font-medium text-solgun">{sayim?.tukenen ?? 0}</p>
-          </div>
-          <div>
             <p className="text-xs text-solgun">il eşleşen</p>
             <p className="text-lg font-medium text-solgun">{sayim?.illi ?? 0}</p>
           </div>
+          <div>
+            <p className="text-xs text-solgun">TR ip</p>
+            <p className="text-lg font-medium text-metin">{sayim?.ulke_tr ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-solgun">yabancı ip</p>
+            <p className="text-lg font-medium text-solgun">{sayim?.ulke_yabanci ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-solgun">toplam</p>
+            <p className="text-lg font-medium text-metin">{sayim?.toplam ?? 0}</p>
+          </div>
         </div>
-
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-solgun">
           <Etiket ton={calisiyor ? "vurgu" : "notr"}>{calisiyor ? "aktarım sürüyor" : "beklemede"}</Etiket>
           <span>· işlenen {ozet.data?.durum.islenen ?? 0}</span>
@@ -336,7 +367,7 @@ export default function Cerezler() {
         acik={silinecek}
         baslik="Çerez defterini sil"
         dugmeEtiketi="Sil"
-        metin="Tüm dosya ve profil kayıtları silinir. Aktarım sürüyorsa durur."
+        metin="Tüm çerez kayıtları ve kullanım defteri silinir. Havuz ortak olduğu için herkesin çerezleri gider, geri alınamaz. Aktarım sürüyorsa o ana kadar aktarılanlar da silinir."
         kapat={() => setSilinecek(false)}
         bekle={temizle.isPending}
         onayla={() => temizle.mutate()}
