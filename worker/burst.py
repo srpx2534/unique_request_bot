@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from curl_cffi import requests
 
-from worker import click, fingerprint, havuz, saglik_db, serp
+from worker import click, cookie, fingerprint, havuz, saglik_db, serp
 
 AZAMI_HIT = 60  # sözleşme §9: basamak boyu en fazla 60
 HIT_ARASI_MIN = 0.4  # saniye; art arda istekte insan ritmi
@@ -48,6 +48,7 @@ def _tek_hit(
     proxy_adres: str | None,
     profil: str,
     uule: str | None,
+    cerezler: list[dict] | None = None,
 ) -> dict:
     """Bir hit'i uctan uca dener.
 
@@ -63,6 +64,9 @@ def _tek_hit(
              "latency_ms": 0}
 
     with requests.Session(impersonate=profil) as oturum:
+        # Cerez varsa oturuma yuklenir; yoksa hit cerezsiz gider.
+        if cerezler:
+            cookie.oturuma_yukle(oturum, cerezler)
         izlenim = serp.serp_getir_html(sorgu, uule=uule, proxy=proxy_adres,
                                        onceki_profil=profil, oturum=oturum)
         kayit["izlenim"] = izlenim["result"]
@@ -182,12 +186,23 @@ def burst_yap(
                 saglayici_id = secim[0] if secim else None
                 geo_mod = secim[2] if secim else None
 
+            # Cerez yalnizca ayni ulke IP'siyle anlamli: yabanci hitte yuklenmez.
+            cerez_profil: int | None = None
+            cerezler: list[dict] = []
+            if geo_mod in ("city", "tr_fallback"):
+                cerez_profil = havuz.cerez_sec(geo_kodu)
+                if cerez_profil is not None:
+                    cerezler = cookie.suz(havuz.cerez_al(cerez_profil), hedef_domain)
+
             profil = fingerprint.profil_sec(haric=onceki_profil)
             onceki_profil = profil
-            kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule)
+            kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)
             # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.
             kayit["saglayici_id"] = saglayici_id
             kayit["geo_mode"] = geo_mod
+            kayit["cerez"] = bool(cerezler)
+            if cerez_profil is not None:
+                havuz.cerez_birak(cerez_profil)
             if kayit["result"] == "ok" or kayit["result"] == "captcha":
                 break
             # Sağlayıcı kaynaklı düşüşte yeni sağlayıcıyla bir kez daha

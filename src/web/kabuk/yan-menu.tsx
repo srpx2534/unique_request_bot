@@ -7,6 +7,7 @@
 import { NavLink } from "react-router-dom";
 import {
   Bell,
+  Cookie,
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
@@ -26,6 +27,7 @@ const maddeler = [
   { yol: "/kelimeler", ad: "Kelimeler", Ikon: Search },
   { yol: "/saglayicilar", ad: "Sağlayıcılar", Ikon: Network },
   { yol: "/sunucular", ad: "Sunucular", Ikon: Server },
+  { yol: "/cerezler", ad: "Çerezler", Ikon: Cookie },
   { yol: "/uyarilar", ad: "Uyarılar", Ikon: Bell },
   { yol: "/loglar", ad: "Loglar", Ikon: ScrollText },
   { yol: "/rapor", ad: "Rapor", Ikon: BarChart3 },

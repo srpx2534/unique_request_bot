@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "tsx watch src/server/index.ts",
@@ -20,6 +22,7 @@
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.6",
     "@tanstack/react-query": "^5.62.7",
+    "@types/multer": "^2.3.0",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.34.5",
     "class-variance-authority": "^0.7.1",
@@ -33,6 +36,7 @@
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
     "lucide-react": "^0.469.0",
+    "multer": "^2.5.0",
     "mysql2": "^3.12.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

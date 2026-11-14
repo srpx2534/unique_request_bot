@@ -14,6 +14,8 @@ import { useBildirim } from "@/bilesen/ui/bildirim";
 import { ayarKullan, ayarYaz } from "@/lib/panel";
 import { iste } from "@/lib/api";
 
+type MantiksalAlan = { anahtar: string; etiket: string; aciklama: string };
+
 type SayisalAlan = {
   anahtar: string;
   etiket: string;
@@ -50,6 +52,19 @@ const KUYRUK_ALANLARI: SayisalAlan[] = [
     min: 1,
     max: 100000,
     varsayilan: 200,
+  },
+];
+
+const CEREZ_ALANLARI: MantiksalAlan[] = [
+  {
+    anahtar: "cerez_kullan",
+    etiket: "Çerez kullan",
+    aciklama: "Kapatılırsa hit'ler çerezsiz gider. Havuz boşken sistem zaten çerezsiz çalışır.",
+  },
+  {
+    anahtar: "cerez_suresiz_kullan",
+    etiket: "Süresi geçmiş çerezleri de kullan",
+    aciklama: "Önce süresi dolmamış çerezler denenir; tükendiyse süresi geçmişler kullanılır.",
   },
 ];
 
@@ -97,6 +112,21 @@ export default function Ayarlar() {
   function sayisalKaydet(alanlar: SayisalAlan[]) {
     const govde = dogrula(alanlar);
     if (!govde) return;
+    yaz.mutate(govde, {
+      onSuccess: () => {
+        setDegerler({});
+        bildir("Kaydedildi");
+      },
+    });
+  }
+
+  /** Çerez anahtarlarını onay kutularından yazar. */
+  function mantiksalKaydet() {
+    const govde: Record<string, string> = {};
+    for (const alan of CEREZ_ALANLARI) {
+      const acik = (degerler[alan.anahtar] ?? (kayitli(alan.anahtar) || "1")) === "1";
+      govde[alan.anahtar] = acik ? "1" : "0";
+    }
     yaz.mutate(govde, {
       onSuccess: () => {
         setDegerler({});
@@ -249,6 +279,33 @@ export default function Ayarlar() {
           onClick={() => sayisalKaydet(KUYRUK_ALANLARI)}
         >
           Kuyruğu kaydet
+        </Dugme>
+      </Kart>
+
+      <Kart baslik="Çerez" aciklama="Çerez yalnızca aynı ülke proxy'siyle kullanılır; profil başına tek kullanım.">
+        <div className="space-y-4">
+          {CEREZ_ALANLARI.map((alan) => {
+            const acik = (degerler[alan.anahtar] ?? (kayitli(alan.anahtar) || "1")) === "1";
+            return (
+              <label key={alan.anahtar} className="flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={acik}
+                  onChange={(o) =>
+                    setDegerler({ ...degerler, [alan.anahtar]: o.target.checked ? "1" : "0" })
+                  }
+                  className="mt-0.5 size-4"
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">{alan.etiket}</span>
+                  <span className="text-xs leading-relaxed text-solgun">{alan.aciklama}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <Dugme className="mt-4" disabled={yaz.isPending} onClick={mantiksalKaydet}>
+          Çerezi kaydet
         </Dugme>
       </Kart>
     </div>

@@ -19,6 +19,7 @@ import kelimeYonlendirici from "./kelime.js";
 import panelYonlendirici from "./panel.js";
 import raporYonlendirici from "./rapor.js";
 import dugumYonlendirici, { kalpIsleyici } from "./dugum.js";
+import cerezYonlendirici from "./cerez.js";
 import { imzaDogrula } from "./worker_imza.js";
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -72,6 +73,7 @@ uygulama.use("/api", kelimeYonlendirici);
 uygulama.use("/api", panelYonlendirici);
 uygulama.use("/api", raporYonlendirici);
 uygulama.use("/api", dugumYonlendirici);
+uygulama.use("/api", cerezYonlendirici);
 
 uygulama.use(express.static(path.join(KOK, "dist", "web")));
 

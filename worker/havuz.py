@@ -301,3 +301,150 @@ def varsayilan_secici(geo_slug: str | None = None, mobil_acik: bool = True):
         return sonuc[1]
 
     return secici
+
+
+# --- Cerez havuzu ---------------------------------------------------------
+# Havuz kuralinin istisnasi: sahiplenme icin cookie_profil'e yazilir (§3).
+# Birden fazla dugum ayni havuzdan beslenir; sahiplenme atomiktir.
+
+CEREZ_BIRAKMA_DK = 10  # dakika; dugum olurse kilit bu sure sonunda duser
+_dugum_onbellek: list = []
+
+
+def _ayar_evet(anahtar: str, varsayilan: str = "1") -> bool:
+    """Ayari evet/hayir olarak okur; okunamazsa varsayilana doner."""
+    try:
+        from worker import ayar_db
+
+        ham = (ayar_db.oku(anahtar, varsayilan) or varsayilan).strip().lower()
+        return ham not in ("0", "", "hayir", "hayır", "false")
+    except Exception:  # noqa: BLE001
+        return varsayilan != "0"
+
+
+def cerez_aktif() -> bool:
+    """Panelden cerez kullanimi acik mi."""
+    return _ayar_evet("cerez_kullan", "1")
+
+
+def _dugum_id() -> int | None:
+    """Bu dugumun kayit kimligi; bir kez cozulur."""
+    if _dugum_onbellek:
+        return _dugum_onbellek[0]
+    kimlik: int | None = None
+    try:
+        from worker import kalp
+
+        baglanti = _baglan()
+        try:
+            with baglanti.cursor() as imlec:
+                imlec.execute("SELECT id FROM dugum WHERE ip = %s LIMIT 1", (kalp._ip(),))
+                satir = imlec.fetchone()
+                kimlik = int(satir[0]) if satir else None
+        finally:
+            baglanti.close()
+    except Exception:  # noqa: BLE001
+        kimlik = None
+    _dugum_onbellek.append(kimlik)
+    return kimlik
+
+
+def cerez_sec(geo_kodu: int | None = None) -> int | None:
+    """Havuzdan bir cerez profili sahiplenir.
+
+    Once suresi dolmamis profiller, ayar aciksa sonra suresi gecmisler
+    denenir; her ikisinde de en az kullanilan once gelir. Sahiplenme
+    kosullu UPDATE ile yapilir, iki dugum ayni profili alamaz.
+
+    Args:
+        geo_kodu: Il kodu; verilirse il etiketli profiller one alinir.
+
+    Returns:
+        Profil kimligi; havuz bossa ya da cerez kapaliysa None.
+    """
+    if not cerez_aktif():
+        return None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        with baglanti.cursor() as imlec:
+            # Olu dugumlerin biraktigi kilitler duser.
+            imlec.execute(
+                "UPDATE cookie_profil SET durum = 'hazir', dugum_id = NULL"
+                " WHERE durum = 'kullaniliyor'"
+                " AND (alindi_at IS NULL OR alindi_at < UTC_TIMESTAMP(3) - INTERVAL %s MINUTE)",
+                (CEREZ_BIRAKMA_DK,),
+            )
+            # Suresi yeni dolmus profiller isaretlenir.
+            imlec.execute(
+                "UPDATE cookie_profil SET suresi_gecmis = 1 WHERE durum = 'hazir'"
+                " AND suresi_gecmis = 0 AND sona_erme IS NOT NULL"
+                " AND sona_erme < UTC_TIMESTAMP(3)"
+            )
+            gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
+            for gecmis in gecmisler:
+                for _ in range(3):
+                    imlec.execute(
+                        "SELECT id FROM cookie_profil WHERE durum = 'hazir'"
+                        " AND suresi_gecmis = %s AND (il_kodu IS NULL OR il_kodu = %s)"
+                        " ORDER BY kullanim ASC, id ASC LIMIT 1",
+                        (gecmis, geo_kodu or 0),
+                    )
+                    satir = imlec.fetchone()
+                    if not satir:
+                        break
+                    profil_id = int(satir[0])
+                    imlec.execute(
+                        "UPDATE cookie_profil SET durum = 'kullaniliyor', dugum_id = %s,"
+                        " alindi_at = UTC_TIMESTAMP(3) WHERE id = %s AND durum = 'hazir'",
+                        (_dugum_id(), profil_id),
+                    )
+                    if imlec.rowcount:
+                        return profil_id
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        baglanti.close()
+
+
+def cerez_al(profil_id: int) -> list[dict]:
+    """Profilin cerezlerini okur; okunamazsa bos liste."""
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT domain, ad, deger, yol FROM cookie WHERE profil_id = %s", (profil_id,)
+            )
+            return [
+                {"domain": d, "ad": a, "deger": dg, "yol": y or "/"}
+                for d, a, dg, y in imlec.fetchall()
+            ]
+    except Exception:  # noqa: BLE001
+        return []
+    finally:
+        baglanti.close()
+
+
+def cerez_birak(profil_id: int) -> None:
+    """Profili tukendi olarak kapatir ve kullanimi artirir."""
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE cookie_profil SET durum = 'tukendi', kullanim = kullanim + 1,"
+                " dugum_id = NULL WHERE id = %s",
+                (profil_id,),
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        baglanti.close()

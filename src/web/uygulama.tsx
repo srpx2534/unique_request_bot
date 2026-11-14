@@ -17,6 +17,7 @@ import Siteler from "@/sayfa/siteler";
 import Kelimeler from "@/sayfa/kelimeler";
 import Saglayicilar from "@/sayfa/saglayicilar";
 import Sunucular from "@/sayfa/sunucular";
+import Cerezler from "@/sayfa/cerezler";
 import Uyarilar from "@/sayfa/uyarilar";
 import Loglar from "@/sayfa/loglar";
 import Rapor from "@/sayfa/rapor";
@@ -64,6 +65,7 @@ export default function Uygulama() {
               <Route path="kelimeler" element={<Kelimeler />} />
               <Route path="saglayicilar" element={<Saglayicilar />} />
               <Route path="sunucular" element={<Sunucular />} />
+              <Route path="cerezler" element={<Cerezler />} />
               <Route path="uyarilar" element={<Uyarilar />} />
               <Route path="loglar" element={<Loglar />} />
               <Route path="rapor" element={<Rapor />} />

@@ -18,3 +18,7 @@ logs/
 coverage/
 .vite/
 .redis/
+
+# Cerez dosyalari: hesap token'i tasir, repoya girmez.
+cerezler/
+cerez/
