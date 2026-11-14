@@ -154,7 +154,7 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
 
 def sec_mod(
     geo_slug: str | None = None, mobil_acik: bool = True
-) -> tuple[int, str] | None:
+) -> tuple[int, str, str, str] | None:
     """Bir sağlayıcı seçer ve proxy dizesi üretir.
 
     Args:
@@ -197,7 +197,7 @@ def sec_mod(
                         mod = "city" if kod else ("tr_fallback" if ulke == "TR" else "yabanci")
                         return saglayici_id, proxy.dize(
                             gateway, kullanici, sifre, geo_slug if kod else None
-                        ), mod
+                        ), mod, tur
     except Exception:  # noqa: BLE001
         return None
     finally:
@@ -270,7 +270,7 @@ def durum_sayaci() -> dict[str, int]:
         baglanti.close()
 def sec(
     geo_slug: str | None = None, mobil_acik: bool = True
-) -> tuple[int, str] | None:
+) -> tuple[int, str, str, str] | None:
     """`sec_mod` sonucundan yalnızca sağlayıcı ve proxy dizesini verir."""
     sonuc = sec_mod(geo_slug, mobil_acik)
     return None if sonuc is None else (sonuc[0], sonuc[1])
@@ -379,7 +379,7 @@ def cerez_sec(
     geo_kodu: int | None = None,
     site_domain: str | None = None,
     kelime: str | None = None,
-) -> int | None:
+) -> tuple[int, str | None] | None:
     """Havuzdan bir cerez profili sahiplenir.
 
     Kural: ayni profil ayni site-kelime ciftinde ikinci kez kullanilmaz;
@@ -395,7 +395,7 @@ def cerez_sec(
         kelime: Aranan kelime; cifti bulmak icin.
 
     Returns:
-        Profil kimligi; havuz bossa ya da cerez kapaliysa None.
+        Profil kimligi ve parmak izi ailesi; havuz bossa ya da cerez kapaliysa None.
     """
     if not cerez_aktif():
         return None
@@ -433,7 +433,7 @@ def cerez_sec(
                         parametreler.extend([cift[0], cift[1]])
                     parametreler.append(geo_kodu or 0)
                     imlec.execute(
-                        "SELECT id FROM cookie_profil WHERE "
+                        "SELECT id, parmak_izzi FROM cookie_profil WHERE "
                         + " AND ".join(kosullar)
                         + " ORDER BY (il_kodu = %s) DESC, (ulke = 'TR') DESC,"
                         " kullanim ASC, id ASC LIMIT 1",
@@ -443,6 +443,7 @@ def cerez_sec(
                     if not satir:
                         break
                     profil_id = int(satir[0])
+                    parmak = satir[1]
                     imlec.execute(
                         "UPDATE cookie_profil SET durum = 'kullaniliyor', dugum_id = %s,"
                         " alindi_at = UTC_TIMESTAMP(3) WHERE id = %s AND durum = 'hazir'",
@@ -456,7 +457,7 @@ def cerez_sec(
                             " VALUES (%s, %s, %s)",
                             (profil_id, cift[0], cift[1]),
                         )
-                    return profil_id
+                    return profil_id, parmak
             return None
     except Exception:  # noqa: BLE001
         return None

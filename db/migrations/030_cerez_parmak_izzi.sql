@@ -1,4 +1,4 @@
-﻿-- Cerez profilinin tarayici ailesi. Ice aktarimda bir kez atanir ve oturumun
+-- Cerez profilinin tarayici ailesi. Ice aktarimda bir kez atanir ve oturumun
 -- uc adiminda da ayni parmak izi kullanilir; cerez yoksa rastgele secilir.
 ALTER TABLE cookie_profil
   ADD COLUMN parmak_izzi VARCHAR(16) NULL AFTER ulke;

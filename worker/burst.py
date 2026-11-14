@@ -176,6 +176,7 @@ def burst_yap(
         saglayici_id: int | None = None
         for deneme in range(1, DENEME + 1):
             geo_mod: str | None = None
+            tur: str | None = None
             if proxy_secici:
                 proxy_adres = proxy_secici()
             else:
@@ -185,16 +186,21 @@ def burst_yap(
                 proxy_adres = secim[1] if secim else None
                 saglayici_id = secim[0] if secim else None
                 geo_mod = secim[2] if secim else None
+                tur = secim[3] if secim else None
 
             # Cerez yalnizca ayni ulke IP'siyle anlamli: yabanci hitte yuklenmez.
             cerez_profil: int | None = None
             cerezler: list[dict] = []
+            aile: str | None = None
             if geo_mod in ("city", "tr_fallback"):
-                cerez_profil = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu)
-                if cerez_profil is not None:
+                secilen = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu)
+                if secilen is not None:
+                    cerez_profil, aile = secilen
                     cerezler = cookie.suz(havuz.cerez_al(cerez_profil), hedef_domain)
 
-            profil = fingerprint.profil_sec(haric=onceki_profil)
+            # Cerez varsa parmak izi o cerezin ailesine sabit; yoksa rastgele.
+            mobil_profil = bool(mobil_acik and tur == 'mobile')
+            profil = fingerprint.profil_sec(haric=onceki_profil, aile=aile, mobil=mobil_profil)
             onceki_profil = profil
             kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)
             # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.

@@ -1,11 +1,11 @@
-﻿/**
- * Ã‡erez defteri uÃ§larÄ±.
+/**
+ * Çerez defteri uçları.
  *
- * KlasÃ¶r yolu taranÄ±r, dosyalar arka planda sÄ±rayla aktarÄ±lÄ±r. AynÄ± iÃ§erik
- * Ã¶zetten yakalanÄ±r ve tekrar aktarÄ±lmaz. AktarÄ±m kesilirse `yeni` satÄ±rlardan
- * devam eder; dÃ¼ÄŸÃ¼m sayÄ±sÄ± arttÄ±kÃ§a havuz ortak kullanÄ±lÄ±r.
+ * Klasör yolu taranır, dosyalar arka planda sırayla aktarılır. Aynı içerik
+ * özetten yakalanır ve tekrar aktarılmaz. Aktarım kesilirse `yeni` satırlardan
+ * devam eder; düğüm sayısı arttıkça havuz ortak kullanılır.
  *
- * KullanÄ±m: src/server/uygulama.ts
+ * Kullanım: src/server/uygulama.ts
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -26,7 +26,7 @@ const PAKET = 200; // dosya basi islem
 
 const yonlendirici = Router();
 
-/** Ä°lerleme durumu; sÃ¼reÃ§ iÃ§inde tutulur. */
+/** İlerleme durumu; süreç içinde tutulur. */
 const durum = { calisiyor: false, toplam: 0, islenen: 0, mukerrer: 0, hatali: 0 };
 
 type Cerez = {
@@ -49,7 +49,7 @@ type Cerez = {
   host_only: number;
 };
 
-/** Alan adÄ±nÄ± sadeleÅŸtirir: baÅŸ nokta ve www. atÄ±lÄ±r. */
+/** Alan adını sadeleştirir: baş nokta ve www. atılır. */
 function kok(alan: string): string {
   const ham = alan.trim().toLowerCase().replace(/^\.+/, "");
   return ham.startsWith("www.") ? ham.slice(4) : ham;
@@ -172,7 +172,19 @@ function jsonCoz(metin: string): Cerez[] {
   }
   return cerezler;
 }
-/** Netscape biÃ§imini Ã§Ã¶zer. */
+/** Cerez adlarindan tarayici ailesini tahmin eder; isaret yoksa bilinmiyor. */
+function aileBul(cerezler: Cerez[]): string {
+  let chrome = false;
+  let firefox = false;
+  for (const c of cerezler) {
+    if (c.ad === "__Secure-BUCKET") firefox = true;
+    else if (c.ad === "SIDCC" || c.ad === "__Host-GAPS" || c.ad === "SEARCH_SAMESITE" || c.ad === "AEC") chrome = true;
+  }
+  if (firefox) return "firefox";
+  if (chrome) return "chrome";
+  return "bilinmiyor";
+}
+/** Netscape biçimini çözer. */
 function netscapeCoz(metin: string): Cerez[] {
   const cerezler: Cerez[] = [];
   for (const satir of metin.split(/\r?\n/)) {
@@ -205,11 +217,11 @@ function netscapeCoz(metin: string): Cerez[] {
       }),
     );
   }
-  if (!cerezler.length) throw new Error("geÃ§erli satÄ±r yok");
+  if (!cerezler.length) throw new Error("geçerli satır yok");
   return cerezler;
 }
 
-/** Ä°Ã§eriÄŸe bakarak biÃ§imi bulur. */
+/** İçeriğe bakarak biçimi bulur. */
 function bicimBul(metin: string): "json" | "netscape" | null {
   if (metin.trimStart().startsWith("{")) return "json";
   for (const satir of metin.split(/\r?\n/)) {
@@ -222,7 +234,7 @@ function bicimBul(metin: string): "json" | "netscape" | null {
   return null;
 }
 
-/** Dosya adÄ±ndan il kodu (1-81). */
+/** Dosya adından il kodu (1-81). */
 function ilBul(ad: string): number | null {
   const bulunan = ad.match(/(?:^|[^0-9])(0?[1-9]|[1-7][0-9]|8[01])(?:[^0-9]|$)/);
   if (!bulunan) return null;
@@ -230,15 +242,15 @@ function ilBul(ad: string): number | null {
   return kod >= 1 && kod <= 81 ? kod : null;
 }
 
-/** KlasÃ¶rÃ¼ doÄŸrular ve gerÃ§ek yolunu dÃ¶ndÃ¼rÃ¼r. */
+/** Klasörü doğrular ve gerçek yolunu döndürür. */
 async function yolDogrula(ham: string): Promise<string> {
   const tam = path.resolve(ham);
   const bilgi = await fs.stat(tam);
-  if (!bilgi.isDirectory()) throw new Error("yol klasÃ¶r deÄŸil");
+  if (!bilgi.isDirectory()) throw new Error("yol klasör değil");
   return fs.realpath(tam);
 }
 
-/** KlasÃ¶rÃ¼ Ã¶zyinelemeli tarar; yalnÄ±zca .json/.txt dosyalarÄ±. */
+/** Klasörü özyinelemeli tarar; yalnızca .json/.txt dosyaları. */
 async function dosyalariTopla(kokDizin: string): Promise<string[]> {
   const bulunan: string[] = [];
   const gez = async (dizin: string): Promise<void> => {
@@ -254,7 +266,7 @@ async function dosyalariTopla(kokDizin: string): Promise<string[]> {
   return bulunan;
 }
 
-/** Ä°Ã§erik Ã¶zeti. */
+/** İçerik özeti. */
 /** Cerez alan adlarindan ulke kodu cikarir; bilinmiyorsa null. */
 function ulkeBul(domainler: string[]): string | null {
   for (const domain of domainler) {
@@ -271,11 +283,11 @@ function icerikOzeti(metin: string): string {
 }
 
 /**
- * Tek dosyayÄ± aktarÄ±r ve defter satÄ±rÄ±nÄ± yerinde kapatÄ±r.
+ * Tek dosyayı aktarır ve defter satırını yerinde kapatır.
  *
- * `yeni` satÄ±r silinip yenisi yazÄ±lmaz; aynÄ± satÄ±r sonuÃ§la gÃ¼ncellenir.
- * AynÄ± iÃ§erik baÅŸka dosyada aktarÄ±lmÄ±ÅŸsa satÄ±r `mukerrer` olur ve Ã¶zeti yol
- * Ã¶zetine Ã§evrilir, bÃ¶ylece tekil kalÄ±r.
+ * `yeni` satır silinip yenisi yazılmaz; aynı satır sonuçla güncellenir.
+ * Aynı içerik başka dosyada aktarılmışsa satır `mukerrer` olur ve özeti yol
+ * özetine çevrilir, böylece tekil kalır.
  */
 async function dosyaAktar(
   id: number,
@@ -298,13 +310,13 @@ async function dosyaAktar(
 
   const bilgi = await fs.stat(tam).catch(() => null);
   if (!bilgi || bilgi.size === 0 || bilgi.size > AZAMI_BOYUT) {
-    return kapat("gecersiz", "boyut sÄ±nÄ±rÄ± ya da dosya yok");
+    return kapat("gecersiz", "boyut sınırı ya da dosya yok");
   }
   const ham = await fs.readFile(tam, "utf8").catch(() => null);
-  if (ham === null) return kapat("gecersiz", "okunamadÄ±");
+  if (ham === null) return kapat("gecersiz", "okunamadı");
 
   const bicim = bicimBul(ham);
-  if (!bicim) return kapat("gecersiz", "biÃ§im tanÄ±nmadÄ±");
+  if (!bicim) return kapat("gecersiz", "biçim tanınmadı");
 
   let cerezler: Cerez[];
   try {
@@ -312,7 +324,7 @@ async function dosyaAktar(
   } catch (hata) {
     return kapat("gecersiz", (hata as Error).message.slice(0, 255));
   }
-  if (!cerezler.length) return kapat("gecersiz", "kullanÄ±labilir Ã§erez yok");
+  if (!cerezler.length) return kapat("gecersiz", "kullanılabilir çerez yok");
 
   const ozet = icerikOzeti(ham);
   const ayni = await tek<{ id: number }>(
@@ -364,7 +376,7 @@ async function dosyaAktar(
   }
 }
 
-/** KuyruÄŸu paketler hÃ¢linde boÅŸaltÄ±r; aynÄ± anda tek tur Ã§alÄ±ÅŸÄ±r. */
+/** Kuyruğu paketler hâlinde boşaltır; aynı anda tek tur çalışır. */
 let calisma: Promise<void> | null = null;
 
 /** Kuyrugu kirali paketler halinde bosaltir; cagrilar siraya girer. */
@@ -524,11 +536,11 @@ yonlendirici.post("/cerez/gozat", async (_istek, yanit) => {
   } catch (hata) {
     const kod = (hata as NodeJS.ErrnoException).code;
     if (kod === "ENOENT") {
-      yanit.status(500).json({ hata: "klasÃ¶r seÃ§ici bulunamadÄ±, yolu elle yaz" });
+      yanit.status(500).json({ hata: "klasör seçici bulunamadı, yolu elle yaz" });
       return;
     }
     console.error("[cerez] gozat hatasi:", (hata as Error).message);
-    yanit.status(500).json({ hata: "klasÃ¶r seÃ§ici aÃ§Ä±lamadÄ±" });
+    yanit.status(500).json({ hata: "klasör seçici açılamadı" });
   }
 });
 /** Sunucu makinesinde klasor secici acar; iptalde null doner. */
@@ -654,16 +666,16 @@ yonlendirici.post("/cerez/yukleme", async (istek, yanit) => {
 yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSYA), async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
+    yanit.status(400).json({ hata: "geçersiz işlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "iÅŸlem yok" });
+    yanit.status(404).json({ hata: "işlem yok" });
     return;
   }
   if (kayit.durum !== "yukleniyor") {
-    yanit.status(409).json({ hata: "iÅŸlem kapalÄ±" });
+    yanit.status(409).json({ hata: "işlem kapalı" });
     return;
   }
   const dosyalar = (istek.files ?? []) as Express.Multer.File[];
@@ -673,7 +685,7 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
   }
   const toplamBayt = dosyalar.reduce((toplam, dosya) => toplam + dosya.size, 0);
   if (toplamBayt > PARTI_BAYT) {
-    yanit.status(413).json({ hata: "parti Ã§ok bÃ¼yÃ¼k" });
+    yanit.status(413).json({ hata: "parti çok büyük" });
     return;
   }
 
@@ -719,16 +731,16 @@ yonlendirici.post("/cerez/yukleme/:id/parti", yukle.array("dosyalar", PARTI_DOSY
 yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
+    yanit.status(400).json({ hata: "geçersiz işlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "iÅŸlem yok" });
+    yanit.status(404).json({ hata: "işlem yok" });
     return;
   }
   if (kayit.durum !== "yukleniyor") {
-    yanit.status(409).json({ hata: "iÅŸlem kapalÄ±" });
+    yanit.status(409).json({ hata: "işlem kapalı" });
     return;
   }
   const dosyalar = await dosyalariTopla(kayit.klasor);
@@ -762,7 +774,7 @@ yonlendirici.post("/cerez/yukleme/:id/baslat", async (istek, yanit) => {
 yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
+    yanit.status(400).json({ hata: "geçersiz işlem" });
     return;
   }
   const satir = await tek(
@@ -775,7 +787,7 @@ yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
     [id],
   );
   if (!satir) {
-    yanit.status(404).json({ hata: "iÅŸlem yok" });
+    yanit.status(404).json({ hata: "işlem yok" });
     return;
   }
   yanit.json(satir);
@@ -785,12 +797,12 @@ yonlendirici.get("/cerez/yukleme/:id", async (istek, yanit) => {
 yonlendirici.delete("/cerez/yukleme/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃ§ersiz iÅŸlem" });
+    yanit.status(400).json({ hata: "geçersiz işlem" });
     return;
   }
   const kayit = await yuklemeAl(id);
   if (!kayit) {
-    yanit.status(404).json({ hata: "iÅŸlem yok" });
+    yanit.status(404).json({ hata: "işlem yok" });
     return;
   }
   await yaz("UPDATE cerez_yukleme SET durum = 'iptal' WHERE id = ?", [id]);
