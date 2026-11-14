@@ -119,3 +119,12 @@ ama şu koşullarla:
 - Yedek/geri yükleme, metrik ucu, tek örnek kilidi (E1-E7) yok.
 - Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
 - `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.
+
+## 1.7 sonrasi acik isler
+
+- Canli Serper olcumu: yedek sira kodda kurulu ama gercek anahtarla denenmedi; `tools/serp_deney.py` ile bir kez dogrulanacak.
+- `oran_mobil` ayarinin mobil pencereyle birlikte davranisi: pencere kapaninca oran tamamen yok sayiliyor, ayar 0 iken davranis test edilmedi.
+- Cerez canliligi: suresi gecmis havuzun tukenme sirasi ve `cerez_suresiz_kullan` etkisi uctan uca denenmedi.
+- XAMPP `my.ini` ayari: `innodb_buffer_pool_size=256M` ve `innodb_lock_wait_timeout=20` henuz uygulanmadi.
+- Sunucu tarafi veritabani kurulumu kullaniciya ait; `docker-compose.yml` icindeki mysql servisi bu yuzden uretimde kullanilmayacak, ayarlarin sunucuya tasinmasi gerekiyor.
+- Liste uclarinin donus zarfi: durum uclari istisna olarak sozlesmeye yazildi, sayfali uclarda zarf birligi ayrica gozden gecirilecek.

@@ -1,6 +1,6 @@
-# Yerel geliÅŸtirme ortamÄ±. Windows'ta WSL2 arkasÄ±nda, sunucuda birebir aynÄ±.
-# init klasÃ¶rÃ¼ baÄŸÄ±mlÄ±lÄ±ÄŸÄ± kaldÄ±rÄ±ldÄ±; ÅŸema ve seed tools/ Ã¼zerinden uygulanÄ±r.
-# TÃ¼m imajlar linux/amd64 olarak sabitlenir.
+# Yerel gelistirme ortami. Windows'ta WSL2 arkasinda, sunucuda birebir ayni.
+# init klasoru bagimliligi kaldirildi; sema ve seed tools/ uzerinden uygulanir.
+# Tum imajlar linux/amd64 olarak sabitlenir.
 
 services:
   mysql:
@@ -15,9 +15,16 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_turkish_ci
       - --default-time-zone=+00:00
+      # Kilit tablosu buffer pool ile olceklenir; 16M varsayilani toplu
+      # silmede 1206 veriyordu. Konteynere en az 1 GB RAM ayirin.
       - --innodb-buffer-pool-size=256M
+      # Kilit beklemesi varsayilan 50 sn; dusuk tutulur ki toplu islem
+      # sonsuza kadar kilidi tutmasin.
+      - --innodb-lock-wait-timeout=20
+      # Havuz tavani: panel ve worker ayni sunucudan besleniyor.
+      - --max-connections=300
     ports:
-      # YalnÄ±zca yerel makineye aÃ§Ä±lÄ±r
+      # Yalnizca yerel makineye acilir
       - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
@@ -67,7 +74,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      # Worker public alt agda calisir (§17.5); panel yerelde kalir.
+      # Worker public alt agda calisir (17.5); panel yerelde kalir.
       - "8081:8081"
 
   panel:
@@ -99,6 +106,8 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Partili silme uzun surebilir; sert sonlandirmada parti yarida kalmasin.
+    stop_grace_period: 60s
     ports:
       - "127.0.0.1:8080:8080"
 
