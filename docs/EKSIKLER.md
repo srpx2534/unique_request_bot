@@ -1,130 +1,79 @@
-# Eksik maddeler
+# DURUM
 
-Bu dosya, ertelenen doğrulamaları ve açık işleri tutar. Bir madde
-kapatıldığında buradan silinir ve sonucu sözleşmedeki ilgili kritere
-işlenir.
+Bu dosya projenin o anki hâlini ve devir notlarını tutar. İşi devralan ajan önce burayı, sonra `docs/EKSIKLER.md` içindeki 83 maddelik listeyi okur. Liste sırayla kapatılır.
 
-## Proxy hattı — ücretli plana geçince
+## Proje
 
-Ücretsiz katmanda Decodo residential kimlik bilgileri alınamadığı için
-aşağıdakiler doğrulanmadı. Kod, ücretli sürümde çalışacak varsayımıyla
-yazıldı; sağlayıcı gelince sırayla sınanacak.
+- Yol: `C:\Users\developer\Desktop\App\unique_request_bot`
+- Ne: Google SERP burst/ölçüm botu. TS panel (Node 20) + Python worker (3.12), MySQL/MariaDB.
+- Sözleşme: `docs/CONTRACT.md`, sürüm 1.7, 26 bölüm, 60 kabul kriteri. Kodla hizalandı.
+- Son commit: `92f4e9b Genel Düzenleme`. Çalışma ağacında kod tarafı temiz.
+- Yerel veritabanı XAMPP üzerinde. **XAMPP ayarlarına dokunulmayacak**; kullanıcı sonra ele alacak.
 
-- `DECODO_USER` / `DECODO_PASS` / `DECODO_GATEWAY` gerçek değerlerle doldurulacak.
-- `tools/proxy_dene.py` ile çıkış IP'si ve Türkiye konumu doğrulanacak.
-- Aynı oturum kimliğinin aynı IP'yi koruduğu, farklı oturumun farklı IP verdiği ölçülecek.
-- `city-<slug>` hedefleme biçiminin gerçekten il bazlı IP döndürdüğü doğrulanacak; dönmüyorsa `city_capable=0` işaretlenip ulusal moda düşülecek (§5, C17).
-- `provider_geo.exhausted_until` davranışı gerçek CAPTCHA oranıyla sınanacak (C18).
-- Sağlayıcı başına eşzamanlı oturum sınırı ve kota tüketimi ölçülecek.
-- Ücretsiz herkese açık listelerde TR adayı bulunamadı; yalnızca yerel dinleyici ile parametre geçişi kanıtlandı, gerçek çıkış IP'si görülmedi.
+## Bu oturumda kapatılan işler
 
-## Oturum sürekliliği
+- `isci.ts` sahiplenmesi `last_burst_at` damgasına bağlandı; sistem hiç hit atmıyordu, sebep buydu.
+- `FOR UPDATE SKIP LOCKED` kaldırıldı. MariaDB bu sözdizimini bilmiyor; koşullu `UPDATE ... WHERE id=? AND durum='yeni'` + `affectedRows` kontrolüne geçildi.
+- Çerez silme partili hâle getirildi: 400 profil / 1000 dosya partisi, önce çocuk satır, her parti ayrı işlem. 5,4 milyon satır 1206 (kilit tablosu) hatası vermeden silindi, dört sayaç sıfırlandı.
+- `docker-compose.yml`: `innodb_buffer_pool_size=256M`, `innodb_lock_wait_timeout=20`, `max-connections=300`, `stop_grace_period: 60s`.
+- Sözleşmeye işlendi: `sayac_baslangic`, `host_only`, seed anahtarları, `GET /kelime/:id/ozet`, `DELETE /cerez/hatali`, `cerez_kendi`, modalite çıkarımı, C50-C60, §7.3, §8.1, §23.4, §17.8, §18.5.
+- `docs/EKSIKLER.md` 83 maddelik öncelik listesine çevrildi.
 
-- Hit başına tek `Session` kullanılacak: izlenim, tıklama ve pogo aynı oturumdan
-  geçecek. Bugün üçü ayrı oturum açıyor, Google'ın izlenimde verdiği `AEC`/`NID`
-  tıklamaya taşınmıyor ve istemci aynı kişi gibi görünmüyor.
-- Başlık sırası profile uyacak: kendi `Accept` / `Accept-Language` override'ları
-  curl_cffi'nin sırasını bozuyor olabilir, ölçülecek.
-- Aynı hit içinde çıkış IP'si sabit kalacak; proxy hit başına bir kez üretiliyor,
-  bu korunacak.
+## Kritik kararlar — değiştirmeden önce düşün
 
-## Gerçek tarayıcı cookie'leri
+- Çerez modalitesi yüklemede **sorulmaz**; dosyadaki `userAgent` ve yol segmentinden çıkarılır.
+- `host_only` bayrağı çerez satırında saklanır; host-only çerezde baştaki nokta düşürülür, alan adı çerezi yazıldığı gibi kalır.
+- `cerez_kendi` açıkken yalnızca sayım süzülür; havuz ortak kalır, hit'ler tüm havuzdan beslenir.
+- Özet ucu ölçüm yoksa `-`, ilk 100'de yoksa `100+` döner.
+- Kuyruk sahiplenmesi `SKIP LOCKED` kullanmaz.
+- Çerez silmede tek ifadeyle toplu `DELETE` yazılmaz; kilit tablosu taşar.
 
-Kullanıcı gerçek tarayıcıdan alınmış cookie dosyası sağlayabilir. Kullanılacak,
-ama şu koşullarla:
+## Bilinen kırıklar — ilk bunlar
 
-- Format: Netscape `cookies.txt` (tercih) veya JSON dizi. Dosya başına tek
-  profil; dosya adında il kodu taşınacak (ör. `34.txt`).
-- Havuz: tek cookie yüzlerce hit için yetmez. Dosyalar sırayla, hit başına bir
-  kez kullanılacak; tükenince başa dönülecek.
-- Coğrafya: cookie hangi ilden alındıysa o ilin IP'siyle eşleşmeli. TR cookie +
-  yabancı IP çelişki üretir.
-- `SOCS` / `CONSENT` gerçek tarayıcıdan gelirse bizim sabit değerlerden daha
-  doğru; onay duvarı için bunlar yeğlenecek.
-- Oturum açmış hesap cookie'si (`SID`) güçlü sinyaldir ama tek hesaptan yüzlerce
-  arama hesabı şüpheli gösterebilir. Önce oturumsuz cookie ile başlanacak,
-  `SID` ayrı ölçülecek.
-- Tazelik: haftalar önce alınmış `NID`/`AEC` süresi geçmiş olur, Google yeniden
-  üretir. Fayda düşer, zarar yok.
-- Cookie dosyaları repoya girmez; `.gitignore`'a alınacak, hesap token'ı
-  taşıyabilir.
-- Cookie'ler JS duvarını aşmaz; sonuç listesi yine API'den gelecek.
+- `proxy.dize()` ülke parametresi almıyor, `country-tr` sabit yazıyor. Yabancı sağlayıcı seçildiğinde IP Türkiye'den çıkar, `hit.geo_mode` yalan söyler (C40).
+- Sağlayıcı kullanıcı adı biçimi tek sağlayıcıya (Decodo) özgü; diğer dört sağlayıcı bu biçimi kabul etmez.
+- `GET /health` token istiyor ve sürüm/doluluk yerine `{"durum":"ayakta"}` dönüyor; §7.2 ile çelişiyor.
 
-## Burst ve kabul
+## PowerShell ile çalışma kuralları
 
-- `AZAMI_HIT = 60` olduğu için 100 hit'lik test iki basamağa bölünecek (§9).
-- 100 hit testi sürüyor (60 + 40); proxy hattı bağlanınca proxy üzerinden
-  yeniden koşulacak.
-- CAPTCHA oranı, `not_found` oranı ve tamamlanma oranı henüz ölçülmedi (C7, C8, C9, C10).
-- `stop` sonrası yeni hit atılmadığı doğrulanmadı (C21).
-- Aynı `keyword_geo` üzerinde çakışan burst sayısı ölçülmedi (C16).
+- Betikleri **tek blok** hâlinde ver; kullanıcı tek seferde yapıştırıyor.
+- Dosya yazarken `New-Object System.Text.UTF8Encoding($false)`; BOM ekleme.
+- `$A` ile `$a` aynı değişkendir; yol için `$Yol`, metin için `$Metin` kullan.
+- `String.Replace` üç argüman almaz; ilk geçiş için `IndexOf` + `Substring`.
+- `elseif` satır başında kalırsa kopar; `} elseif` aynı satırda yazılmalı.
+- Metin çapaları harfle başlamalı. `-`, `#`, ters tik ile başlayan çapalar tutmuyor; öyleyse `IndexOf` ile bul, satır başına `LastIndexOf("`n")` ile geri sar.
+- Dosyaya yazmadan önce geçici dosyaya yaz, satır sayısı eşik altındaysa iptal et, sonra `Move-Item -Force`.
+- Uzun belgelerde **iç içe kod çiti kullanma**: dış blok ` ```markdown ` içinde iç ` ```sql ` olursa dış blok orada kapanır. SQL'i düz satır yaz.
+- Tek mesaja uzun çıktı sığmıyor; parçalı vermek gerekiyor.
 
-## Sağlayıcı havuzu — M3
+## Yapılmayacaklar
 
-- Sağlayıcı seçimi ağırlıklı ve devre kesicili hale getirilecek.
-- Mobil / residential / datacenter oranı `.env` üzerinden ayarlanabilir olacak;
-  `PROXY_MOBIL_ORAN=0` mobil'i tamamen kapatacak.
-- Failover 10 saniye altında tamamlanacak (C6).
-- Sağlayıcı genel CAPTCHA oranı %20'yi geçince 2 saat karantina uygulanacak (§8).
-- `provider` ve `provider_geo` tabloları henüz boş; seed yazılmadı.
+- Kullanıcı onayı olmadan commit atılmaz.
+- Onay olmadan yeni maddeye geçilmez.
+- XAMPP ayarları ve `my.ini` elle değiştirilmez.
+- `docs/CONTRACT.md` içine `SKIP LOCKED` geri getirilmez.
+- Sözleşmeye karşılığı olmayan özellik eklenmez; önce sözleşme, sonra kod.
 
-## Ölçüm hattı — M5
+## Doğrulama komutları
+npx tsc --noEmit
+python -m pytest worker -q
+git status --short
+git diff --stat
+Çerez silme sonrası dört sayaç da sıfır olmalı:
+SELECT 'cookie' t, COUNT() c FROM cookie
+UNION ALL SELECT 'cookie_profil', COUNT() FROM cookie_profil
+UNION ALL SELECT 'cookie_dosya', COUNT() FROM cookie_dosya
+UNION ALL SELECT 'cerez_yukleme', COUNT() FROM cerez_yukleme;
+## Dosya haritası
 
-- Ölçüm-A kanalı SERP API'sinden, `clean` kanaldan, daima ulusal yapılacak (C20).
-- Ölçüm-B kanalı ayrı küçük havuz ve kalıcı cookie jar ile kurulacak; `profile` tablosu boş.
-- Ölçüm boşluğu 15 dakikayı geçmeyecek şekilde zamanlayıcı yazılacak (C12).
+- `docs/CONTRACT.md` — bağlayıcı sözleşme, 26 bölüm, 60 kriter.
+- `docs/EKSIKLER.md` — 83 maddelik liste, sırayla kapatılır.
+- `src/server/` — panel API. `cerez.ts` partili silme, `kelime.ts` özet ucu, `panel.ts` ayar uçları.
+- `worker/` — fetch engine. `havuz.py` seçim, `proxy.py` dize kurma, `burst.py` hit akışı, `saglik_db.py` sayaç ve uyarı.
+- `db/migrations/001-033` — şema geçmişi. `033_cerez_kendi.sql` sonuncusu.
+- `tools/` — kurulum, onarım, ölçüm ve kanıt betikleri.
 
-## Ortam
+## Sonraki adım
 
-- Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
-- `mysql.db` bir kez CRC hatası verdi ve onarıldı; tekrarı halinde `aria_chk --repair` gerekecek.
-- Birim testleri yazıldı (`worker/test_serp.py`, `worker/test_proxy.py`, 13 test geçiyor).
-- CI matrisi `windows-latest` ve `ubuntu-22.04`; iş akışı henüz koşmadı, CI yeşil değil (C26, C27).
-- `.gitattributes` boş; CRLF kontrolü bu yüzden anlamsız (C28).
-
-## Sözleşme
-
-- Sözleşme toplu güncellenecek; M2 sonunda tek blok halinde verilecek.
-- Google'ın JavaScript zorunluluğu §4'e işlenecek: burst hattında SERP listesi API'den, tıklama proxy'den.
-- Cookie havuzu ve oturum sürekliliği §9'a işlenecek.
-
-## Uyarı takibi
-
-- Uyarılar `alert` tablosuna yazılıyor: `hedef_yok`, `failover`, `burst_hata`,
-  `captcha`, `quota`, `provider_down`. Okuma için `v_alert` view'i ve
-  `tools/alert_liste.py` var.
-- Panelde uyarı ekranı M4'te yapılacak: liste, yaş, kapatma, filtre.
-- Kapatılmayan uyarı birikimi için saklama süresi belirlenecek (`audit_log` 1 yıl,
-  `alert` için süre yok).
-- `queue_lag` türü henüz hiç yazılmıyor; kuyruk M4'te gelince bağlanacak.
-- Oran eşikleri (`GEO_ESIK=35`, `GENEL_ESIK=20`, `ASGARI_ORNEK=10`) sabit;
-  panelden ayarlanabilir hale getirilecek.
-
-## Sağlayıcı oranları
-
-- Oranlar `ayar` tablosunda, panelden düzenlenecek (M4).
-- `oran_mobil=0` mobil havuzunu tamamen kapatır; doğrulanacak.
-- Oranların toplamı 100 değilse okurken normalize edilir; panelde toplam uyarısı
-  gösterilecek.
-
-## Açık işler — 2026-11-14 düzeltme turundan sonra
-
-- `olcum.ts` ve `serp.py` yedek sağlayıcı sırasını kullanıyor ama gerçek anahtarla sınanmadı; Decodo kotası doluyken Serper ile bir ölçüm turu koşulmalı.
-- `oran_mobil` hâlâ 0; açılmadan android profil hiç çıkmaz. Mobil yol canlı istekle doğrulanmalı.
-- Çerez canlılığı ölçülmedi: 22.704 "aktif" profil canlı demek değil.
-- `cerez_suresiz_kullan` kapatıldığında süresi geçmiş profillerin havuza dönüşü sınanmadı.
-- Üst üste `hedef_yok` alan kelimenin otomatik durması (A3) yazılmadı.
-- Partition oluşturma/silme zamanlaması ve `hit` 10 milyon eşiği uygulanmadı.
-- HTTPS/HSTS, Redis `requirepass`, sır saklama (B6/B8/B9) üretim öncesi.
-- Yedek/geri yükleme, metrik ucu, tek örnek kilidi (E1-E7) yok.
-- Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
-- `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.
-
-## 1.7 sonrasi acik isler
-
-- Canli Serper olcumu: yedek sira kodda kurulu ama gercek anahtarla denenmedi; `tools/serp_deney.py` ile bir kez dogrulanacak.
-- `oran_mobil` ayarinin mobil pencereyle birlikte davranisi: pencere kapaninca oran tamamen yok sayiliyor, ayar 0 iken davranis test edilmedi.
-- Cerez canliligi: suresi gecmis havuzun tukenme sirasi ve `cerez_suresiz_kullan` etkisi uctan uca denenmedi.
-- XAMPP `my.ini` ayari: `innodb_buffer_pool_size=256M` ve `innodb_lock_wait_timeout=20` henuz uygulanmadi.
-- Sunucu tarafi veritabani kurulumu kullaniciya ait; `docker-compose.yml` icindeki mysql servisi bu yuzden uretimde kullanilmayacak, ayarlarin sunucuya tasinmasi gerekiyor.
-- Liste uclarinin donus zarfi: durum uclari istisna olarak sozlesmeye yazildi, sayfali uclarda zarf birligi ayrica gozden gecirilecek.
+`docs/EKSIKLER.md` maddesi 1: `proxy.dize()` imzasına ülke parametresi ekle, `sec_mod()` çağrısında `ulke` geçir, `yabanci` modda `country-tr` yazılmasın. Ardından madde 2: sağlayıcı başına kullanıcı adı biçimi.
+Bu docs/DURUM.md içine, mevcut içeriğin altına eklenir. Yeni ajan buradan devam edebilir.
