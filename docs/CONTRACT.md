@@ -1,5 +1,5 @@
 # SÖZLEŞME — Unique Request Bot
-Sürüm: 1.7 (kilitli)
+Sürüm: 1.8.4 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan request-burst motoru
 Veritabanı: MySQL 8.0.16+
 Diller: Python 3.12 (fetch engine) + Node 20 / TypeScript (control plane)

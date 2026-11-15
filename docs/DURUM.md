@@ -1,6 +1,6 @@
 # DURUM — 2026-11-15
 
-Devralan ajan için tek gerçek durum dosyası. Tamamını oku, sonra "Açık işler"in en üstünden başla. Kodun tamamı `docs/DEVIR.md` içinde tek dosyada; sözleşme `docs/CONTRACT.md` v1.7 kilitli; açık maddeler `docs/EKSIKLER.md` (67 madde, 28 kapalı).
+Devralan ajan için tek gerçek durum dosyası. Tamamını oku, sonra "Açık işler"in en üstünden başla. Sözleşme `docs/CONTRACT.md` v1.8.4 kilitli; açık maddeler `docs/EKSIKLER.md`.
 
 ## 1. Amaç ve başarı ölçütü
 
