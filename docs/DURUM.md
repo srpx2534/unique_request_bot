@@ -33,7 +33,7 @@ Tek başarı ölçütü gerçek Google isteklerinde kabul oranı. Ölçülmeyen 
 ## 4. Mevcut durum (2026-11-15 ölçümü)
 
 - `verify.py`: 25 tablo, 0 eksik, 2 view, geo 81, uule 81, migration 46 — temiz.
-- Testler: **179 pytest, 80 vitest, iki `tsc` configi sessiz.** Yeşil olmayan tek şey yok.
+- Testler: **184 pytest, 80 vitest, iki `tsc` configi sessiz.** Yeşil olmayan tek şey yok.
 - `cookie_profil`: 3.523 profil, **hepsinde `il_kodu` NULL** (il ataması bilerek kapalı, D-15).
 - `host_only` ölçümü gerçek 199k çerezle yapıldı: 146.430 noktalı, 52.799 host-only.
 - `cerez_kendi` ayar tablosundan ve ayarlar ekranından çıkarıldı; yönetim ekranında admin izni olarak geri gelecek (D-16, mevcut SQL yeniden kullanılacak).
@@ -67,7 +67,7 @@ Tam liste `docs/EKSIKLER.md`; orada 39 madde açık. Sıra:
 6. **60–61** liste yanıt zarfı sözleşmede tekilleştirilecek; kalan belgeler gözden geçirilecek. **62** devir paketi (README, `.env.example`, compose, `.gitattributes`, `.gitignore`) kapandı.
 7. **Proxy gelince (Decodo):** D-4/D-5/D-6/D-10 (SOCS/CONSENT, SID ölçümü, tazelik, canlılık), F1/F4/F5 (TR çıkış IP doğrulama, click/pogo, 100'lük hit bölme), mobil modun gerçek istekle denenmesi. Bunlar ölçüm olmadan kapatılmaz.
 8. **B6/B8/B9/B12** HTTPS/HSTS, sır saklama, Redis `requirepass`, eşik sınır doğrulaması.
-9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi. Metrik ucu `GET /api/metrik` ile yazıldı; E7 açık.
+9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi. Yedek/geri yükleme, metrik ucu ve zarif boşaltma (E4) yazıldı; E2, E3, E5, E7 açık.
 10. `cookie_kullanim` yetim satırları; `temizle` sırasında çalışan yüklemenin iptali ve geçici klasörün silinmesi.
 11. Geçersiz sayılan çerez dosyalarının yeniden yüklenmesi (ayrıştırıcı düzeltildi).
 12. `docs/*.py` ve `docs/yedek` temizliği.
@@ -116,4 +116,6 @@ node_modules\.bin\esbuild.cmd src/server/uygulama.ts --bundle --platform=node --
 ```
 
 Beklenen: 179 pytest, 80 vitest, `tsc` sessiz, `verify` 25 tablo / 0 eksik / migration 46, lint temiz. Bu sayılar düşerse iş bitmemiştir. Proxy'siz hiçbir ölçüm maddesi kapatılmaz.
+
+
 

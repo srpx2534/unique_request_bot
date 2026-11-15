@@ -11,6 +11,8 @@ Uçlar:
     GET  /health          → 200 {"durum":"ayakta"}
     GET  /durum           → 200 {"sayac", "saglayici"}
     POST /worker/burst    → 200 {"ok","captcha","not_found","timeout","elapsed_ms"}
+                   → 503 {"hata":"boşaltılıyor"} + Retry-After: 30 (boşaltma)
+
 
 Kullanım: python -m worker.app
 """
@@ -20,6 +22,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
+import signal
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,6 +45,13 @@ kalp.yuk_kaynagi = lambda: ESZAMANLI - _semafor._value  # doluluk
 _sayac = {"burst": 0, "ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
 _kilit = threading.Lock()
 
+# Zarif boşaltma: sinyal gelince yeni istek alınmaz, uçan burst'ler beklenir.
+_bosaltiliyor = threading.Event()
+_ucan = 0  # işlenmekte olan POST sayısı
+_ucan_kilit = threading.Lock()
+BOSALTMA_BEKLEME_SN = 900  # saniye; en uzun burst zaman aşımıyla aynı
+_SUNUCU: ThreadingHTTPServer | None = None
+
 
 class Isleyici(BaseHTTPRequestHandler):
     """Tek isteği karşılar."""
@@ -51,11 +62,13 @@ class Isleyici(BaseHTTPRequestHandler):
         """Varsayılan gürültülü günlüğü tek satıra indirir."""
         print(f"{self.address_string()} {bicim % args}")
 
-    def _json(self, kod: int, govde: dict) -> None:
+    def _json(self, kod: int, govde: dict, retry: int = 0) -> None:
         """JSON yanıt yazar."""
         ham = json.dumps(govde, ensure_ascii=False).encode("utf-8")
         self.send_response(kod)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if retry:
+            self.send_header("Retry-After", str(retry))
         self.send_header("Content-Length", str(len(ham)))
         self.end_headers()
         self.wfile.write(ham)
@@ -93,6 +106,7 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(200, {
                 "durum": "ayakta", "surum": kalp.SURUM,
                 "doluluk": ESZAMANLI - _semafor._value,
+                "bosaltiliyor": _bosaltiliyor.is_set(),
             })
             return
         if yol == "/durum":
@@ -111,7 +125,23 @@ class Isleyici(BaseHTTPRequestHandler):
         self._json(200, {"sayac": sayac, "saglayici": havuz.durum_sayaci()})
 
     def do_POST(self) -> None:  # noqa: N802 (stdlib adlandırması)
-        """/worker/burst ucunu işler."""
+        """Boşaltma kapısı; uçan istek sayacını tutup gövdeyi _post'a devreder."""
+        global _ucan
+        if _bosaltiliyor.is_set():
+            # Gövde okunmadan yanıt verilir; bağlantı bozulmasın diye boşaltılır.
+            self._ham_oku()
+            self._json(503, {"hata": "boşaltılıyor"}, retry=30)
+            return
+        with _ucan_kilit:
+            _ucan += 1
+        try:
+            self._post()
+        finally:
+            with _ucan_kilit:
+                _ucan -= 1
+
+    def _post(self) -> None:
+        """/worker/burst ve /worker/olcum_b uçlarını işler."""
         yol = self.path.split("?")[0]
         if yol not in ("/worker/burst", "/worker/olcum_b"):
             self._json(404, {"hata": "bilinmeyen uç"})
@@ -203,13 +233,42 @@ class Isleyici(BaseHTTPRequestHandler):
             )
         self._json(200, sonuc)
 
+def _sinyal(sn: int, _cerceve) -> None:
+    """SIGTERM/SIGINT: yeni istek almaz, uçan burst'ler biter, sonra çıkılır."""
+    if _bosaltiliyor.is_set():
+        print("ikinci sinyal: zorla çıkılıyor.")
+        os._exit(0)
+    print("boşaltılıyor: yeni istek alınmıyor.")
+    _bosaltiliyor.set()
+    threading.Thread(target=_bosalt_ve_kapat, daemon=True).start()
+
+
+def _bosalt_ve_kapat() -> None:
+    """Uçan istekler bitene kadar (en çok BOSALTMA_BEKLEME_SN) bekler, kapatır."""
+    bitis = time.monotonic() + BOSALTMA_BEKLEME_SN
+    while time.monotonic() < bitis:
+        with _ucan_kilit:
+            if _ucan == 0:
+                break
+        time.sleep(0.2)
+    sunucu = _SUNUCU
+    if sunucu is not None:
+        sunucu.shutdown()
+
+
 def main() -> int:
     """Servisi başlatır. Token boşsa çalışmaz."""
     if not TOKEN:
         print("HATA: .env içinde WORKER_TOKEN boş.")
         return 1
+    global _SUNUCU
     kalp.baslat()
     sunucu = ThreadingHTTPServer((HOST, PORT), Isleyici)
+    _SUNUCU = sunucu
+    signal.signal(signal.SIGTERM, _sinyal)
+    signal.signal(signal.SIGINT, _sinyal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _sinyal)
     print(f"worker dinliyor: {HOST}:{PORT} · eşzamanlı sınır {ESZAMANLI}")
     try:
         sunucu.serve_forever()
@@ -223,3 +282,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

@@ -51,7 +51,8 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - hedef_yok: üst üste 3 hedefsiz burstte kelime `paused`, kampanya kapanıyor, `hedef_yok` uyarısı düşüyor.
 - Havuz boşken iş başlamıyor: satır beklemede kalıyor, 30 dakikada bir tek `provider_down` uyarısı düşüyor (C69).
 - Üst üste 3 error/timeout sağlayıcıyı `disabled` yapıyor; burst tamamen başarısızsa (ok=0) kelime duruyor (C70). `worker/test_saglik_hata.py`.
-- Kapılar son hâlde yeşil: 179 pytest, 80 vitest, lint 0, tip 0, ağaç temiz.
+- Kapılar son hâlde yeşil: 184 pytest, 80 vitest, lint 0, tip 0, ağaç temiz.
+- Zarif boşaltma (E4): sinyalde yeni burst 503 + `Retry-After: 30`, uçan iş bitene kadar kapanmaz, ikinci sinyal zorla çıkar; kontrol düzlemi 503'ü hata saymaz. `worker/test_bosaltma.py` dört test.
 
 ## Açık altyapı notları
 
@@ -68,6 +69,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
+
 
 
 

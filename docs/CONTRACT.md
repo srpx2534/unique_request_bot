@@ -1,5 +1,5 @@
 # SÖZLEŞME — Unique Request Bot
-Sürüm: 1.8.7 (kilitli)
+Sürüm: 1.8.8 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan request-burst motoru
 Veritabanı: MySQL 8.0.16+
 Diller: Python 3.12 (fetch engine) + Node 20 / TypeScript (control plane)
@@ -156,10 +156,11 @@ Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - `DELETE /api/cerez/hatali` → hatalı dosya ve bozuk profilleri siler, `{ silinen }`
 Liste uçlarında sayfa 1'den başlar, `adet` 1-500 arasıdır ve varsayılanı 50'dir.
 ### 7.2 Worker uçları
-- `GET  /health` → sürüm ve doluluk
+- `GET  /health` → sürüm, doluluk ve `bosaltiliyor` bayrağı
 - `POST /worker/burst` `{ keyword, target_url, geo_code?, geo_slug?, geo_mode, uule?, size }` → `{ ok, captcha, not_found, timeout, error, elapsed_ms }`
 - `POST /api/worker/kalp` `{ ip, yuk, cpu, ram, surum }` → `{ durum }`. CSRF ve oturum denetiminin dışındadır; düğüm kaydı IP ile eşleşir, eşleşmezse 404.
 - `POST /api/worker/kalp` cevabındaki `durum`, worker'ın iş alıp almayacağını belirler; `durduruldu` iken burst ucu 503 döner.
+- Zarif boşaltma: worker sinyal aldığında yeni işi 503 + `Retry-After: 30` ile reddeder, uçan burst'ler bitene kadar kapanmaz, ikinci sinyalde zorla çıkar. Kontrol düzlemi 503'ü hata saymaz; burst'ü kapatır, işi geri bırakır ve sağlayıcı sağlık sayacını artırmaz (C76).
 `keyword` oluşturulunca `keyword_geo` otomatik üretilir. `province` için 1 satır (core), `national` için 81 satır (10 core, 30 normal, 41 passive).
 ### 7.3 Panel sayfa yolları
 SPA yolları: `/` (panel), `/siteler`, `/kelimeler`, `/cerezler`, `/saglayicilar`, `/uyarilar`, `/loglar`, `/rapor`, `/sunucular`, `/ayarlar`, `/giris`, `/bulunamadi`.
@@ -279,6 +280,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C74 — Kelime silmek serttir: kelimeye bağlı aynı tablolar tek işlemde silinir, ardından kelime gider. Kanıt: `src/server/silme.test.ts`.
 - C75 — Sağlayıcı, hit kaydı olsa da silinir; "hit varsa yalnız kapat" kuralı kaldırıldı. Geçmiş hit silinmez, `hit.provider_id` NULL'a çekilir; sağlayıcıya FK ile bağlı `profile` ve `provider_geo` satırları silinir. `cookie` ve `cookie_profil` sağlayıcıya değil dosyaya bağlı olduğu için dokunulmaz. Kanıt: `src/server/silme.test.ts`.
 - C72 — `GET /api/metrik` işletim sayılarını tek gövdede verir: iki pencere (1 saat, 24 saat) için hit dağılımı, yüzde oranlar (payda sıfırsa `null`), modalite sayımı, sağlayıcı sağlığı ve sorunlu ilk 5 sağlayıcı, kelime durumları, burst sayımı, son 5 dakikada kalp atan düğüm sayısı, açık uyarı, kuyruk sayımı, son 24 saatin p95 gecikmesi ve son yedek yaşı. Redis ya da yedek klasörü erişilemezse ilgili blok `null` döner, uç 500 vermez. Kanıt: `src/server/panel_metrik.test.ts`.
+- C76 — Zarif boşaltma: `SIGTERM`/`SIGINT` gelince yeni burst 503 + `Retry-After: 30` ile reddedilir, uçan istekler bitene kadar (en çok 15 dakika) süreç kapanmaz, ikinci sinyal zorla çıkarır. Kontrol düzlemi 503'ü hata saymaz: burst'ü kapatır, işi geri bırakır, sağlayıcı sağlık sayacını artırmaz. `/health` boşaltma bayrağını gösterir. Kanıt: `worker/test_bosaltma.py`, `worker/test_app.py`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -352,6 +354,10 @@ Kod Windows'ta yazılır, Linux'ta çalışır. Aşağıdaki maddeler bağlayıc
 *.sh text eol=lf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
+*.gz binary
+*.bak binary
+*.zip binary
+veri/** -text
 ## 20. Ek B — Yasak yapılar (lint ile zorlanır)
 - `"C:\\..."` veya `"/home/..."` yerine `Path(...)` / `path.join`
 - `open("a/b.txt")` yerine `Path("a") / "b.txt"`
@@ -380,6 +386,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.5 — Kelime bazlı kilit (C64) sözleşmeye işlendi; çakışma süresi ayarı ve çakışma listesi Araçlar menüsüne G4 olarak eklendi.
 - 1.8.6 — Oranların saklama yeri `ayar`, düzenleme yüzeyi Sağlayıcılar ekranı olarak sabitlendi; `PATCH /api/ayar/oran` ucu, seed varsayılanları ve C65 eklendi (§5, §6.2, §7.1, §11).
 - 1.8.7 — `hit.tur` kolonu eklendi (045); modalite kayıtta tutuluyor, mobil yol kayıttan doğrulanabilir (§6).
+- 1.8.8 — Zarif boşaltma (E4) sözleşmeye işlendi: sinyalde 503 + `Retry-After`, uçan işin bitmesi, 503'ün hata sayılmaması (C76); `.gitattributes` yedek ve arşiv desenleri §19'a eklendi.
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
@@ -500,3 +507,4 @@ Bu başlıktaki maddeler, uygulama çalışır hale gelip hayata geçtikten sonr
 - G3 — **Çerez il eşleştirmesi.** Çerezde il bilgisi güvenilir bir kaynaktan okunur (klasör yapısı ya da yükleme anında il seçimi) ve `cookie_profil.il_kodu` doldurulur. Dosya adına göre atama yapılmaz. Doldurulunca il eşleşen çerez, il eşleşmeyenin önüne geçer (C45 kademe içi sıra).
 - G5 — **Yedek alanı.** Araçlar menüsünde yedek bölümü açılır; yedek listesi, elle yedek alma, indirme ve geri yükleme buradan yapılır. Geri yükleme onay ister ve root kimliğiyle koşar; 7 günden eski yedekler listede soluk görünür.
 - G4 — **Çakışma süresi ve çakışma listesi.** `kilit_suresi_dk` ayarı Araçlar menüsünden verilir; açık `kilit_cakismasi` uyarıları aynı sayfada listelenir ve tek tek ya da toplu kapatılır. Kapatma kilidi bırakmaz, yalnızca uyarıyı düşürür.
+

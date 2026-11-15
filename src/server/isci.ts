@@ -167,6 +167,17 @@ async function calistir(is: Is): Promise<void> {
       signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
     });
     if (!yanit.ok) throw new Error(`motor ${yanit.status}`);
+    // Boşaltma ya da durdurma 503'ü hata değildir: burst kapanır, iş kısa süre
+    // sonra yeniden denenir; sağlayıcı sağlık sayacı bu yüzden artmaz (E4).
+    if (yanit.status === 503) {
+      const govde503 = (await yanit.json().catch(() => ({}))) as { hata?: string };
+      const sebep = govde503.hata ?? "düğüm meşgul";
+      await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
+        JSON.stringify({ hata: sebep }), burstId,
+      ]);
+      await geriAl(is.keywordGeoId, `düğüm 503: ${sebep}`);
+      return;
+    }
 
     const govde = (await yanit.json()) as MotorCevabi;
     await hitYaz(burstId, satir.geo_code, govde.hits ?? []);
@@ -222,3 +233,4 @@ export const isci = new Worker<Is>("olcum", (is) => calistir(is.data), {
 isci.on("failed", (is, hata) => {
   if (is) void geriAl(is.data.keywordGeoId, `iş ${is.id}: ${hata.message}`);
 });
+

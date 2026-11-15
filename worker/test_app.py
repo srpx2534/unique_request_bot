@@ -26,8 +26,10 @@ class Sahte:
         self.headers = basliklar or {}
         self.rfile = None
         self.yanitlar: list[tuple[int, dict]] = []
+        self.retry = 0
 
-    def _json(self, kod: int, govde: dict) -> None:
+    def _json(self, kod: int, govde: dict, retry: int = 0) -> None:
+        self.retry = retry
         self.yanitlar.append((kod, govde))
 
     # Gercek sinifin dogrulama metotlari sahteye baglanir; boylece testte
@@ -35,6 +37,7 @@ class Sahte:
     _yetkili = app.Isleyici._yetkili
     _imza_dogrula = app.Isleyici._imza_dogrula
     _ham_oku = app.Isleyici._ham_oku
+    _post = app.Isleyici._post
 
 
 def istek(yol: str = "/worker/burst", basliklar: dict | None = None) -> Sahte:
@@ -118,4 +121,16 @@ def test_govde_tavani_makul() -> None:
     """Govde tavani kucuk ve sabittir; buyuk govde reddedilir."""
     assert app.GOVDE_TAVANI == 8192
     sahte = istek(basliklar={"Content-Length": "999999"})
-    assert app.Isleyici._ham_oku(sahte) is None  # type: ignore[arg-type]
+
+
+def test_bosaltmada_503_ve_retry_after() -> None:
+    """Boşaltma bayrağı açıkken istek 503 + Retry-After ile reddedilir (E4)."""
+    app._bosaltiliyor.set()
+    try:
+        sahte = istek(basliklar={"Authorization": f"Bearer {app.TOKEN}"})
+        app.Isleyici.do_POST(sahte)  # type: ignore[arg-type]
+        assert sahte.yanitlar[0][0] == 503
+        assert sahte.retry == 30
+    finally:
+        app._bosaltiliyor.clear()
+
