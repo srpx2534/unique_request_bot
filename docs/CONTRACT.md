@@ -173,7 +173,7 @@ Proxy sağlayıcıları, ağırlık ve şehir hedefleme durumu:
 - Webshare, datacenter, sadece smoke test
 SERP API sağlayıcıları: Decodo /search birincil, Serper yedek, SearchApi.io yedek. Anahtarlar `ayar` tablosundadır, panelden girilir ve maskeli gösterilir. Bir anahtar boşsa sıradaki sağlayıcıya geçilir; ölçüm hattı da aynı sırayı izler, hiçbiri yoksa ölçüm turu atlanır ve uyarı üretilir.
 Mobil IP'ler burst'ün ilk 2 hit'inde tüketilir. Sağlayıcı anahtarları kullanıcıya aittir, yazılım yalnızca tüketir.
-Devre kesici iki seviyelidir. Sağlayıcı/il çiftinde CAPTCHA %35'i geçerse çift 60 dakika tükenir (C18). Sağlayıcı genelinde oran %20'yi geçerse sağlayıcı 2 saat karantinaya alınır, ağırlığı yedeğe alınıp sıfırlanır. Karantina dolunca ağırlık yedekten geri verilir ve oran sıfırlanır. Oranlar en az 10 örnek toplanmadan değerlendirilmez.
+Devre kesici iki seviyelidir. Sağlayıcı/il çiftinde CAPTCHA %35'i geçerse çift 60 dakika tükenir (C18). Sağlayıcı genelinde oran %20'yi geçerse sağlayıcı 2 saat karantinaya alınır, ağırlığı yedeğe alınıp sıfırlanır. Karantina dolunca ağırlık yedekten geri verilir ve oran sıfırlanır. Oranlar en az 10 örnek toplanmadan değerlendirilmez. Uçtan uca sınandı: 12 CAPTCHA sonrası sağlayıcı karantinaya giriyor, ağırlık yedeğe alınıyor, süre dolunca ağırlık yedekten dönüyor (`tools/saglik_dene.py`).
 Sayaçlar saatliktir: pencere `sayac_baslangic` damgasıyla açılır, bir saat dolunca `hits_1h`, `captcha_1h` ve `captcha_pct` sıfırlanıp damga yenilenir. Böylece karantina kararı yalnızca son pencereyi taşır (C56).
 Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlanır (C6). Üçüncü deneme yapılmaz.
 ### 8.1 Eşikler ve sessizlik
@@ -217,11 +217,11 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C13 — `province` kelime, il verilmeden kaydedilemez; veritabanı reddeder.
 - C14 — `national` kelime kaydı 81 `keyword_geo` satırı üretir; tier dağılımı 10/30/41'dir.
 - C15 — `v_live` görünümü 3.300 iş biriminde p95 400 ms'nin altında yanıt verir.
-- C16 — Aynı `keyword_geo` üzerinde çakışan burst sayısı sıfırdır; sahiplenme `last_burst_at` damgasıyla yapılır.
+- C16 — Aynı `keyword_geo` üzerinde çakışan burst sayısı sıfırdır; sahiplenme `last_burst_at` damgasıyla yapılır. Beş süreçli çakışma denemesinde tam biri kazanır (`tools/kilit_cakisma_dene.ts`).
 - C17 — Şehir hedefleyen sağlayıcı yokken iş durmaz, ulusal moda düşer.
 - C18 — Sağlayıcı ve il çiftinde CAPTCHA %35'i geçerse 60 dakika `exhausted_until` uygulanır.
 - C19 — `burst_count` 3'ün altındayken core tier, sonrasında broad faz kullanılır.
-- C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür.
+- C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür. Yalnız `channel = 'clean'` yazılır, API'ye il verilmez.
 - C21 — `stop` sonrası yeni hit atılmaz.
 - C22 — Tüm `DATETIME` değerleri UTC'dir; oran %100'dür.
 - C23 — `uule` 81 ilin tamamında doludur.
@@ -267,6 +267,9 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C63 — İl seçiminde şu an tek dayanak proxy'nin il bazlı IP'sidir. Çerezde il eşleşmesi aranmaz; `cookie_profil.il_kodu` boş kalır ve sıralama NULL'a tolerans tanır. Çerez il eşleştirmesi geliştirme aşamasına bırakılmıştır.
 - C64 — Aynı `keyword_geo` satırını iki control plane aynı anda işlemez. Kilit `keyword_geo.kilit_dugum` ve `kilit_at` ile tutulur, süresi `kilit_suresi_dk` ayarından okunur (varsayılan 30 dakika). Taze kilitli satırda ikinci taraf işi atlar, `kilit_cakismasi` uyarısı yazar ve çalışmaya devam eder. Süresi dolmuş kilit devralınır; açık burst'i olan satır sıfırlanmaz, 20 dakikayı aşan ölü burst kapatılır.
 - C65 — Oranlar `ayar` tablosunda satır olarak saklanır, yalnızca Sağlayıcılar ekranından ve `PATCH /api/ayar/oran` ucuyla yazılır; genel `PATCH /api/ayar` oranlara dokunmaz. Üç anahtarın toplamı 100 değilse yazma reddedilir. Kanıt: `src/server/panel_ayar.test.ts`.
+- C66 — Sağlayıcı havuzu boş değildir: `provider` satırları seed'lidir, en az bir sağlayıcının `gateway`'i doludur ve `provider_geo` il çifti taşır.
+- C67 — `provider.bytes_month` her hit'te `bayt_ekle` ile artar, ay dönünce sıfırlanır; kota tanımlıysa %90'da tek `quota` uyarısı düşer ve 30 dakika sessiz kalır.
+- C68 — Kota süpürgesi yalnız SERP 429'una bağlı değildir; proxy bayt kotası da uyarı üretir.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -359,7 +362,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.6 — §3 cookie tablosu istisnası, §5 mobil öncelik, §6 `keyword.mobil` ve cookie tabloları, §7 cookie uçları, §9 mobil pencere, §11 C4/C5 güncellendi, C44-C49, §24 yeniden yazıldı, §26 cookie alt sistemi.
 - 1.7 — Düzeltme turu: `hit.provider_id` NULL, `dugum.kayit_at`, kelime gövdesi `kelime/kapsam/il`, `/health`, özet ucu, `cerez/hatali`, `cerez_kendi`, modalite çıkarımı, `host_only`, saatlik sayaç penceresi, SERP yedek sırası, C16/C9/C46 güncellendi, C50-C57 eklendi, §26.2 kiralama ifadesi MariaDB gerçeğine çekildi, §7.3 panel yolları, §8.1 eşikler, C39 istisnası, C59/C60, §15/§17.8/§18.5 veritabanı kurulumunun kullanıcıya ait olduğu ve yerelde XAMPP kullanıldığı.
 - 1.8 — Çerez önceliği il, mobil, TR, yabancı sırasına ve canlı/süresi geçmiş ayrımına bağlandı; ülke süzgeçten sıralamaya çevrildi; çerezlerin hiç silinmemesi kurala bağlandı; il kodu yüklemede dosya yolundan okunur; mobil pencere hit sayısına çevrildi; C45/C46 güncellendi.
-- 1.8.1 — Il atamasi dosya adina gore yapilmaz kurali §26.2''ye islendi; ilBul cagrisi kaldirildi, profil ilsiz birakildi.
+- 1.8.1 — Il atamasi dosya adina gore yapilmaz kurali §26.2'ye islendi; ilBul cagrisi kaldirildi, profil ilsiz birakildi.
 - 1.8.2 — İl seçili kelimede proxy seçimi önce il IP'lerine, il tükenirse TR geneline bağlandı; il yoksa doğrudan TR (§5, C61).
 - 1.8.3 — Çerez canlılık ölçümü eklendi: cookie_profil.canli/son_kontrol_at/olcum_proxy, sıralamada canlı önceliği (§5, §26.2, C62).
 - 1.8.4 — İl seçiminde tek dayanak proxy il IP'si olarak sabitlendi (C63); geliştirme aşaması başlığı açıldı, Araçlar menüsü ve çerez il eşleştirmesi oraya taşındı (§27).

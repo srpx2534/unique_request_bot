@@ -3,7 +3,6 @@
 A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 worker + 49 UI test yeşil. Kalan maddeler sırayla kapatılır. Bir madde kapanınca buradan silinir, sonucu sözleşmedeki ilgili kritere işlenir.
 
 ## D. Gerçek tarayıcı cookie'leri
-
 1. Format: Netscape `cookies.txt` (tercih) veya JSON dizi. Dosya basina tek profil. Dosya adi serbest, yalnizca uzanti (`.txt`/`.json`) denetlenir. (DUZELTILDI)
 2. Havuz: tek cookie yüzlerce hit için yetmez. Dosyalar sırayla, hit başına bir kez kullanılacak; tükenince başa dönülecek. (DUZELTILDI)
 3. Cografya: il seciminde tek dayanak proxy il IP'sidir; cerezde il eslesmesi aranmaz (C63). Cerez il eslestirmesi gelistirme asamasi (G3). (KISMI)
@@ -25,40 +24,30 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 - `hit.geo_mode` varsayilani `tr_fallback`, `cerez_yukleme.durum` `aktarim`, `cookie_dosya.durum` `bekliyor`, `cookie_profil.durum` `tukendi` tasimiyor. Migration `040`. (DUZELTILDI)
 
 ## E. Burst ve kabul
-
 15. burst_dene.py adedi 60'lik basamaklara boluyor, sayaclari topluyor; AZAMI_HIT siniri korunuyor. (DUZELTILDI)
 16. 100 hit testi sürüyor (60 + 40); proxy hattı bağlanınca proxy üzerinden yeniden koşulacak.
 17. CAPTCHA oranı, `not_found` oranı ve tamamlanma oranı ölçülmedi (C7, C8, C9, C10).
 18. devam False donunce dongu kiriliyor ve fazladan hit atilmiyor; test_burst bunu sabitliyor (C21). (DUZELTILDI)
-19. Aynı `keyword_geo` üzerinde çakışan burst sayısı ölçülmedi (C16).
 20. Ust uste 3 burst hedefsizse kelime paused oluyor, kampanya kapaniyor, hedef_yok uyarisi dusuyor; burst bazinda sayiliyor (A3). (DUZELTILDI)
 21. Özet ekranı ölçüm verisi biriktikten sonra denenmedi; `-` ve `100+` durumları kontrol edilmedi.
 
 ## F. Sağlayıcı havuzu — M3
-
 22. Sağlayıcı seçimi ağırlıklı ve devre kesicili hale getirilecek.
 23. Oranlar `.env` ile ayarlanir: PROXY_RESIDENTIAL_ORAN, PROXY_MOBIL_ORAN, PROXY_DATACENTER_ORAN. Tablo degeri varsa o kazanir, yoksa env, yoksa varsayilan. PROXY_MOBIL_ORAN=0 mobil turu kapatir. (DUZELTILDI)
 24. Failover 10 saniye altında tamamlanacak (C6).
-25. Sağlayıcı genel CAPTCHA oranı %20'yi geçince 2 saat karantina uygulanacak (§8).
-26. `provider` ve `provider_geo` tabloları henüz boş; seed yazılmadı.
 27. Oranlar panelden yazılıyor (`ayar` satırı, `PATCH /api/ayar/oran`, C65) ve `oran_mobil` 10. `hit.tur` kolonu eklendi (045), worker seçilen türü yazıyor. Kalan: mobil sağlayıcılarda (id 4, 5) gateway ve kimlik yok (madde 33); kimlik girilince dar kapsamlı tek burst ile mobil hit doğrulanacak. (KISMI)
 28. Oran 0 ya da mobil pencere kapaliyken tur_sec mobile hic dusmuyor; test_havuz iki durumu da tarayarak sabitliyor. (DUZELTILDI)
 29. Esikler panelden ayarlanir: esik_captcha, esik_geo, asgari_ornek. kaydet ve karantina_kontrol degerleri ayar_db uzerinden okur, okunamazsa sozlesme degeri gecerli. (DUZELTILDI)
 30. Saglayicilar ekraninda oran toplami canli gosterilir; 100 degilse kirmizi ve kaydetme engelli. (DUZELTILDI)
-31. `provider.bytes_month` ve `quota_bytes` hiçbir yerde yazılmıyor; kota muhasebesi fiilen yok.
-32. Kota uyarısı yalnızca SERP 429'una bağlı; proxy bayt kotası için uyarı yok.
 33. Proxy ve SERP kimlik bilgileri (Decodo, SOAX vb.) henüz yok; sağlayıcı biçimleri gerçek anahtarla doğrulanmadı.
 
 ## G. Ölçüm hattı — M5
-
-34. Ölçüm-A kanalı SERP API'sinden, `clean` kanaldan, daima ulusal yapılacak (C20).
 35. B kanali yazildi: worker/olcum_b.py kucuk profil havuzu, kalici cookie jar, HTML izlenim, hedefe tikla, post_click pozisyonu, 3 kullanimda yakma; /worker/olcum_b ucu imzali ve 15 dk turdan cagriliyor. Canli dogrulandi. (DUZELTILDI)
 36. Ölçüm-B hattı (`post_click`) gerçekten çalışıyor mu doğrulanmadı.
 37. aralikDk 15 dk tavaniyla kirpiyor, olcumYap her dakika deniyor; dort kirpma durumu test edildi (C12). (DUZELTILDI)
 38. `olcum.ts` ve `serp.py` yedek sağlayıcı sırasını kullanıyor ama gerçek anahtarla sınanmadı; Decodo kotası doluyken Serper ile bir ölçüm turu koşulmalı.
 
 ## H. CI ve kalite kapıları
-
 39. CI matrisi kurulu: `windows-latest` + `ubuntu-22.04`, iki is. Is akisi henuz kosmadi, yesil gorulmedi (C26, C27).
 40. `python tools/tls_check.py --all` hiç çalıştırılmadı (C5 kanıtı).
 41. `.gitattributes` dolu; 5 bayat CRLF/karma dosya LF'e cevrildi, `git ls-files --eol` temiz (C28). (DUZELTILDI)
@@ -67,7 +56,6 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 44. Bolumleme kodu yazildi: `bolum.ts` esigi asinca gunluk bolumleri kurar ya da ileri gunleri acar, `partition` uyarisi duser, bakim turuna bagli. Canli deneme 10 milyon satirda yapilacak. (KISMI)
 
 ## I. Altyapı ve dağıtım
-
 45. Docker imajları digest ile pinlenmedi (17.2). Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
 46. `read_only`, `cap_drop`, root olmayan kullanıcı doğrulanmadı (17.3).
 47. `mysqldump` yedek ve geri yükleme testi yok (17.6). Yedek/geri yükleme ve metrik ucu (E1-E7) yok. (KISMI: tek örnek kilidi kapandı)
@@ -78,27 +66,23 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 51. XAMPP `my.ini`: `innodb_buffer_pool_size=256M` ve `innodb_lock_wait_timeout=20` henüz uygulanmadı (kullanıcı sonra ele alacak).
 
 ## J. Uyarı takibi
-
 52. Uyari ekrani var: /uyarilar, liste, aralik/tur/durum/site/kelime suzgeci, tek ve toplu kapatma, rehber penceresi; ust cubukta acik uyari rozeti. (DUZELTILDI)
 53. Uyari saklama suresi 90 gun; saklama turu parcali siliyor, acik/kapali ayrimi yapmiyor. (DUZELTILDI)
 54. queue_lag esik asilinca yaziliyor (varsayilan 200, kuyruk_esik ayari), 30 dakika sessizlik var. (DUZELTILDI)
 55. Dokuz uyari turunun hepsi kodda uretiliyor; worker/test_uyari.py kaynagi tarayip eksik turu yakaliyor. (DUZELTILDI)
 
 ## K. Kod borcu (250 satır sınırı, §23.2)
-
 56. cerez.ts 841 satirdan src/server/cerez/ altinda yedi dosyaya bolundu (yollar, ortak, ayristir, aktarim, sayfa, silme, yukleme, index); en buyugu 223 satir. worker/test_boyut.py 250 sinirini izliyor. (DUZELTILDI)
 57. `panel.ts` 454, `kelime.ts` 389, `isci.ts` 264 satır. (DUZELTILDI)
 58. `havuz.py` 542 satır ve tek dosyada dört iş yapıyor (oran, sağlayıcı seçimi, çerez seçimi, kuyruk). (KISMI: havuz.py ve saglik_db.py bolunmedi)
 59. serp.py 242 ve burst.py 196 satira indi; serp_ortak.py, serp_html.py, burst_hit.py ayrildi, testlerin eristigi adlar korundu. (DUZELTILDI)
 
 ## L. Sözleşme ve belge
-
 60. Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
 61. `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.
 62. README, `.env.example`, docker-compose ve `.gitattributes` devir paketi kontrolü.
 
 ## M. Pilot ve devir
-
 63. M6 pilotu: 5 sunucu, 20 kelime, 2 hafta saha testi.
 64. Pilot kabul ölçümleri: C7, C8, C9, C10, C11, C12, C15.
 65. Bolumleme 10 milyon satir esigiyle canli denenecek: esik asilinca gunluk bolumler kuruluyor mu, ileri gunler aciliyor mu, `partition` uyarisi dusuyor mu, saklama eski bolumleri dusuruyor mu.
