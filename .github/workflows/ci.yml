@@ -68,7 +68,8 @@ jobs:
             --exclude "src/server/panel_ayar.test.ts" \
             --exclude "src/server/panel_saglayici.test.ts" \
             --exclude "src/server/panel_sayfa.test.ts" \
-            --exclude "src/server/panel_metrik.test.ts"
+            --exclude "src/server/panel_metrik.test.ts" \
+            --exclude "src/server/silme.test.ts"
 
       - name: Pytest
         run: python -m pytest -q

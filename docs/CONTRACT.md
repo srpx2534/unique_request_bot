@@ -230,7 +230,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C25 — Aynı burst'ün tekrar işlenmesi idempotenttir, aynı sonucu verir.
 - C26 — pytest ve vitest hem Windows hem Linux'ta geçer.
 - C27 — CI matrisi windows-latest ve ubuntu-22.04 içerir; ikisi de yeşildir.
-- C27.1 — Veritabanı ve Redis isteyen testler (`api`, `panel_*`) yalnızca veritabanı işinde koşar; platformdan bağımsız iş bunları `--exclude` ile atlar ve `SESSION_SECRET` alır. Yeni bir veritabanı testi eklenirse dışlama listesine de yazılır.
+- C27.1 — Veritabanı ve Redis isteyen testler (`api`, `panel_*`, `silme`) yalnızca veritabanı işinde koşar; platformdan bağımsız iş bunları `--exclude` ile atlar ve `SESSION_SECRET` alır. Yeni bir veritabanı testi eklenirse dışlama listesine de yazılır.
 - C28 — Depoda CRLF yoktur; `git ls-files --eol` temiz döner.
 - C29 — Hiçbir modülde sabit `os.sep` veya `\\` yolu yoktur; lint kuralı geçer.
 - C30 — Docker imajı linux/amd64 üzerinde Debian 12'dir.
