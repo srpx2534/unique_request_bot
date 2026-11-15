@@ -16,6 +16,7 @@ import {
 } from "./isci_durum.js";
 export { hedefYokDenetle } from "./isci_durum.js";
 import { dugumSec } from "./dugum_sec.js";
+import { SAHIP, cakismaYaz, devral } from "./kilit.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
 // 60 hit'lik burst dwell ve pogo ile dakikalar sürebilir; kısa sınır işi ortada keser.
@@ -87,29 +88,21 @@ async function calistir(is: Is): Promise<void> {
   }
 
   // Aynı iş iki kez düşerse satır sahiplenilemez: taze burst silinir, açık burst
-  // yeniden sahiplenilir.
-  // Sahiplenme damgasi: last_burst_at her seferinde degisir, boylece
-  // affectedRows gercekten "bu satiri ben aldim" anlamina gelir. Ayni degeri
-  // tekrar yazmak MySQL'de 0 satir dondurur; eski kod bu yuzden her burst'u
-  // silip satiri 'running' birakiyordu ve sistem hic hit atmiyordu.
-  const sahiplen = await yaz(
-    `UPDATE keyword_geo
-        SET state = 'running', last_burst_at = UTC_TIMESTAMP(3)
-      WHERE id = ? AND state = 'running'
-        AND (last_burst_at IS NULL OR last_burst_at < UTC_TIMESTAMP(3) - INTERVAL 5 SECOND)`,
-    [is.keywordGeoId],
-  );
-  if (sahiplen === 0) {
-    // Satir 5 saniye icinde baska bir dagitici tarafindan alindi.
+  // yeniden sahiplenilir. Sahiplik ve süre kilit modülünde; başka düğümün taze
+  // kilidi varsa iş atlanır, uyarı yazılır, işçi durmaz.
+  const alindi = await devral(is.keywordGeoId);
+  if (!alindi) {
     if (!yeniden) {
       await yaz("DELETE FROM burst WHERE id = ?", [burstId]);
+      await cakismaYaz(is.keywordGeoId, null);
       return;
     }
     await yaz(
       `UPDATE keyword_geo
-          SET state = 'running', last_burst_at = UTC_TIMESTAMP(3)
+          SET state = 'running', kilit_dugum = ?, kilit_at = UTC_TIMESTAMP(3),
+              last_burst_at = UTC_TIMESTAMP(3)
         WHERE id = ?`,
-      [is.keywordGeoId],
+      [SAHIP, is.keywordGeoId],
     );
   }
 
@@ -164,7 +157,7 @@ async function calistir(is: Is): Promise<void> {
       burstId,
     ]);
     await yaz(
-      "UPDATE keyword_geo SET state = 'pending', burst_count = burst_count + 1, last_burst_at = NOW(3) WHERE id = ?",
+      "UPDATE keyword_geo SET state = 'pending', kilit_dugum = NULL, kilit_at = NULL, burst_count = burst_count + 1, last_burst_at = NOW(3) WHERE id = ?",
       [is.keywordGeoId],
     );
     await hedefDenetle(is.keywordId);

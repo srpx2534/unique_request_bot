@@ -1,5 +1,6 @@
 /** Hit yazimi ve kelime durdurma denetimleri. */
 import { sorgu, tek, yaz } from "./veritabani.js";
+import { SAHIP } from "./kilit.js";
 
 export type MotorHiti = {
   result: string;
@@ -103,8 +104,8 @@ export async function hedefDenetle(keywordId: number): Promise<void> {
 /** Satiri beklemede birakir ve kisa cooldown verir. */
 export async function geriAl(geoId: number, sebep: string): Promise<void> {
   await yaz(
-    "UPDATE keyword_geo SET state = 'pending', cooldown_until = DATE_ADD(NOW(3), INTERVAL 2 MINUTE) WHERE id = ?",
-    [geoId],
+    "UPDATE keyword_geo SET state = 'pending', kilit_dugum = NULL, kilit_at = NULL, cooldown_until = DATE_ADD(NOW(3), INTERVAL 2 MINUTE) WHERE id = ? AND (kilit_dugum IS NULL OR kilit_dugum = ?)",
+    [geoId, SAHIP],
   );
   console.error("[isci]", sebep);
 }

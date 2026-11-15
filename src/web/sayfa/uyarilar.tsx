@@ -31,7 +31,7 @@ type Cevap = {
   adet: number;
 };
 
-const TURLER = ["captcha", "provider_down", "queue_lag", "quota", "fallback_high", "hedef_yok", "hedef_yok_durdu", "failover", "burst_hata"];
+const TURLER = ["captcha", "provider_down", "queue_lag", "quota", "fallback_high", "hedef_yok", "hedef_yok_durdu", "kilit_cakismasi", "failover", "burst_hata"];
 const TON: Record<string, "tehlike" | "uyari" | "notr" | "vurgu"> = {
   captcha: "tehlike",
   provider_down: "tehlike",
@@ -40,6 +40,7 @@ const TON: Record<string, "tehlike" | "uyari" | "notr" | "vurgu"> = {
   fallback_high: "uyari",
   hedef_yok: "uyari",
   hedef_yok_durdu: "uyari",
+  kilit_cakismasi: "uyari",
   queue_lag: "vurgu",
   failover: "notr",
 };
@@ -52,6 +53,12 @@ const ADETLER = [25, 50, 100, 200];
  * ekrani goren kisi sozlugu bilmeden uyariyi yorumlayabilir.
  */
 const TUR_BILGI: Record<string, { ad: string; aciklama: string; sebep: string; onlem: string }> = {
+  kilit_cakismasi: {
+    ad: "Kilit çakışması",
+    aciklama: "Satır başka bir control plane tarafından tutuluyordu, iş atlandı.",
+    sebep: "Aynı veritabanına iki control plane bağlı ya da ölmüş süreç kilidi bırakmadı.",
+    onlem: "Tek control plane çalıştır; uyarı sürerse kilit_suresi_dk değerini gözden geçir.",
+  },
   captcha: {
     ad: "Captcha / engel",
     aciklama: "Google bot kontrolü gösterdi, hit sayılmadı.",

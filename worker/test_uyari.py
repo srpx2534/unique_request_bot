@@ -20,6 +20,7 @@ TURLER = (
     "failover",
     "burst_hata",
     "partition",
+    "kilit_cakismasi",
 )
 CAGRI = re.compile(r'uyari\(\s*"(\w+)"')
 DEGER = re.compile(r"VALUES\s*\(\s*'(\w+)'")

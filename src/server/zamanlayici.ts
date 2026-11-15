@@ -7,7 +7,7 @@
  * Cooldown sert engel değil, sıralama tercihidir: soğumadaki satır
  * listenin sonuna düşer, ilin IP'si bitince karışık devam edilir.
  */
-import { sorgu, yaz } from "./veritabani.js";
+import { sorgu } from "./veritabani.js";
 import { ayarOku } from "./ayar.js";
 import { kuyruk, type Is } from "./kuyruk.js";
 import { toparla } from "./traffic.js";
@@ -16,6 +16,7 @@ import { olcumYap } from "./olcum.js";
 import { esikDenetle } from "./esik.js";
 import { saklamaDenetle } from "./saklama.js";
 import { bolumDenetle } from "./bolum.js";
+import { bayatDenetle, cakismaYaz, kilitSuresiDk, sahiplen } from "./kilit.js";
 
 const TIK_MS = 60_000;
 const TUR_SINIRI = 200;
@@ -60,6 +61,7 @@ async function bakim(): Promise<void> {
     await esikDenetle();
     await saklamaDenetle();
     await bolumDenetle();
+    await bayatDenetle();
   } catch (hata) {
     console.error("[bakim]", (hata as Error).message);
   } finally {
@@ -74,7 +76,8 @@ async function tara(): Promise<void> {
     // Günlük özet her turda tazelenir; geç gelen hit de yakalanır.
     // Ölçüm aralığı ayardan okunur; 0 ise yalnızca cooldown sırası geçerli.
     const aralik = Number(await ayarOku("olcum_araligi_dk", "0")) || 0;
-
+    // Kilit süresi: bu kadar eski 'running' satır sahipsiz sayılır.
+    const kilitSn = (await kilitSuresiDk()) * 60;
     const adaylar = await sorgu<Aday>(
       `SELECT g.id AS keyword_geo_id, k.id AS keyword_id, c.id AS campaign_id,
               g.geo_code, g.tier, k.text AS kelime
@@ -82,7 +85,9 @@ async function tara(): Promise<void> {
          JOIN keyword k ON k.id = g.keyword_id
          JOIN site s ON s.id = k.site_id
          JOIN campaign c ON c.keyword_id = k.id AND c.stopped_at IS NULL
-        WHERE k.state = 'active' AND s.active = 1 AND g.state <> 'running'
+        WHERE k.state = 'active' AND s.active = 1
+          AND (g.state <> 'running' OR g.kilit_at IS NULL
+               OR g.kilit_at < UTC_TIMESTAMP(3) - INTERVAL ${kilitSn} SECOND)
           AND (${aralik} = 0 OR g.last_burst_at IS NULL
                OR g.last_burst_at < DATE_SUB(NOW(3), INTERVAL ${aralik} MINUTE))
         ORDER BY (g.cooldown_until IS NULL OR g.cooldown_until <= NOW(3)) DESC,
@@ -101,11 +106,12 @@ async function tara(): Promise<void> {
       sayac.set(aday.keyword_id, kullanilan + 1);
 
       // Koşullu güncelleme: satır iki turda birden seçilirse ikincisi düşer (C16).
-      const alindi = await yaz(
-        "UPDATE keyword_geo SET state = 'running', cooldown_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE) WHERE id = ? AND state <> 'running'",
-        [rastgeleCooldown(), aday.keyword_geo_id],
-      );
-      if (alindi === 0) continue;
+      // Kilit başka düğümdeyse iş atlanır; tur durmaz, uyarı yazılır.
+      const alindi = await sahiplen(aday.keyword_geo_id, rastgeleCooldown());
+      if (!alindi) {
+        await cakismaYaz(aday.keyword_geo_id, null).catch(() => {});
+        continue;
+      }
       const is: Is = {
         campaignId: aday.campaign_id,
         keywordId: aday.keyword_id,

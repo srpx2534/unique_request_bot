@@ -1,5 +1,5 @@
 # SÖZLEŞME — Unique Request Bot
-Sürüm: 1.8.4 (kilitli)
+Sürüm: 1.8.5 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan request-burst motoru
 Veritabanı: MySQL 8.0.16+
 Diller: Python 3.12 (fetch engine) + Node 20 / TypeScript (control plane)
@@ -261,6 +261,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C61 — İl seçili kelimede seçim önce o ile ait IP'leri dener; il tükenmeden TR geneline inilmez. İl seçili değilken doğrudan TR geneli kullanılır.
 - C62 — Canlı, süresi geçmemiş ve engellenmiyor olandır. Canlılık kademesi tarihin önündedir: çalışan çerez, süresi geçmiş olsa bile engelli taze çerezin önüne geçer. Ölçüm `tools/cerez_olcum.py` ile yapılır; sonuç silmez, yalnızca kademeyi değiştirir.
 - C63 — İl seçiminde şu an tek dayanak proxy'nin il bazlı IP'sidir. Çerezde il eşleşmesi aranmaz; `cookie_profil.il_kodu` boş kalır ve sıralama NULL'a tolerans tanır. Çerez il eşleştirmesi geliştirme aşamasına bırakılmıştır.
+- C64 — Aynı `keyword_geo` satırını iki control plane aynı anda işlemez. Kilit `keyword_geo.kilit_dugum` ve `kilit_at` ile tutulur, süresi `kilit_suresi_dk` ayarından okunur (varsayılan 30 dakika). Taze kilitli satırda ikinci taraf işi atlar, `kilit_cakismasi` uyarısı yazar ve çalışmaya devam eder. Süresi dolmuş kilit devralınır; açık burst'i olan satır sıfırlanmaz, 20 dakikayı aşan ölü burst kapatılır.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -357,6 +358,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.2 — İl seçili kelimede proxy seçimi önce il IP'lerine, il tükenirse TR geneline bağlandı; il yoksa doğrudan TR (§5, C61).
 - 1.8.3 — Çerez canlılık ölçümü eklendi: cookie_profil.canli/son_kontrol_at/olcum_proxy, sıralamada canlı önceliği (§5, §26.2, C62).
 - 1.8.4 — İl seçiminde tek dayanak proxy il IP'si olarak sabitlendi (C63); geliştirme aşaması başlığı açıldı, Araçlar menüsü ve çerez il eşleştirmesi oraya taşındı (§27).
+- 1.8.5 — Kelime bazlı kilit (C64) sözleşmeye işlendi; çakışma süresi ayarı ve çakışma listesi Araçlar menüsüne G4 olarak eklendi.
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
@@ -475,3 +477,4 @@ Bu başlıktaki maddeler, uygulama çalışır hale gelip hayata geçtikten sonr
 - G1 — **Araçlar menüsü.** Panelde "Araçlar" sayfası açılır; bakım ve toplu işlem araçları burada toplanır. Her araç tek iş yapar, çalışırken ilerleme gösterir ve durdurulabilir.
 - G2 — **Çerez canlılık ölçümü aracı.** `tools/cerez_olcum.py` bu menüden tetiklenir; seçilen adet, bekleme süresi ve proxy kullanımı panelden verilir, sonuç canlı/engelli/ölçülmemiş sayaçlarına yansır.
 - G3 — **Çerez il eşleştirmesi.** Çerezde il bilgisi güvenilir bir kaynaktan okunur (klasör yapısı ya da yükleme anında il seçimi) ve `cookie_profil.il_kodu` doldurulur. Dosya adına göre atama yapılmaz. Doldurulunca il eşleşen çerez, il eşleşmeyenin önüne geçer (C45 kademe içi sıra).
+- G4 — **Çakışma süresi ve çakışma listesi.** `kilit_suresi_dk` ayarı Araçlar menüsünden verilir; açık `kilit_cakismasi` uyarıları aynı sayfada listelenir ve tek tek ya da toplu kapatılır. Kapatma kilidi bırakmaz, yalnızca uyarıyı düşürür.

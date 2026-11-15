@@ -1,6 +1,6 @@
 # Eksik maddeler
 
-A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 test yeşil. Kalan maddeler sırayla kapatılır. Bir madde kapanınca buradan silinir, sonucu sözleşmedeki ilgili kritere işlenir.
+A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 worker + 49 UI test yeşil. Kalan maddeler sırayla kapatılır. Bir madde kapanınca buradan silinir, sonucu sözleşmedeki ilgili kritere işlenir.
 
 ## D. Gerçek tarayıcı cookie'leri
 
@@ -70,7 +70,8 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 
 45. Docker imajları digest ile pinlenmedi (17.2). Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
 46. `read_only`, `cap_drop`, root olmayan kullanıcı doğrulanmadı (17.3).
-47. `mysqldump` yedek ve geri yükleme testi yok (17.6). Yedek/geri yükleme, metrik ucu, tek örnek kilidi (E1-E7) yok.
+47. `mysqldump` yedek ve geri yükleme testi yok (17.6). Yedek/geri yükleme ve metrik ucu (E1-E7) yok. (KISMI: tek örnek kilidi kapandı)
+- Kelime bazlı kilit yazıldı: `keyword_geo.kilit_dugum/kilit_at` (042), sahiplenme, süre aşımında devralma, çakışma uyarısı ve bayat temizleme; `kilit_cakismasi` uyarı türü panelde. (DUZELTILDI)
 48. HTTPS/HSTS, Redis `requirepass`, sır saklama (B6/B8/B9) üretim öncesi.
 49. Sunucu tarafı veritabanı kurulumu ve ayarların oraya taşınması (kullanıcının işi).
 50. `mysql.db` bir kez CRC hatası verdi ve onarıldı; tekrarı halinde `aria_chk --repair` gerekecek.
@@ -107,3 +108,4 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 - G1 — Araclar menusu acilacak; bakim ve toplu islem araclari orada toplanacak.
 - G2 — Cerez canlilik olcumu araci bu menuden tetiklenecek.
 - G3 — Cerez il eslestirmesi (klasor yapisi ya da yukleme aninda il secimi).
+- G4 — Cakisma suresi ayari ve cakisma listesi Araclar menusunde; uyarilar orada kapatilacak.
