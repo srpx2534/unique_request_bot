@@ -6,10 +6,10 @@
  */
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
+import { redisBaglanti } from "./redis_baglanti.js";
 
-const adres = process.env.REDIS_URL ?? "redis://127.0.0.1:6379/0";
 
-export const baglanti = new Redis(adres, { maxRetriesPerRequest: null });
+export const baglanti = new Redis({ ...redisBaglanti(), maxRetriesPerRequest: null });
 baglanti.on("error", (hata) => console.error("[kuyruk]", hata.message));
 
 export type Is = {

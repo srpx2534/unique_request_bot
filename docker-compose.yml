@@ -39,9 +39,9 @@ services:
     platform: linux/amd64
     ports:
       - "127.0.0.1:6379:6379"
-    command: ["redis-server", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -57,7 +57,7 @@ services:
     env_file: .env
     environment:
       MYSQL_HOST: mysql
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       PANEL_ADRES: http://panel:8080
       DUGUM_IP: worker
     depends_on:
@@ -85,7 +85,7 @@ services:
     env_file: .env
     environment:
       MYSQL_HOST: mysql
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       PANEL_HOST: 0.0.0.0
       NODE_ENV: production
       CEREZ_YUKLEME_KOK: /app/cerez_yukleme

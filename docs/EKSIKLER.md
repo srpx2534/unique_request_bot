@@ -58,9 +58,9 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 ## I. Altyapı ve dağıtım
 45. Docker imajları digest ile pinlenmedi (17.2). Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
 46. `read_only`, `cap_drop`, root olmayan kullanıcı doğrulanmadı (17.3).
-47. `mysqldump` yedek ve geri yükleme testi yok (17.6). Yedek/geri yükleme ve metrik ucu (E1-E7) yok. (KISMI: tek örnek kilidi kapandı)
+47. Yedek/geri yükleme araçları yazıldı (`tools/yedek.py`, `tools/geri_yukle.py`, 3 pytest yeşil, C71) ve metrik ucu kapandı (`GET /api/metrik`, C72). Kalan: geri yükleme canlı koşusu root kimliğiyle doğrulanacak (DEFINER=root), metrik ekranı G5 ile Araçlar menüsüne gelecek. (KISMI: tek örnek kilidi, yedek araçları ve metrik ucu kapandı)
 - Kelime bazlı kilit yazıldı: `keyword_geo.kilit_dugum/kilit_at` (042), sahiplenme, süre aşımında devralma, çakışma uyarısı ve bayat temizleme; `kilit_cakismasi` uyarı türü panelde. (DUZELTILDI)
-48. HTTPS/HSTS, Redis `requirepass`, sır saklama (B6/B8/B9) üretim öncesi.
+48. Kod tarafı bitti ve yerel Memurai'de `requirepass` açıldı: parolasız `NOAUTH`, parolayla `PONG`, uyarı kalktı. HSTS, `secure: "auto"` çerez, sır uzunluğu uyarısı yerinde; Redis parolası URL'den ayrı taşınıyor. Kalan: TLS sonlandırma ters proxy yapılandırması (49 ile birlikte, üretim sunucusunda). (KISMI)
 49. Sunucu tarafı veritabanı kurulumu ve ayarların oraya taşınması (kullanıcının işi).
 50. `mysql.db` bir kez CRC hatası verdi ve onarıldı; tekrarı halinde `aria_chk --repair` gerekecek.
 51. XAMPP `my.ini`: `innodb_buffer_pool_size=256M` ve `innodb_lock_wait_timeout=20` henüz uygulanmadı (kullanıcı sonra ele alacak).
@@ -93,3 +93,4 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 - G2 — Cerez canlilik olcumu araci bu menuden tetiklenecek.
 - G3 — Cerez il eslestirmesi (klasor yapisi ya da yukleme aninda il secimi).
 - G4 — Cakisma suresi ayari ve cakisma listesi Araclar menusunde; uyarilar orada kapatilacak.
+- G5 — Yedek alma, yedek listesi, geri yukleme ve metrik ucu (E1-E7) Araclar menusunden tetiklenecek; gelistirme asamasinda yapilacak.

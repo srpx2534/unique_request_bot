@@ -31,3 +31,4 @@ coverage/
 # o dizin buraya ayrica eklenmeli.
 /cerez_yukleme/
 **/cerez_yukleme/
+veri/yedek/

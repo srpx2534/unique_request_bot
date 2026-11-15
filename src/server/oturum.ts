@@ -2,7 +2,7 @@
  * Oturum ara katmanı.
  *
  * Oturum kimliği cookie'de, veri Redis'te tutulur; süreç yeniden başlasa da
- * oturum düşmez. Cookie httpOnly ve SameSite=Lax'tır, üretimde Secure olur.
+ * oturum düşmez. Cookie httpOnly ve SameSite=Lax'tır; Secure HTTPS'te otomatik.
  * Süre 12 saat, hareketsizlikte 8 saat.
  */
 import session from "express-session";
@@ -15,6 +15,8 @@ const BOSLUK_MS = 8 * 60 * 60 * 1000; // 8 saat; hareketsizlik sınırı
 
 const gizli = process.env.SESSION_SECRET;
 if (!gizli) throw new Error(".env içinde SESSION_SECRET boş");
+// Kısa sır zayıf imza demek; üretimi durdurmaz ama görünür olsun.
+if (gizli.length < 32) console.warn("[oturum] SESSION_SECRET 32 karakterden kısa");
 
 export const oturum: RequestHandler = session({
   store: new RedisStore({ client: redis, prefix: "oturum:" }),
@@ -26,7 +28,9 @@ export const oturum: RequestHandler = session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // "auto": HTTPS arkasında Secure, düz HTTP yerelde değil. Sabit true
+    // iken http://127.0.0.1 üzerinden giriş cookie yazamıyordu.
+    secure: "auto",
     maxAge: SURE_MS,
   },
 });

@@ -114,6 +114,7 @@ Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - `POST /api/cikis` → 204
 - `GET  /api/ben` → oturum sahibi
 - `GET  /api/ozet` → sayaçlar
+- `GET  /api/metrik` → işletim sayıları: 1 saat ve 24 saatlik hit dağılımı, oranlar, modalite, sağlayıcı sağlığı, kuyruk, düğüm canlılığı, p95 gecikme, son yedek
 - `GET  /api/site?q=` → `{ satirlar }`, her satırda `kelime_adet`
 - `POST /api/site` `{ domain, label }`
 - `PATCH /api/site/:id` `{ domain?, label?, active? }`
@@ -272,6 +273,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C68 — Kota süpürgesi yalnız SERP 429'una bağlı değildir; proxy bayt kotası da uyarı üretir.
 - C69 — Havuzda kullanılabilir sağlayıcı yoksa (active, gateway dolu, karantinası geçmiş) iş başlamaz; satır beklemede kalır ve `provider_down` uyarısı düşer.
 - C70 — Sağlayıcı varken üst üste 3 hit error/timeout ile biterse sağlayıcı `disabled` olur ve `provider_down` uyarısı yazılır. Burst'ün tamamı başarısızsa (ok=0) kelime `paused` olur, kampanya kapanır ve uyarı düşer. Kapatılan sağlayıcı kendiliğinden açılmaz; kullanıcı panelden `Aç` der. Karantinadan çıkışta `hata_sayac` sıfırlanır.
+- C71 — Yedek dosyası adı UTC damgası taşır, 7 günden eskiler silinir; geri yükleme onay ister ve `.sql` dışındaki dosyalara dokunulmaz. Kanıt: `tools/test_yedek.py`.
+- C72 — `GET /api/metrik` işletim sayılarını tek gövdede verir: iki pencere (1 saat, 24 saat) için hit dağılımı, yüzde oranlar (payda sıfırsa `null`), modalite sayımı, sağlayıcı sağlığı ve sorunlu ilk 5 sağlayıcı, kelime durumları, burst sayımı, son 5 dakikada kalp atan düğüm sayısı, açık uyarı, kuyruk sayımı, son 24 saatin p95 gecikmesi ve son yedek yaşı. Redis ya da yedek klasörü erişilemezse ilgili blok `null` döner, uç 500 vermez. Kanıt: `src/server/panel_metrik.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -292,11 +295,13 @@ Kullanıcıda hazır bileşen yoktur; geo seed, uule üretici, migration seti, d
 ## 17. Altyapı
 - 17.1 — Tüm sunucular Debian 12 x86_64'dir. Windows yalnızca geliştirme makinesidir.
 - 17.2 — Her bileşen Docker imajıdır. İmajlar digest ile pinlenir. `curl-impersonate` sürümü imaj içinde sabittir, host'a kurulmaz.
-- 17.3 — Sertleştirme: root olmayan kullanıcı, read_only rootfs, cap_drop: ALL, restart: always.
+- 17.3 — Sertleştirme: root olmayan kullanıcı (`USER uygulama`, uid 10001), read_only rootfs, cap_drop: ALL, no-new-privileges, restart: always. Redis `--requirepass` ile açılır; parola `REDIS_PASSWORD` ile ayrı verilir, URL'e gömülmez ve günlüğe yazılmaz. Sır değerler kodda sabit tutulmaz, yalnız ortam değişkeninden okunur. Parolasız Redis yalnız yerelde kabul edilir.
 - 17.4 — Bulut bağımsızlığı: kod hiçbir bulut sağlayıcısının API'sine bağlı değildir.
 - 17.5 — Worker'lar public alt ağda çalışır; NAT Gateway maliyeti doğmaz.
 - 17.6 — MySQL günlük `mysqldump` ile yedeklenir, 7 gün saklanır, offsite kopya alınır. Geri yükleme aylık test edilir.
 - 17.7 — Sırlar ortam değişkeninde veya secret store'da tutulur; repoda düz metin yoktur.
+- 17.9 — HSTS her yanıtta gönderilir (helmet); TLS sonlandırma ters proxy'de yapılır. Oturum çerezi `Secure` değerini `auto` ile alır: HTTPS arkasında Secure, düz HTTP yerelde değil.
+- 17.10 — Günlük yedek `tools/yedek.py` ile alınır, `veri/yedek` altında 7 gün tutulur; offsite kopya kullanıcıya aittir. Geri yükleme `tools/geri_yukle.py` ile root kimliğiyle yapılır (dump görünümleri `DEFINER=root` taşır, `request` yetmez), onay ister ve aylık test edilir. Kimlik komut satırında taşınmaz, geçici seçenek dosyası kullanılır.
 - 17.8 — Veritabanı kurulumu kullanıcıya aittir; yerelde XAMPP üzerinden, sunucuda kullanıcının kuracağı sunucu üzerinden çalışır. Yüklenici şemayı ve seed verisini uygular, veritabanı sunucusunu kurmaz.
 ## 18. Geliştirme ortamı — Windows'ta yaz, Linux'ta çalıştır
 Kod Windows'ta yazılır, Linux'ta çalışır. Aşağıdaki maddeler bağlayıcıdır.
@@ -489,4 +494,5 @@ Bu başlıktaki maddeler, uygulama çalışır hale gelip hayata geçtikten sonr
 - G1 — **Araçlar menüsü.** Panelde "Araçlar" sayfası açılır; bakım ve toplu işlem araçları burada toplanır. Her araç tek iş yapar, çalışırken ilerleme gösterir ve durdurulabilir.
 - G2 — **Çerez canlılık ölçümü aracı.** `tools/cerez_olcum.py` bu menüden tetiklenir; seçilen adet, bekleme süresi ve proxy kullanımı panelden verilir, sonuç canlı/engelli/ölçülmemiş sayaçlarına yansır.
 - G3 — **Çerez il eşleştirmesi.** Çerezde il bilgisi güvenilir bir kaynaktan okunur (klasör yapısı ya da yükleme anında il seçimi) ve `cookie_profil.il_kodu` doldurulur. Dosya adına göre atama yapılmaz. Doldurulunca il eşleşen çerez, il eşleşmeyenin önüne geçer (C45 kademe içi sıra).
+- G5 — **Yedek alanı.** Araçlar menüsünde yedek bölümü açılır; yedek listesi, elle yedek alma, indirme ve geri yükleme buradan yapılır. Geri yükleme onay ister ve root kimliğiyle koşar; 7 günden eski yedekler listede soluk görünür.
 - G4 — **Çakışma süresi ve çakışma listesi.** `kilit_suresi_dk` ayarı Araçlar menüsünden verilir; açık `kilit_cakismasi` uyarıları aynı sayfada listelenir ve tek tek ya da toplu kapatılır. Kapatma kilidi bırakmaz, yalnızca uyarıyı düşürür.

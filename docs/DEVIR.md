@@ -27,6 +27,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 - Panel parametrelerini asistan değiştirmez; değeri kullanıcı girer.
 - Kritik sayfa yapısı değişiklikleri önce onaya sunulur.
 - Kod PowerShell copy-paste bloğu olarak verilir. Dosya yazımı `@'...'@` here-string + `[System.IO.File]::WriteAllText` + `New-Object System.Text.UTF8Encoding($false)` ile yapılır; `Set-Content`/`Out-File` Türkçe karakteri bozar.
+- Sır değerler (parola, anahtar) kod içinde sabit tutulmaz; yalnız ortam değişkeninden okunur ve günlüğe yazılmaz. Bağlantı adresi ile parola ayrı taşınır.
 - Yamalar `[regex]::Replace` veya `.Replace` ile, dosya satır sonuna dokunmadan. Her yamadan sonra `DEGISMEDI` kontrolü ve mojibake taraması.
 - Yazma sonrası uzunluk kontrolü yap: bu oturumda `isci_durum.ts` bir kez 0 bayta düştü, `git checkout -- <yol>` ile HEAD'den kurtarıldı.
 - `npm.ps1` execution policy'ye takılıyor, `npm.cmd` kullan.
@@ -53,6 +54,8 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 - Kapılar son hâlde yeşil: 179 worker, 64 UI, lint 0, tip 0, ağaç temiz.
 
 ## Açık altyapı notları
+
+- Yerel Memurai'de `requirepass` 2026-11-16'da açıldı; yapılandırma yedeği `memurai.conf.bak-20261116-000806`. Parola `REDIS_PASSWORD`'de, URL'e gömülmüyor. Yedek dosyası Program Files'ta, repoda değil.
 
 - Hiçbir sağlayıcıda `gateway` yok (hepsi örnek satır); C69 devrede, burst başlamıyor. Gerçek gateway girilmeden hiçbir ağ maddesi kapanmaz.
 - `.env` içinde proxy ya da oran anahtarı yok: proxy kimliği `provider` satırında, oranlar `ayar` tablosunda.
