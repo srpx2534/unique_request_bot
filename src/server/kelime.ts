@@ -10,6 +10,7 @@ import { z } from "zod";
 import { dogrula } from "./dogrula.js";
 import { denetim } from "./denetim.js";
 import { islem, sorgu, tek, yaz } from "./veritabani.js";
+import { kelimeSil } from "./silme.js";
 import {
   SAYFA_UST, SAYFA_VARSAYILAN, eklemeSemasi, geoUret, guncellemeSemasi, kimlik,
 } from "./kelime_ortak.js";
@@ -129,11 +130,15 @@ yonlendirici.delete("/kelime/:id", async (istek, yanit) => {
     yanit.status(400).json({ hata: "geçersiz kelime kimliği" });
     return;
   }
-  const etkilenen = await yaz("DELETE FROM keyword WHERE id = ?", [id]);
-  if (etkilenen === 0) {
+  const varMi = await tek<{ id: number }>("SELECT id FROM keyword WHERE id = ?", [id]);
+  if (!varMi) {
     yanit.status(404).json({ hata: "kelime yok" });
     return;
   }
+  // Kelimeyle birlikte geo satırları, burst'ler, hit'ler ve uyarılar gider (§7.1).
+  await islem(async (baglanti) => {
+    await kelimeSil(baglanti, id);
+  });
   await denetim(istek, "kelime-sil", "keyword", id);
   yanit.status(204).end();
 });

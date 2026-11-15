@@ -155,7 +155,7 @@ export default function Saglayicilar() {
       <Onay
         acik={silinecek !== null}
         baslik="Sağlayıcıyı sil"
-        metin={`${silinecek?.name} havuzdan kaldırılacak. Hit kaydı varsa silinmez, kapatılır.`}
+        metin={`${silinecek?.name} silinecek. Sağlayıcıya bağlı profiller ve il sayaçları da gider; geçmiş hit kayıtları sağlayıcısız kalır.`}
         kapat={() => setSilinecek(null)}
         bekle={sil.isPending}
         onayla={() => {

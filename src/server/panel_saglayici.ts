@@ -3,7 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { dogrula } from "./dogrula.js";
 import { denetim } from "./denetim.js";
-import { ekle, sorgu, tek, yaz } from "./veritabani.js";
+import { ekle, islem, sorgu, tek, yaz } from "./veritabani.js";
+import { saglayiciSil } from "./silme.js";
 
 export const yonlendirici = Router();
 
@@ -129,22 +130,16 @@ yonlendirici.delete("/provider/:id", async (istek, yanit) => {
     yanit.status(400).json({ hata: "geçersiz sağlayıcı kimliği" });
     return;
   }
-  try {
-    const etkilenen = await yaz("DELETE FROM provider WHERE id = ?", [id]);
-    if (etkilenen === 0) {
-      yanit.status(404).json({ hata: "sağlayıcı yok" });
-      return;
-    }
-    await denetim(istek, "saglayici-sil", "provider", id);
-    yanit.status(204).end();
-  } catch (hata) {
-    // Hit kaydı olan sağlayıcı silinemez; kapatılır.
-    if ((hata as { code?: string }).code === "ER_ROW_IS_REFERENCED_2") {
-      await yaz("UPDATE provider SET state = ? WHERE id = ?", ["disabled", id]);
-      await denetim(istek, "saglayici-kapat", "provider", id);
-      yanit.json({ kapatildi: true });
-      return;
-    }
-    throw hata;
+  const varMi = await tek<{ id: number }>("SELECT id FROM provider WHERE id = ?", [id]);
+  if (!varMi) {
+    yanit.status(404).json({ hata: "sağlayıcı yok" });
+    return;
   }
+  // Sağlayıcı bilgisi sık değişiyor: hit olsa da silinir. Geçmiş hit kalır,
+  // yalnız `provider_id` NULL'a çekilir; profile ve il sayaçları silinir (§8).
+  await islem(async (baglanti) => {
+    await saglayiciSil(baglanti, id);
+  });
+  await denetim(istek, "saglayici-sil", "provider", id);
+  yanit.status(204).end();
 });

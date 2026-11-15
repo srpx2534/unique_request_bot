@@ -118,17 +118,17 @@ Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - `GET  /api/site?q=` → `{ satirlar }`, her satırda `kelime_adet`
 - `POST /api/site` `{ domain, label }`
 - `PATCH /api/site/:id` `{ domain?, label?, active? }`
-- `DELETE /api/site/:id` → 204
+- `DELETE /api/site/:id` → 204; kelimeleri, geo satırlarını, kampanyaları, burst'leri, hit'leri ve bağlı uyarıları birlikte siler (C73)
 - `GET  /api/kelime?...&sayfa=&adet=` → `{ satirlar, toplam, sayfa, adet }`, her satırda `son_sira` ve `olcum_adet`
 - `POST /api/kelime` `{ site_id, kelime, kapsam, il?, volume? }`
 - `PATCH /api/kelime/:id`
-- `DELETE /api/kelime/:id` → 204
+- `DELETE /api/kelime/:id` → 204; geo satırlarını, kampanyaları, burst'leri, hit'leri ve bağlı uyarıları birlikte siler (C74)
 - `GET  /api/kelime/:id/ozet` → `{ ilk_sira, son_sira, olcum_adet, son_olcum_at }`; ölçüm yoksa alanlar `—`
 - `POST /api/kelime/:id/geo-yenile` → `{ geo_adet }`
 - `POST /api/kelime/:id/baslat` → `{ id, state }`
 - `POST /api/kelime/:id/durdur` → 204
 - `GET  /api/provider?q=` → sağlayıcı listesi
-- `POST /api/provider` / `PATCH /api/provider/:id` / `DELETE /api/provider/:id`
+- `POST /api/provider` / `PATCH /api/provider/:id` / `DELETE /api/provider/:id` → 204; hit kaydı olsa da siler, geçmiş hit `provider_id = NULL` ile korunur (C75)
 - `GET  /api/geo` → 81 il
 - `GET  /api/uyari?...&sayfa=&adet=` → `{ satirlar, ozet, toplam, sayfa, adet }`
 - `POST /api/uyari/:id/kapat` → 204
@@ -275,6 +275,9 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C69 — Havuzda kullanılabilir sağlayıcı yoksa (active, gateway dolu, karantinası geçmiş) iş başlamaz; satır beklemede kalır ve `provider_down` uyarısı düşer.
 - C70 — Sağlayıcı varken üst üste 3 hit error/timeout ile biterse sağlayıcı `disabled` olur ve `provider_down` uyarısı yazılır. Burst'ün tamamı başarısızsa (ok=0) kelime `paused` olur, kampanya kapanır ve uyarı düşer. Kapatılan sağlayıcı kendiliğinden açılmaz; kullanıcı panelden `Aç` der. Karantinadan çıkışta `hata_sayac` sıfırlanır.
 - C71 — Yedek dosyası adı UTC damgası taşır, 7 günden eskiler silinir; geri yükleme onay ister ve `.sql` dışındaki dosyalara dokunulmaz. Geri yükleme koşulsuz root ile koşar (dump görünümleri `DEFINER=root` taşır, `request` 1227 alır) ve başarıdan sonra görünümleri migration tanımlarından yeniden kurar; görünüm sessizce eksik kalmaz. Kanıt: `tools/test_yedek.py`, canlı deneme.
+- C73 — Site silmek serttir: siteye bağlı kelimeler, `keyword_geo`, `campaign`, `burst`, `hit`, `traffic_daily`, `position`, `cookie_kullanim` ve bağlı `alert` satırları tek işlemde silinir, ardından site gider. `hit` tablosunda FK yoktur, bu yüzden silme sırası açıkça yazılır: en dipten (hit) yukarı. Yarıda kalan silme bırakmaz. Kanıt: `src/server/silme.test.ts`.
+- C74 — Kelime silmek serttir: kelimeye bağlı aynı tablolar tek işlemde silinir, ardından kelime gider. Kanıt: `src/server/silme.test.ts`.
+- C75 — Sağlayıcı, hit kaydı olsa da silinir; "hit varsa yalnız kapat" kuralı kaldırıldı. Geçmiş hit silinmez, `hit.provider_id` NULL'a çekilir; sağlayıcıya FK ile bağlı `profile` ve `provider_geo` satırları silinir. `cookie` ve `cookie_profil` sağlayıcıya değil dosyaya bağlı olduğu için dokunulmaz. Kanıt: `src/server/silme.test.ts`.
 - C72 — `GET /api/metrik` işletim sayılarını tek gövdede verir: iki pencere (1 saat, 24 saat) için hit dağılımı, yüzde oranlar (payda sıfırsa `null`), modalite sayımı, sağlayıcı sağlığı ve sorunlu ilk 5 sağlayıcı, kelime durumları, burst sayımı, son 5 dakikada kalp atan düğüm sayısı, açık uyarı, kuyruk sayımı, son 24 saatin p95 gecikmesi ve son yedek yaşı. Redis ya da yedek klasörü erişilemezse ilgili blok `null` döner, uç 500 vermez. Kanıt: `src/server/panel_metrik.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları

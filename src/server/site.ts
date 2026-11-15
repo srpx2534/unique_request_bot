@@ -3,13 +3,14 @@
  *
  * Site alan adı ve etiketten ibaret; geo dağılımı Türkiye illeriyle
  * sınırlı olduğu için ülke/dil sütunu yok. Silme sert: kelimeler ve
- * geo satırları birlikte gider.
+ * geo satırları, burst'ler, hit'ler ve uyarılar birlikte gider.
  */
 import { Router } from "express";
 import { z } from "zod";
 import { dogrula } from "./dogrula.js";
 import { denetim } from "./denetim.js";
-import { sorgu, tek, yaz } from "./veritabani.js";
+import { islem, sorgu, tek, yaz } from "./veritabani.js";
+import { siteSil } from "./silme.js";
 
 const yonlendirici = Router();
 
@@ -122,11 +123,15 @@ yonlendirici.delete("/site/:id", async (istek, yanit) => {
     yanit.status(400).json({ hata: "geçersiz site kimliği" });
     return;
   }
-  const etkilenen = await yaz("DELETE FROM site WHERE id = ?", [id]);
-  if (etkilenen === 0) {
+  const varMi = await tek<{ id: number }>("SELECT id FROM site WHERE id = ?", [id]);
+  if (!varMi) {
     yanit.status(404).json({ hata: "site yok" });
     return;
   }
+  // Kelimeler, burst'ler, hit'ler ve uyarilar site ile birlikte gider (§7.1).
+  await islem(async (baglanti) => {
+    await siteSil(baglanti, id);
+  });
   await denetim(istek, "site-sil", "site", id);
   yanit.status(204).end();
 });
