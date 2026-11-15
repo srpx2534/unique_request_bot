@@ -361,6 +361,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 ### 23.2 Dosya disiplini
 - Dosya başına tek sorumluluk. Bir dosyada iki farklı iş varsa bölünür.
 - Dosya 250 satırı geçmez. Geçiyorsa sorumluluk ayrıştırılmamış demektir.
+  - Bolme durumu: cerez, serp, burst, kelime, isci, panel bolundu; havuz.py ve saglik_db.py beklemede (EKSIKLER 58).
 - Sınıf başına ayrı dosya açılmaz; ilgili küçük sınıflar tek dosyada toplanır.
 - `index.ts` / `index.py` barrel zinciri kurulmaz; import doğrudan dosyaya gider.
 - Boş klasör bırakılmaz.

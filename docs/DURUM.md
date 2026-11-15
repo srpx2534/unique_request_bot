@@ -1,190 +1,117 @@
-$ErrorActionPreference = 'Stop'
-Set-Location 'C:\Users\developer\Desktop\App\unique_request_bot'
-$utf8 = New-Object System.Text.UTF8Encoding($false)
+# DURUM — 2026-11-15
 
-$rapor = @'
-# DEVIR — 2026-11-14
-
-Bu dosya, işi devralan ajan içindir. Önce tamamını oku, sonra "Açık işler" bölümünün
-en üstünden başla. Her adımda "Doğrulama" bölümündeki kapıları çalıştır.
+Devralan ajan için tek gerçek durum dosyası. Tamamını oku, sonra "Açık işler"in en üstünden başla. Kodun tamamı `docs/DEVIR.md` içinde tek dosyada; sözleşme `docs/CONTRACT.md` v1.7 kilitli; açık maddeler `docs/EKSIKLER.md` (67 madde, 28 kapalı).
 
 ## 1. Amaç ve başarı ölçütü
 
-unique_request_bot: panelden yönetilen Google istek patlatma motoru. Node/TS kontrol
-düzlemi + Python fetch worker + MySQL. Hedef Debian 12.
+unique_request_bot: panelden yönetilen Google istek patlatma motoru. Node/TS kontrol düzlemi + Python fetch worker + MariaDB. Hedef Debian 12.
 
-Başarı ölçütü tek: gerçek Google isteklerinde kabul oranı. Ölçülmeyen iş bitmiş sayılmaz.
-Kural: kullanıcı açıkça onaylamadan yeni backlog maddesine başlama; doğrudan soruları
-kodlamadan önce cevapla.
+Tek başarı ölçütü gerçek Google isteklerinde kabul oranı. Ölçülmeyen iş bitmiş sayılmaz. Kullanıcı açıkça onaylamadan yeni maddeye başlama ve commit atma.
 
-## 2. Kurallar (ihlal edilirse iş çöpe gider)
+## 2. Değişmez kurallar
 
-- **Commit atma.** Commitleri kullanıcı gönderir. Sadece kod bırak.
-- **Her PowerShell bloğu tek yapıştırma birimi olacak.** Dosya referansı verilecekse
-  blok kendi kendine yetsin.
-- **Sunucu tarafından dosya seçtirme yok.** Yüklemeler tarayıcıdan; çok kullanıcılı
-  kurulumda sunucu yolu paylaşılamıyor.
-- Kullanıcı Türkçe yazar, Türkçe cevap ver. Emoji yok.
+- **Tüm proxy trafiği TR IP'lerden.** Her site Türkiye'de konumlu. Yabancı IP + TR çerez çelişki üretir; `gl`/`hl` her zaman `tr`/`tr`.
+- **Commit atma.** Commitleri kullanıcı gönderir; sen sadece kod bırak.
+- **Her PowerShell bloğu tek yapıştırma birimi.** Uzun heredoc'lar kullanıcının kabuğunda kesiliyor; blok kısa ve kendi kendine yetsin.
+- **Sunucu tarafından dosya seçtirme yok.** Yükleme tarayıcıdan; çok kullanıcılı kurulumda sunucu yolu paylaşılamıyor.
+- **Madde başlamadan önce gereken tüm kod toplanır**, kullanıcı tek dosya olarak verir, sonra düzenleme yapılır.
+- Kullanıcı Türkçe yazar, Türkçe cevap ver. Emoji yok. Yorum ve arayüz metni Türkçe, SQL ve tanımlayıcılar ASCII.
 
 ## 3. Ortam
 
 - Proje kökü: `C:\Users\developer\Desktop\App\unique_request_bot`
-- Python: `.venv\Scripts\python.exe` (sistemde python/mysql CLI yok)
-- DB erişimi: `tools/db.py` bir kütüphanedir, CLI değil. Sorgu için:
-  `.venv\Scripts\python.exe -c "import sys; sys.path.insert(0,'tools'); import db; c=db.baglan(); cur=c.cursor(); cur.execute('SELECT ...'); [print(r) for r in cur.fetchall()]"`
-- Migration: `.venv\Scripts\python.exe tools\migrate.py`
-- Şema doğrulama: `.venv\Scripts\python.exe tools\verify.py` (beklenen: 25 tablo, migration 31)
-- Panel: `http://127.0.0.1:8080` — `/saglik` (oturumsuz), `/api/*` (oturum + CSRF)
-- Giriş akışı (API testleri için): `GET /api/token` → `{"token"}`; `POST /api/giris`
-  gövde `{"eposta":"...","sifre":"..."}` başlık `x-csrf-token`; yanıttaki `token` yenilenir.
-  Yanlış alan adı 400, eksik token 403 verir.
-- XAMPP sadece test ortamı. Docker yok. Decodo kotası dolu.
+- Python: `.venv\Scripts\python.exe` (sistemde `python` ve `mysql` CLI yok)
+- `npx` asılı kalıyor; `node_modules\.bin\tsc.cmd`, `esbuild.cmd`, `vitest.cmd` doğrudan çağrılır
+- DB erişimi: `tools/db.py` kütüphanedir, CLI değil. Sorgu için: `.venv\Scripts\python.exe -c "import sys; sys.path.insert(0,'tools'); import db; c=db.baglan(); cur=c.cursor(); cur.execute('SELECT ...'); [print(r) for r in cur.fetchall()]"`
+- Migration: `.venv\Scripts\python.exe tools\migrate.py` · Doğrulama: `tools\verify.py`
+- Panel: `http://127.0.0.1:8080` — `/saglik` oturumsuz, `/api/*` oturum + CSRF
+- Giriş akışı: `GET /api/token` → `{"token"}`; `POST /api/giris` gövde `{"eposta":"...","sifre":"..."}` başlık `x-csrf-token`; yanıttaki `token` yenilenir. Yanlış alan adı 400, eksik token 403.
+- XAMPP sadece test ortamı, MariaDB. `FOR UPDATE SKIP LOCKED` yok. Docker yok. Decodo ve SERP kimlikleri şu an yok; proxy'siz maddeler öncelikli.
+- DB kurulumu kullanıcının işi; `my.ini`'ye dokunulmuyor.
 
-## 4. Mevcut durum (son ölçüm)
+## 4. Mevcut durum (2026-11-15 ölçümü)
 
-- 25 tablo, migration 31, 81-81 geo+uule. `verify.py` temiz.
-- `cookie_dosya`: 57.443 satır — 57.443 aktarıldı, 8.769 mükerrer, 232 geçersiz.
-- `cookie_profil`: 57.443 toplam; 22.704 aktif, 34.739 süresi geçmiş, 39.961 TR,
-  10.090 yabancı, 7.507 il eşleşen. Parmak izi: 50.741 chrome, 5.295 firefox, 1.407 bilinmiyor.
-- Testler: 67 worker, 23 arayüz. `tsc` iki configte sessiz, `npm run build` geçiyor.
-- curl_cffi 0.17.0; `tools/tls_check.py --all` 13 profil / 0 hata / 0 sapma.
-- Son commitler: `9fac375`, `1f57c6f` (parmak izi + havuz).
+- `verify.py`: 25 tablo, 0 eksik, 2 view, geo 81, uule 81, migration 37 — temiz.
+- Testler: **168 pytest, 37 vitest, iki `tsc` configi sessiz.** Yeşil olmayan tek şey yok.
+- `cookie_profil`: 3.523 profil, **hepsinde `il_kodu` NULL** (il ataması bilerek kapalı, D-15).
+- `host_only` ölçümü gerçek 199k çerezle yapıldı: 146.430 noktalı, 52.799 host-only.
+- `cerez_kendi` ayar tablosundan ve ayarlar ekranından çıkarıldı; yönetim ekranında admin izni olarak geri gelecek (D-16, mevcut SQL yeniden kullanılacak).
+- Ölçüm kanalı B (`worker/olcum_b.py`, imzalı `/worker/olcum_b`) kurulu; canlı Google yanıtı gerektiren ölçümler (D-4/D-5/D-6/D-10) proxy gelene kadar beklemede.
+- Değişiklikler çalışma ağacında, commit atılmadı.
 
-## 5. Son turda yapılanlar
+## 5. Bu turda kapatılanlar
 
-Mobil/web ayrımı uçtan uca kuruldu:
-- `db/migrations/031_modalite.sql`: `keyword.mobil`, `cookie_profil.mobil` + `idx_cp_mobil`,
-  `cerez_yukleme.modalite`.
-- `src/server/cerez.ts`: yükleme `modalite` alıyor, içe aktarımda `cookie_profil.mobil`'e
-  taşınıyor; özet sayacında `mobil`/`web`.
-- `src/server/kelime.ts`: `mobil` ekleme ve PATCH şemalarında, INSERT/UPDATE'te, liste ve
-  yanıt seçimlerinde.
-- `worker/havuz.py`: `cerez_sec(..., mobil)` mobil çerezleri öne alır; `sec_mod(...,
-  zorunlu_tur)` önce `mobile` sağlayıcıyı dener, yoksa normal sıraya düşer; `kelime_mobil()`.
-- `worker/burst.py`: `mobil_hedef` sağlayıcı ve çerez seçimine geçer, mobil kelimede android
-  profil zorlanır.
-- `src/web/sayfa/cerezler.tsx`: Web/Mobil seçimi + sayaç.
-- `src/web/sayfa/kelimeler.tsx`: Mod sütunu, satır anahtarı, düzenleme modalında Mod alanı.
+- Bölüm D: `bicimBul`/`jsonParcalari` çıplak JSON dizisini kabul ediyor; uzantı dışında dosya adı kuralı yok; il ataması kaldırıldı ve yanlış değerler NULL'landı (2.931 satır).
+- Bölüm D-2/D-3: çerez havuzu sıralı ve tek kullanımlık, `_secim_sorgusu` ile ülke eşleşmesi.
+- D-8/D-9: `host_only` uçtan uca; modalite içerik/yol kaynaklı, yükleme bayrağı yedek.
+- D-7 `.gitignore`, D-11/D-13 ölçüm ve elle doğrulama.
+- 31/32: `bytes_ay`, `bayt_ekle` (%90 kota uyarısı), aday sorgusunda kota süzgeci, hit'te bayt yazımı.
+- 23/29/30: oranlar `.env` anahtarlarından, eşikler panelden (`esik_captcha`, `esik_geo`, `asgari_ornek`).
+- 15/18/20/28: burst toplu yazım, durdurma davranışı, A3 otomatik durdurma (`hedefYokDenetle`).
+- 35/37: ölçüm kanalı B, kalıcı jar, imzalı uç, `aralikDk` 15 dakika tavanı.
+- 44: `bolum.ts` bölümleme + migration 035 (D-65: 10M satırda canlı doğrulama beklemede).
+- 41/42/39: lint kuralları genişletildi, 5 bayat CRLF dosyası LF'e çevrildi, lint pytest'e bağlandı.
+- 52–55: uyarı saklama doğrulandı, `test_uyari.py` dokuz uyarı türünü tarıyor.
+- 56/59: `cerez.ts`, `serp.py`, `burst.py`, `kelime.ts`, `isci.ts`, `panel.ts` bölündü; `worker/test_boyut.py` 250 satır sınırını izliyor. `panel.ts` 130, `panel_saglayici.ts` 129 satır.
 
 ## 6. Açık işler (öncelik sırası)
 
-1. **Sözleşme v1.6.** `docs/CONTRACT.md` v1.5 kilitli; şu alanlar ve kural yazılmalı:
-   `keyword.mobil`, `cookie_profil.mobil`, `cerez_yukleme.modalite`, mobil öncelik kuralı
-   (mobil kelimede önce mobil çerez + mobile sağlayıcı, yoksa normal). C5 metni hâlâ
-   `edge101`/`safari17_0` sabit diyor; güncel havuzla değiştir.
-2. **Mobil modu gerçek istekle dene.** `mobile` sağlayıcı yokken residential'a düşüş ve
-   mobil SERP ayrıştırması. Decodo kotası dolu; kota yenilenince ilk iş bu.
-3. **Çerez canlılığını ölç.** 22.704 "aktif" canlı demek değil. Örneklem al, gerçek kabul
-   oranını çıkar. Ölçmeden başarı varsayma.
-4. **`oran_mobil` şu an 0.** Android profil ancak sağlayıcı `mobile` ise çıkar; oran
-   açılmadan mobil yol hiç çalışmaz. Panelden açılmalı.
-5. A3 — kelime üst üste N kez `hedef_yok` dönerse otomatik durdur.
-6. A5 — `sahiplen === 0` dalı `keyword_geo` satırını `running` bırakabiliyor.
-7. A10 — ölçümü tur sonuna al, kelime başına sayfa sayısını kıs.
-8. A11 — partition oluşturma/silme ve saklama işlerini zamanla (hit 30g, alert 90g, audit 1y).
-9. A12 — `sahte_veri.py` ve tools betiklerini yeni UTC oturumu altında gözden geçir.
-10. A13 — `hedefDenetle` gerçek hit yerine `target_count` topluyor.
-11. C1/C2 — `burst.stats` JSON, `dugum_olay.dugum_id` tipini `dugum.id` ile doğrula.
-12. C3-C7 — kalan sözleşme güncellemeleri (dugum şeması, hits gövdesi, result alanı,
-    burst imzası, nullable provider_id, iki durumlu keyword_geo, gunluk_tavan kaldırma).
-13. D1-D3, D6 — `isci.ts`, uyarı filtresi, `hedef_yok` eşiği, `app.py` imza tarafı testleri.
-14. D4/D5 — CI'ı yeniden çalıştır, `verify.py`/`lint_yol.py` kapsamını kontrol et.
-15. B6/B8/B9/B12 — HTTPS/HSTS, sır saklama, Redis requirepass, eşik sınır doğrulaması.
-16. E1-E7 — yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma,
-    metrik ucu, tek örnek kilidi.
-17. F1/F4/F5 — Decodo TR kimlik/çıkış IP doğrulama, click/pogo uçtan uca, 100'lük hit bölme.
-18. G1-G5 — önbellek notu, `olcum_araligi` üst sınırı, NOW/UTC taraması, `verify.py`
-    taban kayması, `pytest.ini` temizliği.
-19. Geçici `docs/*.py` ve `docs/yedek` temizliği.
-20. `cookie_kullanim` yetim satır temizliği; `temizle` sırasında çalışan yüklemenin iptali
-    ve geçici klasör silme.
-21. 232 geçersiz dosya yeniden yüklenmeli (ayrıştırıcı düzeltildi, geçici kopyalar silindi).
+Tam liste `docs/EKSIKLER.md`; orada 39 madde açık. Sıra:
+
+1. **Commit.** Sözleşme v1.7, EKSIKLER, DURUM ve kod değişiklikleri çalışma ağacında; commit'i kullanıcı atar. Onay gelmeden commit denemesi yapma.
+2. **`cerez_kendi` admin izni (D-16).** Kullanıcı yönetiminde izin olarak geri gelecek; mevcut SQL yeniden kullanılacak. Ayar tablosuna ve ayarlar ekranına geri konmaz.
+3. **D-15 il ataması.** Şu an `il_kodu` tümüyle NULL. Doğrusu UULE koordinatından il çıkarmak ve il sınır poligonuyla eşlemek; dosya adına güvenilmiyor.
+4. **D-65 bölümleme canlı testi.** 10 milyon hit satırı varken `hit` bölümlerinin oluşması/düşmesi ve sorgu planının bozulmaması doğrulanacak.
+5. **58** `havuz.py` (542 satır) dörde bölünecek: oran, sağlayıcı seçimi, çerez seçimi, kuyruk. `saglik_db.py` de sınırı aşıyorsa bölünür.
+6. **60–62** liste yanıt zarfı sözleşmede tekilleştirilecek; kalan belgeler gözden geçirilecek; README, `.env.example`, compose ve `.gitattributes` devir paketi.
+7. **Proxy gelince (Decodo):** D-4/D-5/D-6/D-10 (SOCS/CONSENT, SID ölçümü, tazelik, canlılık), F1/F4/F5 (TR çıkış IP doğrulama, click/pogo, 100'lük hit bölme), mobil modun gerçek istekle denenmesi. Bunlar ölçüm olmadan kapatılmaz.
+8. **B6/B8/B9/B12** HTTPS/HSTS, sır saklama, Redis `requirepass`, eşik sınır doğrulaması.
+9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi.
+10. `cookie_kullanim` yetim satırları; `temizle` sırasında çalışan yüklemenin iptali ve geçici klasörün silinmesi.
+11. Geçersiz sayılan çerez dosyalarının yeniden yüklenmesi (ayrıştırıcı düzeltildi).
+12. `docs/*.py` ve `docs/yedek` temizliği.
 
 ## 7. Bilinen tuzaklar
 
-- **Satır sonu:** bazı dosyalar CRLF. Çok satırlı çapa CRLF dosyada tutmaz. Her düzenlemede
-  içeriği `-replace "`r`n", "`n"` ile normalize et.
-- **Kodlama:** `Get-Content -Raw` ANSI okur, Türkçe karakterli çapa tutmaz ve dosyayı
-  bozar. Daima `[System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)` ve
-  `WriteAllText(..., New-Object System.Text.UTF8Encoding($false))` kullan.
-- **BOM:** SQL dosyasına BOM yazılırsa MariaDB 1064 verir. UTF8Encoding($false) şart.
-- **`Resolve-Path`** var olmayan dosyada patlar; yeni dosya yazarken `"$PWD\..."` kullan.
-- **`Set-Content -Encoding utf8`** BOM ekler ve ANSI okuma ile çift kodlama yapar.
-- **JSX:** tablo hücrelerini regex ile değiştirirken iç içe `<td>` bırakmak kolay. Sonrasında
-  `([regex]::Matches($k,'<td')).Count` ile `</td>` sayısını karşılaştır ve `npm run build` koş.
-- **`havuz.cerez_sec`** artık demet döndürür `(profil_id, parmak_izzi)`; `sec_mod` 4'lü demet.
-  Tek eleman bekleyen çağrıları bozarsın.
-- Node süreçlerini öldürüp yeniden başlatmak gerekir; sağlık için 15 sn bekle.
+- **Satır sonu:** bazı dosyalar CRLF. Çok satırlı çapa CRLF'de tutmaz; her düzenlemeden önce içeriği `[regex]::Replace($t, '\r\n', [string][char]10)` ile normalize et.
+- **Kodlama:** `Get-Content -Raw` ANSI okur, Türkçe çapayı kaçırır ve dosyayı bozar. Daima `[System.IO.File]::ReadAllText` / `WriteAllText(..., New-Object System.Text.UTF8Encoding($false))`.
+- **BOM:** SQL dosyasına BOM yazılırsa MariaDB 1064 verir.
+- **`Set-Content -Encoding utf8`** BOM ekler; `Resolve-Path` var olmayan dosyada patlar.
+- **Kabuk:** uzun heredoc kesiliyor. Blokları kısa tut; araya sohbet satırı yapışırsa blok baştan çalışmaz. `-replace` operatörü argümansız bırakılırsa hata verir. `New-Object List` yerine `New-Object 'System.Collections.Generic.List[string]'` kullan.
+- **Türkçe çapa** yerine satır indeksiyle değiştir; çapa bulunamazsa indeks her zaman tutar.
+- **Yer tutucu:** Node tarafı `?`, Python/pymysql tarafı `%s`. `profil_guncelle` bir kez `?` yüzünden sessizce jar yazmadı.
+- **`cerez_sec`** demet döndürür `(profil_id, parmak_izzi)`, `sec_mod` 4'lü demet. Tek eleman bekleyen çağrı bozulur.
+- **`il_kodu` NULL'ı bilerek anlamlı:** havuz süzgeci `il_kodu = ? OR il_kodu IS NULL`. NULL'ları doldurmak il süzgecini bozar.
+- **`cerez.ts` artık klasör** (`src/server/cerez/`); `worker/test_boyut.py` iki dosyayı birleştirerek okuyor, tek dosya sanıp yol verme.
+- **`test_boyut.py` IZINLI listesi:** 250 satırı geçen her dosya oraya yazılır, bölününce çıkarılır.
+- MariaDB'de `FOR UPDATE SKIP LOCKED` yok; bölümleme `ALTER` ile tek tek yapılır.
+- Node süreçlerini yeniden başlatmak gerekir; sağlık için 15 sn bekle. `npx` asılı kalır.
 
 ## 8. Kararlar ve gerekçeleri
 
-- **`gl`/`hl` = `tr`/`tr` sabit.** Hedef TR sıralaması; yabancı IP'den `gl=tr` ile Türkçe
-  sonuç almak istenen davranış. `gl`'yi IP ülkesine bağlamak TR sıralamasını bozar.
-- **Safari/Firefox/Edge çerezli yolda yok.** Çerez varsa yalnız Chrome (veya aile firefox ise
-  Firefox) profili; geniş havuz yalnız çerezsiz. Safari işareti güvenilir olmadığı için
-  hiçbir profil safari atanmıyor.
-- **`bilinmiyor` aile Chrome'a düşer.** Güvenli varsayılan.
-- **Süresi geçmiş çerezler kullanılır** (`cerez_suresiz_kullan`), aktifler bitmeden devreye
-  girmez.
-- **Çerez site+kelime çiftinde bir kez kullanılır**, farklı sitede tekrar kullanılabilir.
-- **Öncelik:** aktif+il → aktif TR → diğer aktifler → süresi geçmiş aynı iç sırayla.
+- **`gl`/`hl` = `tr`/`tr` sabit.** Hedef TR sıralaması; `gl`'yi IP ülkesine bağlamak sıralamayı bozar. Proxy yalnız TR.
+- **İl ataması kapalı.** Dosya adları rastgele hash; `ilBul` herhangi bir 1-81 sayısını yakalayıp 3000+ profili yanlış ile yazdı, bu yüzden değerler NULL'landı.
+- **Dosya adı serbest**, yalnız `.txt`/`.json` uzantısı denetlenir.
+- **Modalite içerikten/yoldan** çıkar, yükleme bayrağı yalnız yedek.
+- **`cerez_kendi` parametre değil**, admin izni.
+- **Süresi geçmiş çerezler kullanılır** (`cerez_suresiz_kullan`), aktifler bitmeden devreye girmez. Çerez site+kelime çiftinde bir kez kullanılır.
+- **Öncelik:** aktif+il → aktif TR → diğer aktifler → süresi geçmiş, aynı iç sırayla.
+- **Oranlar `.env` anahtarından** (`PROXY_*_ORAN`), eşikler panelden (`esik_captcha`, `esik_geo`, `asgari_ornek`); eşik panelden, oran tek uçtan yönetilir.
+- **Ölçüm kanalı B ayrı** (`worker/olcum_b.py`): ölçüm trafiği burst IP'sini kirletmez.
+- **Kota muhasebesi bayt üzerinden** (`bytes_ay`, `bayt_ekle`, %90 uyarısı).
+- **Saklama `hit` için `DROP PARTITION`** ile yapılır; DELETE yükü metadata'ya döner.
+- **`bilinmiyor` aile Chrome'a düşer**; Safari hiç atanmaz.
+- **Yükleme tarayıcıdan**, sunucu yolu seçtirilmez.
 
 ## 9. Doğrulama
 
-.venv\Scripts\python.exe -m pytest worker -q
-npx vitest run
-npx tsc -p tsconfig.server.json --noEmit
-npx tsc --noEmit
-npm run build
+```
+.venv\Scripts\python.exe -m pytest -q
+node_modules\.bin\vitest.cmd run
+node_modules\.bin\tsc.cmd --noEmit
+node_modules\.bin\esbuild.cmd src/server/uygulama.ts --bundle --platform=node --outfile=NUL
 .venv\Scripts\python.exe tools\verify.py
-.venv\Scripts\python.exe tools\tls_check.py --all
+.venv\Scripts\python.exe tools\lint_yol.py
+```
 
-Beklenen: 67+ worker testi, 23 arayüz testi, iki tsc sessiz, build yeşil, verify 25 tablo /
-migration 31, tls 0 hata 0 sapma.
-'@ -replace "`r`n", "`n"
-
-[System.IO.File]::WriteAllText("$PWD\docs\DEVIR.md", $rapor, $utf8)
-'--- yazildi ---'
-(Get-Item 'docs\DEVIR.md').Length
-
-## Düzeltme turu — 2026-11-14
-
-Kod okuması sonucu çıkan 53 maddelik kaydın kritik ve yüksek grubu kapatıldı.
-
-### Sistem davranışı
-
-- `isci.ts` sahiplenmesi `last_burst_at` damgasına bağlandı; `affectedRows` artık gerçek sahiplenmeyi gösteriyor. Sistem burst'leri silmiyor, satır `running` kilitlenmiyor.
-- Burst kimliği `insertId`'den alınıyor; eşzamanlı burst'te yanlış satıra bağlanma kapandı.
-- Hacim hedefi gerçek `hit` satırlarından (`result='ok'`) sayılıyor; `target_count` planı artık hedefi şişirmiyor.
-- `burst.py` mobil penceresi hit sayısına çevrildi; mobil yol artık ilk hit'te kapanmıyor.
-- `not_found` izleniminde tıklama yapılmıyor, pogo sonucu hit sonucuna yansıyor.
-
-### Veritabanı ve CI
-
-- `028` üç ayrı `ALTER`'a bölündü, sonuna LF eklendi.
-- `029` içindeki FK adı `fk_ck_kullanim_profil` yapıldı; `026` ile ad çakışması giderildi. `veritabani` CI işi bu yüzden yeşile döndü.
-- `032_saglik_pencere.sql` eklendi: devre kesici sayaçları saatlik pencereli.
-- `kurulum_dene.py` zorunlu tablo listesini `verify.py`'den alıyor; `verify` eşiği 32 migration.
-- Sıfırdan kurulum denemesi tam zincirle geçti (32 migration, 24 tablo, geo/uule 81).
-
-### Çerez alt sistemi
-
-- `host_only` yazma, okuma ve yükleme zincirinde taşınıyor.
-- C46 ülke filtresi `cerez_sec` sorgusuna eklendi.
-- Docker'da `CEREZ_YUKLEME_KOK` için volume açıldı; `read_only` kökfs altında yazma çalışıyor.
-- `guvenliYol` il kodunu koruyor; `delete /cerez` yükleme defterini ve geçici klasörleri de siliyor.
-- Ölü uçlar (`/cerez/tara`, `/cerez/aktar`, `/cerez/ilerleme`, `/cerez/gozat`, `klasorSec`) kaldırıldı.
-
-### Panel ve worker
-
-- `provider` kimliği DB'den üretiliyor; karantina ağırlığı yedeğe yazılıyor.
-- PATCH uçlarında 404 kararı varlık kontrolüne bağlandı; aynı değerle güncelleme artık 404 vermiyor.
-- `baslat` önceki kampanyayı kapatıyor, `durdur` 204 dönüyor; kelime metni değişince geo satırları yenileniyor.
-- `/ayar` `oran_*` anahtarlarını atlıyor; oranlar tek uçtan yönetiliyor.
-- `app.py` `/durum` token istiyor; `ayar_db` önbelleği C43 sırasına uyuyor; `durum.py` çift anahtar kullanıyor; `son_mod` globali kırılganlıktan çıkarıldı.
-- SPA derin bağlantısı `index.html`'e düşüyor; saklama sorgusu MariaDB uyumlu.
-- `serp.py` ve `olcum.ts` anahtar sırasını (decodo → serper → searchapi) ve sağlayıcı uçlarını kullanıyor.
-
-### Doğrulama
-
-69 worker testi, 23 arayüz testi, iki `tsc` configi ve `verify.py` temiz. Commit atılmadı; değişiklikler çalışma ağacında.
+Beklenen: 168 pytest, 37 vitest, `tsc` sessiz, `verify` 25 tablo / 0 eksik / migration 37, lint temiz. Bu sayılar düşerse iş bitmemiştir. Proxy'siz hiçbir ölçüm maddesi kapatılmaz.

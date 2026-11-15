@@ -10,7 +10,7 @@ vi.mock("./dugum_sec.js", () => ({ dugumSec: vi.fn() }));
 
 const { hedefYokDenetle } = await import("./isci.js");
 
-function say(desen) {
+function say(desen: string): number {
   return yaz.mock.calls.filter(([sql]) => String(sql).includes(desen)).length;
 }
 

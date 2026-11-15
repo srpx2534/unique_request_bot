@@ -22,7 +22,13 @@ from urllib.parse import unquote, urlparse
 
 from curl_cffi import requests
 
-from worker import ayar, fingerprint, saglik_db
+from worker import ayar, saglik_db
+from worker.serp_html import (
+    captcha_mi as _captcha_mi,
+    serp_getir_html,
+    sonuclari_ayikla as _sonuclari_ayikla,
+)
+from worker.serp_ortak import bos_sonuc as _bos_sonuc, kok as _kok
 
 # Saglayici uclari (§8): Decodo birincil, Serper ve SearchApi yedek.
 API_URL = "https://data.decodo.com/v1/search"
@@ -53,65 +59,6 @@ BASLIKLAR = {
 ELENEN = ("google.", "gstatic.", "googleusercontent.", "policies.google")
 DESEN_YONLENDIRME = re.compile(r"/url\?q=([^&\"']+)")
 DESEN_DUZ = re.compile(r"<a[^>]+href=\"(https?://[^\"]+)\"")
-
-
-def _kok(adres: str) -> str:
-    """Adresten kök alan adını çıkarır.
-
-    Args:
-        adres: Tam URL veya alan adı.
-
-    Returns:
-        www. öneki atılmış kök; çözülemezse boş metin.
-    """
-    ham = adres.strip().lower()
-    if "://" in ham:
-        ham = urlparse(ham).netloc
-    ham = ham.split("/")[0]
-    if ham.startswith("www."):
-        ham = ham[4:]
-    etiketler = [e for e in ham.split(".") if e]
-    return ".".join(etiketler[-2:]) if len(etiketler) >= 2 else ham
-
-
-def _sonuclari_ayikla(html: str) -> list[str]:
-    """HTML'den benzersiz kök alan adlarını sırayla çıkarır."""
-    adresler = [unquote(m) for m in DESEN_YONLENDIRME.findall(html)]
-    adresler += DESEN_DUZ.findall(html)
-    gorulen: set[str] = set()
-    sira: list[str] = []
-    for adres in adresler:
-        if any(e in adres for e in ELENEN):
-            continue
-        kok = _kok(adres)
-        if kok and kok not in gorulen:
-            gorulen.add(kok)
-            sira.append(kok)
-    return sira
-
-
-def _captcha_mi(son_url: str, html: str) -> bool:
-    """Yanıtın CAPTCHA duvarı olup olmadığını söyler."""
-    if "/sorry/" in son_url:
-        return True
-    kucuk = html[:4000].lower()
-    return "recaptcha" in kucuk or "unusual traffic" in kucuk
-
-
-def _bos_sonuc() -> dict:
-    """Ortak sonuç iskeletini üretir."""
-    return {
-        "result": "error",
-        "position": None,
-        "url": None,
-        "http_status": None,
-        "elapsed_ms": 0,
-        "bytes": 0,
-        "profil": None,
-        "kaynak": None,
-        "organik": [],
-        "mesaj": "",
-    }
 
 
 def _govde_kur(saglayici: str, sorgu: str, sayfa: int, dil: str, ulke: str,
@@ -293,77 +240,3 @@ def serp_getir(
     return sonuc
 
 
-def serp_getir_html(
-    sorgu: str,
-    hedef_domain: str | None = None,
-    uule: str | None = None,
-    proxy: str | None = None,
-    onceki_profil: str | None = None,
-    oturum: requests.Session | None = None,
-) -> dict:
-    """Yedek yol: Google'a doğrudan HTML isteği (izlenim).
-
-    Bugün kabuk döndüğü için genelde not_found verir, ama istek Google'a
-    gerçek IP'den gider ve izlenim sayılır. Oturum verilirse cookie'ler
-    çağıran tarafta korunur ve tıklamaya taşınır.
-
-    Args:
-        sorgu: Aranacak kelime.
-        hedef_domain: Sıralaması aranacak alan adı.
-        uule: Konum parametresi.
-        proxy: http://kullanici:sifre@host:port biçiminde proxy.
-        onceki_profil: Kullanılacak profil.
-        oturum: Açık oturum. None ise yenisi açılır ve kapatılır.
-
-    Returns:
-        Sonuç sözlüğü. result: ok, captcha, not_found, timeout, error.
-    """
-    sonuc = _bos_sonuc()
-    sonuc["kaynak"] = "html"
-    profil = onceki_profil or fingerprint.profil_sec()
-    sonuc["profil"] = profil
-
-    parametreler = {"q": sorgu, "num": "100", "hl": "tr", "gl": "tr"}
-    if uule:
-        parametreler["uule"] = uule
-
-    kendi = oturum is None
-    oturum = oturum or requests.Session(impersonate=profil)
-
-    basladi = time.perf_counter()
-    try:
-        yanit = oturum.get(
-            ARAMA_URL, params=parametreler, headers=BASLIKLAR,
-            cookies=CEREZLER, timeout=ZAMAN_ASIMI,
-            proxies={"https": proxy, "http": proxy} if proxy else None,
-        )
-    except Exception as hata:  # noqa: BLE001
-        sonuc["elapsed_ms"] = int((time.perf_counter() - basladi) * 1000)
-        sonuc["result"] = "timeout" if "timed out" in str(hata).lower() else "error"
-        sonuc["mesaj"] = str(hata)[:200]
-        return sonuc
-    finally:
-        if kendi:
-            oturum.close()
-
-    html = yanit.content.decode("utf-8", "replace")
-    sonuc["elapsed_ms"] = int((time.perf_counter() - basladi) * 1000)
-    sonuc["http_status"] = yanit.status_code
-    sonuc["bytes"] = len(yanit.content)
-    sonuc["url"] = str(yanit.url)
-
-    if yanit.status_code != 200:
-        sonuc["result"] = "error"
-        return sonuc
-    if _captcha_mi(sonuc["url"], html):
-        sonuc["result"] = "captcha"
-        return sonuc
-
-    hostlar = _sonuclari_ayikla(html)
-    if not hostlar:
-        sonuc["result"] = "not_found"
-        return sonuc
-    sonuc["result"] = "ok"
-    if hedef_domain and _kok(hedef_domain) in hostlar:
-        sonuc["position"] = hostlar.index(_kok(hedef_domain)) + 1
-    return sonuc

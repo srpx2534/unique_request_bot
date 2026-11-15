@@ -83,7 +83,10 @@ def test_il_kodu_dosya_adindan(ad: str, beklenen: int | None) -> None:
 
 
 def test_ts_ayristirici_diziyi_kabul_eder_il_zorunlu_degil() -> None:
-    kaynak = (_DEPO / "src" / "server" / "cerez.ts").read_text(encoding="utf-8")
+    kok = _DEPO / "src" / "server" / "cerez"
+    kaynak = "".join(
+        (kok / ad).read_text(encoding="utf-8") for ad in ("ayristir.ts", "aktarim.ts")
+    )
     assert 'bas === "{" || bas === "["' in kaynak
     assert 'karakter === "{" || karakter === "["' in kaynak
     assert 'karakter === "}" || karakter === "]"' in kaynak

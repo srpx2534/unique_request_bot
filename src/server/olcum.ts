@@ -12,7 +12,9 @@
  * Kullanım: src/server/zamanlayici.ts.
  */
 import { sorgu, yaz } from "./veritabani.js";
+import { createHmac } from "node:crypto";
 import { ayarOku, serpSecim } from "./ayar.js";
+import { dugumSec } from "./dugum_sec.js";
 
 // Sağlayıcı uçları (§8): Decodo birincil, Serper ve SearchApi yedek.
 const UCLAR: Record<string, string> = {
@@ -40,7 +42,7 @@ function kok(adres: string): string {
 }
 
 /** Ölçüm aralığı: ayar 0 ise varsayılan, değilse üst sınırı aşmaz. */
-async function aralikDk(): Promise<number> {
+export async function aralikDk(): Promise<number> {
   const ham = Number(await ayarOku("olcum_araligi_dk", "0")) || 0;
   return ham <= 0 ? VARSAYILAN_ARALIK_DK : Math.min(ham, VARSAYILAN_ARALIK_DK);
 }
@@ -117,6 +119,31 @@ async function siraBul(
  *
  * @returns Yazılan ölçüm sayısı.
  */
+/** B kanalinda tek olcum: kalici jar'li profil, gercek tarayici gibi (C20). */
+async function olcumBTry(aday: { id: number; text: string; domain: string }): Promise<void> {
+  const adres = await dugumSec();
+  if (!adres) return;
+  const token = process.env.WORKER_TOKEN ?? "";
+  if (!token) return;
+  const govde = JSON.stringify({
+    keyword: aday.text,
+    target_domain: aday.domain,
+    keyword_id: aday.id,
+    ts: Math.floor(Date.now() / 1000),
+  });
+  const imza = createHmac("sha256", token).update(govde).digest("hex");
+  const yanit = await fetch(`${adres}/worker/olcum_b`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-imza": imza,
+    },
+    body: govde,
+    signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
+  });
+  await yanit.json().catch(() => null);
+}
 export async function olcumYap(): Promise<number> {
   // Saglayici ve anahtar birlikte secilir; birincil bos ise yedek devreye girer.
   const { saglayici, anahtar } = await serpSecim();
@@ -144,6 +171,14 @@ export async function olcumYap(): Promise<number> {
     } catch (hata) {
       await uyari("burst_hata", `ölçüm ${aday.id}: ${(hata as Error).message}`);
     }
+  }
+
+  // B kanali turda bir kez kosar: kucuk havuz, kalici jar (C20).
+  const bAday = liste[0];
+  if (bAday && yazilan > 0 && Date.now() - basladi < TUR_BUTCE_MS) {
+    await olcumBTry(bAday).catch((hata: Error) =>
+      console.error("[olcum-b]", hata.message),
+    );
   }
   return yazilan;
 }

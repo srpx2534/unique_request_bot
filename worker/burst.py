@@ -26,7 +26,8 @@ from urllib.parse import quote
 
 from curl_cffi import requests
 
-from worker import click, cookie, fingerprint, havuz, saglik_db, serp
+from worker import cookie, fingerprint, havuz, saglik_db, serp
+from worker.burst_hit import sayaclar, tek_hit
 
 AZAMI_HIT = 60  # sözleşme §9: basamak boyu en fazla 60
 HIT_ARASI_MIN = 0.4  # saniye; art arda istekte insan ritmi
@@ -35,72 +36,6 @@ MOBIL_PENCERE_SN = 8  # saniye; mobil IP yalnızca bu pencerede kullanılır (§
 BASARI_ESIGI = 0.95  # C10; altında kalırsa burst_hata uyarısı düşer
 DENEME = 2  # sağlayıcı düşerse toplam kaç kez denenir
 
-
-def _sayaclar() -> dict:
-    """Sonuç sayacı iskeletini üretir."""
-    return {"ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
-
-
-def _tek_hit(
-    sorgu: str,
-    hedef_url: str,
-    serp_url: str,
-    proxy_adres: str | None,
-    profil: str,
-    uule: str | None,
-    cerezler: list[dict] | None = None,
-) -> dict:
-    """Bir hit'i uctan uca dener.
-
-    Kayit, sonucu belirleyen adimin HTTP kodu ve bayt sayisiyla doner.
-    Ayrica dwell dusulmus ag suresi tasinir: dwell bir uyku oldugu icin
-    latency'ye katilmaz, kolon saglayici ve ag kalitesini gostermeli.
-
-    Returns:
-        sira, saglayici_id ve geo_mode disindaki alanlari tasiyan sozluk.
-    """
-    kayit = {"profil": profil, "izlenim": None, "tik": None, "pogo": None,
-             "result": "error", "http_status": None, "bytes": None,
-             "latency_ms": 0}
-
-    with requests.Session(impersonate=profil) as oturum:
-        # Cerez varsa oturuma yuklenir; yoksa hit cerezsiz gider.
-        if cerezler:
-            cookie.oturuma_yukle(oturum, cerezler)
-        izlenim = serp.serp_getir_html(sorgu, uule=uule, proxy=proxy_adres,
-                                       onceki_profil=profil, oturum=oturum)
-        kayit["izlenim"] = izlenim["result"]
-        # Duvara carptiysa ya da SERP bos donduyse tiklama denenmez: bos
-        # sayfaya tiklamak hit'i "ok" gosterip C9 olcumunu anlamsizlasiyordu.
-        if izlenim["result"] in ("captcha", "not_found"):
-            kayit["result"] = izlenim["result"]
-            kayit["http_status"] = izlenim["http_status"]
-            kayit["bytes"] = izlenim["bytes"]
-            kayit["latency_ms"] = izlenim["elapsed_ms"]
-            return kayit
-
-        tik = click.tikla(hedef_url, referer=serp_url, proxy=proxy_adres,
-                          onceki_profil=profil, oturum=oturum)
-        kayit["tik"] = tik["result"]
-        # Tiklama suresi dwell'i de olcer; dwell dusulerek ag suresi bulunur.
-        ag_ms = izlenim["elapsed_ms"] + tik["elapsed_ms"] - tik["dwell_ms"]
-        if tik["result"] != "ok":
-            kayit["result"] = tik["result"]
-            kayit["http_status"] = tik["http_status"]
-            kayit["bytes"] = tik["bytes"]
-            kayit["latency_ms"] = max(0, ag_ms)
-            return kayit
-
-        pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
-                         onceki_profil=profil, oturum=oturum)
-        kayit["pogo"] = pog["result"]
-        kayit["http_status"] = tik["http_status"]
-        kayit["bytes"] = tik["bytes"]
-        kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
-
-    # Pogo basarisizsa hit "ok" sayilmaz: SERP'e donus de kabulun parcasidir.
-    kayit["result"] = "ok" if pog is not None and pog["result"] == "ok" else "error"
-    return kayit
 
 def burst_yap(
     sorgu: str,
@@ -134,7 +69,7 @@ def burst_yap(
     basladi = time.perf_counter()
 
     sonuc = {"result": "ok", "hedef_url": None, "elapsed_ms": 0,
-             "durduruldu": False, "hits": [], **_sayaclar()}
+             "durduruldu": False, "hits": [], **sayaclar()}
 
     if hedef_url:
         # Adres dışarıdan geldiyse API'ye hiç gidilmez; burst daha hızlı başlar.
@@ -209,7 +144,7 @@ def burst_yap(
             mobil_profil = bool(mobil_hedef or (mobil_acik and tur == "mobile"))
             profil = fingerprint.profil_sec(haric=onceki_profil, aile=aile, mobil=mobil_profil)
             onceki_profil = profil
-            kayit = _tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)
+            kayit = tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)
             # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.
             kayit["saglayici_id"] = saglayici_id
             kayit["geo_mode"] = geo_mod

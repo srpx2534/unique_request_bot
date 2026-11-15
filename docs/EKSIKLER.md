@@ -49,9 +49,9 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 ## G. Ölçüm hattı — M5
 
 34. Ölçüm-A kanalı SERP API'sinden, `clean` kanaldan, daima ulusal yapılacak (C20).
-35. Ölçüm-B kanalı ayrı küçük havuz ve kalıcı cookie jar ile kurulacak; `profile` tablosu boş.
+35. B kanali yazildi: worker/olcum_b.py kucuk profil havuzu, kalici cookie jar, HTML izlenim, hedefe tikla, post_click pozisyonu, 3 kullanimda yakma; /worker/olcum_b ucu imzali ve 15 dk turdan cagriliyor. Canli dogrulandi. (DUZELTILDI)
 36. Ölçüm-B hattı (`post_click`) gerçekten çalışıyor mu doğrulanmadı.
-37. Ölçüm boşluğu 15 dakikayı geçmeyecek şekilde zamanlayıcı yazılacak (C12).
+37. aralikDk 15 dk tavaniyla kirpiyor, olcumYap her dakika deniyor; dort kirpma durumu test edildi (C12). (DUZELTILDI)
 38. `olcum.ts` ve `serp.py` yedek sağlayıcı sırasını kullanıyor ama gerçek anahtarla sınanmadı; Decodo kotası doluyken Serper ile bir ölçüm turu koşulmalı.
 
 ## H. CI ve kalite kapıları
@@ -82,10 +82,10 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 
 ## K. Kod borcu (250 satır sınırı, §23.2)
 
-56. `cerez.ts` 841 satır — yükleme, içe aktarma ve silme olarak bölünmeli.
-57. `panel.ts` 454, `kelime.ts` 389, `isci.ts` 264 satır.
-58. `havuz.py` 542 satır ve tek dosyada dört iş yapıyor (oran, sağlayıcı seçimi, çerez seçimi, kuyruk).
-59. `serp.py` 367, `burst.py` 260, `cookie.py` 235, `saglik_db.py` 235 satır.
+56. cerez.ts 841 satirdan src/server/cerez/ altinda yedi dosyaya bolundu (yollar, ortak, ayristir, aktarim, sayfa, silme, yukleme, index); en buyugu 223 satir. worker/test_boyut.py 250 sinirini izliyor. (DUZELTILDI)
+57. `panel.ts` 454, `kelime.ts` 389, `isci.ts` 264 satır. (DUZELTILDI)
+58. `havuz.py` 542 satır ve tek dosyada dört iş yapıyor (oran, sağlayıcı seçimi, çerez seçimi, kuyruk). (KISMI: havuz.py ve saglik_db.py bolunmedi)
+59. serp.py 242 ve burst.py 196 satira indi; serp_ortak.py, serp_html.py, burst_hit.py ayrildi, testlerin eristigi adlar korundu. (DUZELTILDI)
 
 ## L. Sözleşme ve belge
 

@@ -19,7 +19,7 @@ import kelimeYonlendirici from "./kelime.js";
 import panelYonlendirici from "./panel.js";
 import raporYonlendirici from "./rapor.js";
 import dugumYonlendirici, { kalpIsleyici } from "./dugum.js";
-import cerezYonlendirici from "./cerez.js";
+import cerezYonlendirici from "./cerez/index.js";
 import { imzaDogrula } from "./worker_imza.js";
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

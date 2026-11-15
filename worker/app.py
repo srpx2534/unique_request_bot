@@ -24,7 +24,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from worker import ayar, burst, durum, kalp, havuz
+from worker import ayar, burst, durum, kalp, havuz, olcum_b
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -112,7 +112,8 @@ class Isleyici(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 (stdlib adlandırması)
         """/worker/burst ucunu işler."""
-        if self.path.split("?")[0] != "/worker/burst":
+        yol = self.path.split("?")[0]
+        if yol not in ("/worker/burst", "/worker/olcum_b"):
             self._json(404, {"hata": "bilinmeyen uç"})
             return
         if not self._yetkili():
@@ -137,6 +138,10 @@ class Isleyici(BaseHTTPRequestHandler):
             return
         if abs(time.time() - int(govde.get("ts") or 0)) > PENCERE_SN:
             self._json(401, {"hata": "ts penceresi dışında"})
+            return
+
+        if yol == "/worker/olcum_b":
+            self._olcum_b(govde)
             return
 
         # Sozlesme adlari esastir; eski isci kelime/domain/adet gonderiyordu.
@@ -180,6 +185,23 @@ class Isleyici(BaseHTTPRequestHandler):
             "durduruldu": sonuc["durduruldu"],
         })
 
+
+    def _olcum_b(self, govde: dict) -> None:
+        """/worker/olcum_b: kalici jar'li B kanali olcumu (C20)."""
+        kelime = str(govde.get("keyword") or "").strip()
+        domain = str(govde.get("target_domain") or govde.get("domain") or "").strip()
+        if not kelime or not domain:
+            self._json(400, {"hata": "keyword ve target_domain zorunlu"})
+            return
+        geo = govde.get("geo_code")
+        kelime_id = govde.get("keyword_id")
+        with _semafor:
+            sonuc = olcum_b.olcum_b_yap(
+                kelime, domain,
+                int(geo) if geo else None,
+                int(kelime_id) if kelime_id else None,
+            )
+        self._json(200, sonuc)
 
 def main() -> int:
     """Servisi başlatır. Token boşsa çalışmaz."""
