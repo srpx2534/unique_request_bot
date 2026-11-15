@@ -162,32 +162,21 @@ def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
     try:
         with baglanti.cursor() as imlec:
             # Sayac her hit'te artar; ulusal trafik de devre kesiciye girer.
-            # Pencere dolduysa sayaclar once sifirlanir; yoksa oran seyrelir ve
-            # esik hic asilmaz. Pencere bir saatliktir.
+            # Tek ifade: pencere dolduysa sayaclar sifirlanip bu hit sayilir,
+            # dolmadiysa uzerine eklenir. MySQL atamalari soldan saga isler,
+            # bu yuzden captcha_pct guncellenmis sayaclardan hesaplanir.
             imlec.execute(
                 "UPDATE provider SET"
                 " hits_1h = IF(sayac_baslangic IS NULL"
-                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 0, hits_1h),"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 1, hits_1h + 1),"
                 " captcha_1h = IF(sayac_baslangic IS NULL"
-                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, 0, captcha_1h),"
-                " sayac_baslangic = COALESCE(sayac_baslangic, UTC_TIMESTAMP(3))"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR, %s, captcha_1h + %s),"
+                " sayac_baslangic = IF(sayac_baslangic IS NULL"
+                "   OR sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR,"
+                "   UTC_TIMESTAMP(3), sayac_baslangic),"
+                " captcha_pct = ROUND(captcha_1h * 100 / hits_1h, 2)"
                 " WHERE id = %s",
-                (saglayici_id,),
-            )
-            imlec.execute(
-                "UPDATE provider SET sayac_baslangic = UTC_TIMESTAMP(3)"
-                " WHERE id = %s AND sayac_baslangic < UTC_TIMESTAMP(3) - INTERVAL 1 HOUR",
-                (saglayici_id,),
-            )
-            imlec.execute(
-                "UPDATE provider SET hits_1h = hits_1h + 1, captcha_1h = captcha_1h + %s"
-                " WHERE id = %s",
-                (captcha, saglayici_id),
-            )
-            imlec.execute(
-                "UPDATE provider SET captcha_pct = ROUND(captcha_1h * 100 / hits_1h, 2)"
-                " WHERE id = %s AND hits_1h > 0",
-                (saglayici_id,),
+                (captcha, captcha, saglayici_id),
             )
 
             # Il cifti yalnizca il hedefli hit'te tutulur; anahtar il kodudur.
@@ -267,7 +256,8 @@ def karantina_kontrol(saglayici_id: int) -> None:
             karar = saglik.karantina_karari(oran, durum, suresi_doldu, esik)
             # Ornek esigin altindaysa yalnizca karantinaya alma ertelenir;
             # suresi dolmus karantina her halukarda acilir.
-            if durum == "active" and not saglik.esik_asildi_mi(oran, ornek, esik):
+            asgari = int(ayar_db.oku("asgari_ornek", str(saglik.ASGARI_ORNEK)) or saglik.ASGARI_ORNEK)
+            if durum == "active" and not saglik.esik_asildi_mi(oran, ornek, esik, asgari):
                 karar = "yok"
 
             if karar == "karantina":
@@ -288,6 +278,96 @@ def karantina_kontrol(saglayici_id: int) -> None:
                     " captcha_1h = 0 WHERE id = %s",
                     (saglik.VARSAYILAN_AGIRLIK, saglayici_id),
                 )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)
+
+HEDEF_YOK_VARSAYILAN = 3
+
+
+def hedef_yok_islet(sorgu: str, domain: str | None) -> tuple[int, bool]:
+    """Hedefi bulunamayan kelimenin sayacini artirir, esikte durdurur.
+
+    Sayac yalnizca gercek "hedef ilk 100'de yok" durumunda artar; gecici API
+    hatasini cagiran taraf ayirir, yoksa tek bir 429 kelimeyi durdurur.
+
+    Args:
+        sorgu: Kelime metni.
+        domain: Kelimenin sitesi.
+
+    Returns:
+        (sayac, durduruldu) demeti. Kelime bulunamazsa (0, False).
+    """
+    if not domain:
+        return 0, False
+    esik = int(ayar_db.oku("hedef_yok_durma", str(HEDEF_YOK_VARSAYILAN))
+               or HEDEF_YOK_VARSAYILAN)
+    if esik <= 0:
+        return 0, False
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return 0, False
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT k.id FROM keyword k JOIN site s ON s.id = k.site_id"
+                " WHERE k.text = %s AND s.domain = %s ORDER BY k.id LIMIT 1",
+                (sorgu, domain),
+            )
+            satir = imlec.fetchone()
+            if not satir:
+                return 0, False
+            kelime_id = int(satir[0])
+            imlec.execute(
+                "UPDATE keyword SET hedef_yok_sayac = hedef_yok_sayac + 1 WHERE id = %s",
+                (kelime_id,),
+            )
+            imlec.execute("SELECT hedef_yok_sayac FROM keyword WHERE id = %s", (kelime_id,))
+            satir = imlec.fetchone()
+            sayac = int(satir[0]) if satir else 0
+            if sayac < esik:
+                return sayac, False
+            # Esik asildi: kelime durur, acik kampanya da kapatilir.
+            imlec.execute(
+                "UPDATE keyword SET state = 'paused' WHERE id = %s AND state = 'active'",
+                (kelime_id,),
+            )
+            imlec.execute(
+                "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3)"
+                " WHERE keyword_id = %s AND stopped_at IS NULL",
+                (kelime_id,),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+        return 0, False
+    finally:
+        _kapat(baglanti)
+    uyari("hedef_yok_durdu", kelime_id,
+          f"'{sorgu}' {sayac} kez ilk 100'de yok, kelime durduruldu",
+          kelime=sorgu, domain=domain)
+    return sayac, True
+
+
+def hedef_yok_sifirla(sorgu: str, domain: str | None) -> None:
+    """Basarili burst sayaci sifirlar; tek sorgu, bosuna yazmaz."""
+    if not domain:
+        return
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE keyword k JOIN site s ON s.id = k.site_id"
+                " SET k.hedef_yok_sayac = 0"
+                " WHERE k.text = %s AND s.domain = %s AND k.hedef_yok_sayac > 0",
+                (sorgu, domain),
+            )
     except Exception as hata:  # noqa: BLE001
         print(f"[saglik] {hata}")
     finally:

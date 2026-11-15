@@ -37,30 +37,43 @@ export async function hitYaz(
   }
 }
 
-/** Ust uste kac burst hedef bulamazsa kelime durur (A3). */
+/** Ust uste kac burst hedef bulamazsa kelime durur (A3); panelden ayarlanir. */
 export const ARDA_HEDEF_YOK = 3;
 
 /** Ust uste hedef_yok alan kelimeyi durdurur (A3). */
 export async function hedefYokDenetle(keywordId: number, geoId: number): Promise<void> {
+  // Esik panelden gelir; okunamazsa sozlesme degeri gecerli.
+  const esikSatiri = await tek<{ deger: string }>(
+    "SELECT deger FROM ayar WHERE anahtar = 'hedef_yok_durma'",
+  );
+  const esik = Number(esikSatiri?.deger ?? ARDA_HEDEF_YOK) || ARDA_HEDEF_YOK;
+  if (esik <= 0) return;
+
   // Burst bazinda bakilir: bir burst'un butun hit'leri hedef_yok ise o burst
-  // hedefsizdir. Tek tek hit saymak ayni burst'u uc kez sayardi.
+  // hedefsizdir. Hedef_yok burst'u hic hit yazmadigi icin LEFT JOIN sart;
+  // INNER JOIN bu burst'leri disarida birakip denetimi olu tutuyordu.
   const satirlar = await sorgu<{ hepsi: number }>(
-    `SELECT SUM(h.result = 'hedef_yok') = COUNT(*) AS hepsi
-       FROM burst b JOIN hit h ON h.burst_id = b.id
+    `SELECT (COUNT(h.id) = 0 OR SUM(h.result = 'hedef_yok') = COUNT(h.id)) AS hepsi
+       FROM burst b LEFT JOIN hit h ON h.burst_id = b.id
       WHERE b.keyword_geo_id = ? AND b.ended_at IS NOT NULL
       GROUP BY b.id ORDER BY b.id DESC LIMIT ?`,
-    [geoId, ARDA_HEDEF_YOK],
+    [geoId, esik],
   );
-  if (satirlar.length < ARDA_HEDEF_YOK) return;
+  if (satirlar.length < esik) return;
   if (!satirlar.every((satir) => Number(satir.hepsi) === 1)) return;
 
-  await yaz("UPDATE keyword SET state = 'paused' WHERE id = ?", [keywordId]);
+  // Worker sayaci once durdurduysa ikinci uyari yazilmasin.
+  const etkilenen = await yaz(
+    "UPDATE keyword SET state = 'paused' WHERE id = ? AND state = 'active'",
+    [keywordId],
+  );
+  if (etkilenen === 0) return;
   await yaz(
     "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3) WHERE keyword_id = ? AND stopped_at IS NULL",
     [keywordId],
   );
   await yaz("INSERT INTO alert (kind, message) VALUES ('hedef_yok', ?)", [
-    `${ARDA_HEDEF_YOK} burst ust uste hedef bulamadi, kelime durdu`,
+    `${esik} burst ust uste hedef bulamadi, kelime durdu`,
   ]);
   console.log(`[isci] hedef bulunamadi, kelime durdu: ${keywordId}`);
 }

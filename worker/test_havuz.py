@@ -6,7 +6,15 @@ Dağılım bozulursa mobil oranı panelden ne girilirse girsin tutmaz.
 
 from __future__ import annotations
 
+import pytest
+
 from worker import havuz
+
+
+@pytest.fixture(autouse=True)
+def _oran_onbellegi_temiz() -> None:
+    """Oran onbellegi testler arasinda tasmasin."""
+    havuz.onbellek_temizle()
 
 
 def test_hepsi_sifirsa_residential_yuz() -> None:
@@ -254,3 +262,18 @@ def test_mobil_orani_sifirsa_mobil_sec_mez(monkeypatch) -> None:
     oranlar = havuz.oranlari_oku()
     for yuzde in range(0, 100, 10):
         assert havuz.tur_sec(oranlar, mobil_acik=True, rastgele=yuzde) == "residential"
+
+
+def test_oran_onbellegi_ikinci_cagrida_db_okumaz(monkeypatch) -> None:
+    """Onbellek doluyken veritabani tekrar okunmaz."""
+    sayac = {"n": 0}
+
+    def bag():
+        sayac["n"] += 1
+        return _OranBaglanti([("oran_residential", "40")])
+
+    monkeypatch.setattr(havuz, "_baglan", bag)
+    _env(monkeypatch, {})
+    havuz.oranlari_oku()
+    havuz.oranlari_oku()
+    assert sayac["n"] == 1

@@ -184,7 +184,12 @@ yonlendirici.post("/kelime/:id/baslat", async (istek, yanit) => {
   // Onceki kampanya kapatilir: acik birakilirsa her baslat yeni kampanya acar,
   // eskiler sonsuza kadar acik kalir ve hacim gecmisi siser.
   const yeniKampanya = await islem(async (baglanti) => {
-    await baglanti.execute("UPDATE keyword SET state = 'active' WHERE id = ?", [id]);
+    // Başlat her seferinde sayacı sıfırlar; yoksa eşikte durmuş kelime ilk
+    // hedef_yok'ta yeniden durur.
+    await baglanti.execute(
+      "UPDATE keyword SET state = 'active', hedef_yok_sayac = 0 WHERE id = ?",
+      [id],
+    );
     await baglanti.execute(
       "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3) WHERE keyword_id = ? AND stopped_at IS NULL",
       [id],

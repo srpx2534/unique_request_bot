@@ -17,6 +17,7 @@ Kullanım: worker/burst.py, tools/proxy_dene.py.
 from __future__ import annotations
 
 import random
+import time
 
 import pymysql
 
@@ -106,15 +107,33 @@ def _baglan() -> pymysql.connections.Connection:
     )
 
 
+# Oran degisikligi bir dakika icinde etkili olur; her hit'te veritabani
+# okumak baglanti acip kapatiyordu.
+ORAN_ONBELLEK_SN = 60
+_oran_onbellek: dict[str, int] | None = None
+_oran_onbellek_ts = 0.0
+
+
+def onbellek_temizle() -> None:
+    """Oran onbellegini bosaltir; testler ve panel degisikligi icin."""
+    global _oran_onbellek, _oran_onbellek_ts
+    _oran_onbellek = None
+    _oran_onbellek_ts = 0.0
+
+
 def oranlari_oku() -> dict[str, int]:
     """Oranlari okur: once tablo, sonra .env, en son varsayilan.
 
     Tablo okunamazsa .env yine devrededir; oranlar veritabani olmadan da
-    ayarlanabilir (23).
+    ayarlanabilir (23). Sonuc bir dakika onbellekte tutulur.
 
     Returns:
         normalize edilmis oran sozlugu.
     """
+    global _oran_onbellek, _oran_onbellek_ts
+    if _oran_onbellek is not None and time.monotonic() - _oran_onbellek_ts < ORAN_ONBELLEK_SN:
+        return dict(_oran_onbellek)
+
     ham: dict[str, int] = {}
     baglanti = None
     try:
@@ -139,9 +158,10 @@ def oranlari_oku() -> dict[str, int]:
         deger = ayar.oku(env, "")
         if str(deger).isdigit():
             ham[anahtar] = int(deger)
-    if not ham:
-        return dict(VARSAYILAN_ORAN)
-    return oranlari_normalize(ham)
+    sonuc = oranlari_normalize(ham) if ham else dict(VARSAYILAN_ORAN)
+    _oran_onbellek = sonuc
+    _oran_onbellek_ts = time.monotonic()
+    return dict(sonuc)
 
 def _aday_sorgusu(geo_kodu: int | None) -> str:
     """Uygun sağlayıcıyı seçen sorguyu kurar.
@@ -398,7 +418,10 @@ def _dugum_id() -> int | None:
             baglanti.close()
     except Exception:  # noqa: BLE001
         kimlik = None
-    _dugum_onbellek.append(kimlik)
+    # None önbelleklenmez: düğüm henüz kayıtlı değilse sonraki çağrı yeniden
+    # dener; aksi hâlde kimlik sonsuza kadar None kalırdı.
+    if kimlik is not None:
+        _dugum_onbellek.append(kimlik)
     return kimlik
 
 def _cift_bul(site_domain: str | None, kelime: str | None) -> tuple[int, int] | None:

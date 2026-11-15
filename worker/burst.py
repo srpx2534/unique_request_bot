@@ -12,7 +12,7 @@ Her hit tek oturum ve tek profil kullanır; oturum üç adım boyunca açık
 kalır, böylece cookie sürekliliği korunur.
 
 Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlanır
-(C6). Mobil IP yalnızca ilk saniyelerde kullanılır (§8).
+(C6). Mobil IP yalnızca ilk hit'lerde kullanılır (§8).
 
 Kullanım: worker/app.py, tools/burst_dene.py.
 """
@@ -32,7 +32,7 @@ from worker.burst_hit import sayaclar, tek_hit
 AZAMI_HIT = 60  # sözleşme §9: basamak boyu en fazla 60
 HIT_ARASI_MIN = 0.4  # saniye; art arda istekte insan ritmi
 HIT_ARASI_MAX = 1.4  # saniye; jitter için üst sınır
-MOBIL_PENCERE_SN = 8  # saniye; mobil IP yalnızca bu pencerede kullanılır (§8)
+MOBIL_HIT_SAYISI = 2  # hit; mobil IP yalnızca ilk hit'lerde kullanılır (§8)
 BASARI_ESIGI = 0.95  # C10; altında kalırsa burst_hata uyarısı düşer
 DENEME = 2  # sağlayıcı düşerse toplam kaç kez denenir
 
@@ -80,12 +80,22 @@ def burst_yap(
         if cozum["result"] == "anahtar_yok":
             sonuc["result"] = "anahtar_yok"
             return sonuc
-        if cozum["result"] != "ok" or not cozum["position"]:
+        if cozum["result"] not in ("ok", "not_found"):
+            # Geçici API hatası (timeout, 429, 5xx): hedef yok sayılmaz ve
+            # sayaç artmaz; yoksa tek bir 429 kelimeyi durdurabilirdi.
+            sonuc["result"] = "serp_hata"
+            sonuc["hata"] = cozum.get("mesaj", "")
+            return sonuc
+        if cozum["result"] == "not_found" or not cozum["position"]:
             sonuc["result"] = "hedef_yok"
             sonuc["not_found"] = adet
-            # Hedef ilk 100'de yok: panelde görülsün, sessizce geçmesin.
-            saglik_db.uyari("hedef_yok", None, f"'{sorgu}' ilk 100'de bulunamadı", kelime=sorgu, domain=hedef_domain)
+            # Hedef ilk 100'de yok: sayaç artar, eşikte kelime durur.
+            sayac, durdu = saglik_db.hedef_yok_islet(sorgu, hedef_domain)
+            sonuc["hedef_yok_sayac"] = sayac
+            if not durdu:
+                saglik_db.uyari("hedef_yok", None, f"'{sorgu}' ilk 100'de bulunamadı", kelime=sorgu, domain=hedef_domain)
             return sonuc
+        saglik_db.hedef_yok_sifirla(sorgu, hedef_domain)
         hedef_url = next(
             k["link"] for k in cozum["organik"] if k["position"] == cozum["position"]
         )
@@ -100,16 +110,14 @@ def burst_yap(
     geo_kodu = havuz.kod_bul(geo_slug) if geo_slug else None
     # Kelime mobil isaretliyse mobil IP ve android profil zorlanir.
     mobil_hedef = havuz.kelime_mobil(sorgu)
-    # Mobil pencere hit sayisina cevrilir: duvar saatiyle olculunce ilk hit
-    # tek basina pencereyi asiyor ve mobil IP bir daha kullanilmiyordu.
-    mobil_hit_siniri = max(1, min(3, round(MOBIL_PENCERE_SN / 4)))
+    mobil_hit_siniri = max(1, min(3, MOBIL_HIT_SAYISI))
     for sira in range(1, adet + 1):
         # Durdurma her hit öncesi sorulur: uçan istek kesilmez, yenisi başlamaz.
         if devam is not None and not devam():
             durduruldu = True
             break
 
-        # Mobil IP pahalı ve çabuk tükeniyor; yalnızca ilk saniyelerde
+        # Mobil IP pahalı ve çabuk tükeniyor; yalnızca ilk hit'lerde
         # kullanılır, sonra residential'a düşülür (§8).
         mobil_acik = sira <= mobil_hit_siniri
 
@@ -168,7 +176,13 @@ def burst_yap(
 
         # Sağlayıcı sağlığı yalnızca gerçek bir sağlayıcı kullanıldıysa işlenir.
         if saglayici_id:
-            saglik_db.kaydet(saglayici_id, geo_kodu, kayit["result"])
+            # İl çifti yalnızca gerçekten il hedefli çıkışta işlenir; ulusal ya
+            # da yabancı çıkış kodu il çiftine yazarsa eşik yanlış çiftte dolar.
+            saglik_db.kaydet(
+                saglayici_id,
+                geo_kodu if kayit.get("geo_mode") == "city" else None,
+                kayit["result"],
+            )
             saglik_db.bayt_ekle(saglayici_id, kayit["bytes"])
             saglik_db.karantina_kontrol(saglayici_id)
 
@@ -184,10 +198,13 @@ def burst_yap(
     sonuc["durduruldu"] = durduruldu
 
     # Kapanış değerlendirmesi: oran eşiğin altındaysa uyarı düşülür.
-    if sonuc["ok"] / adet < BASARI_ESIGI:
+    # Payda atılan hit'tir: erken durdurulan burst tam adetle bölününce
+    # sağlıklı iş yanlışlıkla burst_hata yazıyordu.
+    atilan = len(sonuc["hits"])
+    if atilan and sonuc["ok"] / atilan < BASARI_ESIGI:
         saglik_db.uyari(
             "burst_hata", None,
-            f"'{sorgu}' tamamlanma %{round(sonuc['ok'] * 100 / adet)} "
+            f"'{sorgu}' tamamlanma %{round(sonuc['ok'] * 100 / atilan)} "
                         f"(ok={sonuc['ok']} captcha={sonuc['captcha']} hata={sonuc['error']})",
             kelime=sorgu, domain=hedef_domain,
         )

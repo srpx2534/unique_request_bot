@@ -31,7 +31,7 @@ type Cevap = {
   adet: number;
 };
 
-const TURLER = ["captcha", "provider_down", "queue_lag", "quota", "fallback_high", "hedef_yok", "failover", "burst_hata"];
+const TURLER = ["captcha", "provider_down", "queue_lag", "quota", "fallback_high", "hedef_yok", "hedef_yok_durdu", "failover", "burst_hata"];
 const TON: Record<string, "tehlike" | "uyari" | "notr" | "vurgu"> = {
   captcha: "tehlike",
   provider_down: "tehlike",
@@ -39,6 +39,7 @@ const TON: Record<string, "tehlike" | "uyari" | "notr" | "vurgu"> = {
   quota: "uyari",
   fallback_high: "uyari",
   hedef_yok: "uyari",
+  hedef_yok_durdu: "uyari",
   queue_lag: "vurgu",
   failover: "notr",
 };
@@ -87,7 +88,12 @@ const TUR_BILGI: Record<string, { ad: string; aciklama: string; sebep: string; o
     sebep: "Kelime o ilde sıralamıyor, il yanlış seçilmiş veya site cezalı.",
     onlem: "Kelime/il çiftini değiştir; üst üste tekrarda kelime otomatik durur.",
   },
-  failover: {
+  hedef_yok_durdu: {
+    ad: "Hedef yok, kelime durdu",
+    aciklama: "Kelime üst üste hedefsiz kaldı ve otomatik durduruldu.",
+    sebep: "Kelime o ilde sıralamıyor veya site cezalı.",
+    onlem: "Kelimeyi düzelt, il çiftini gözden geçir, sonra başlat.",
+  },  failover: {
     ad: "Sağlayıcı değişimi",
     aciklama: "Bir hit sırasında sağlayıcı değiştirildi; hit yine atıldı.",
     sebep: "Seçilen sağlayıcı o an başarısız oldu.",
