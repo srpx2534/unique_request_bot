@@ -11,7 +11,7 @@ Yapılacak, sırayla:
 1. `src/server/panel_ayar.ts` içine `yonlendirici.patch("/oran", ...)` ekle. Gövdeyi zod ile doğrula: `oran_residential`, `oran_mobil`, `oran_datacenter`, hepsi `z.coerce.number().int().min(0).max(100)`. Toplam 100 değilse 400 ve `{hata}` dön. Geçerliyse üçünü `INSERT INTO ayar (anahtar, deger) VALUES (?, ?) ON DUPLICATE KEY UPDATE deger = VALUES(deger)` ile yaz, `denetim(istek, "oran-guncelle", "ayar", null)` çağır, maskeli listeyi dön. Genel `PATCH /` içindeki `oran_` atlaması olduğu gibi kalır.
 2. `src/web/lib/panel.ts` içine `oranYaz()` ekle: `PATCH /ayar/oran`, `onSuccess: tazele(istemci, "ayar")`.
 3. `saglayicilar.tsx` satır 11'deki importta `ayarYaz` yerine `oranYaz`, satır 28'de `const yaz = oranYaz();`.
-4. Kapılar: `npm.cmd run tip`, `npm.cmd test`, `.venv\Scripts\python.exe tools\lint_yol.py`, mojibake taraması (`Ã|Ä±|ÅŸ` sayısı 0 olmalı).
+4. Kapılar: `npm.cmd run tip`, `npm.cmd test`, `.venv\Scripts\python.exe tools\lint_yol.py`, mojibake taraması (kod dosyalarında `Ã`, `Ä±`, `ÅŸ` üçlüsü 0 olmalı; bu belgede örnek olarak geçebilir).
 5. Kullanıcı sağlayıcılar ekranından `oran_mobil` değerini 10'a çekecek. `SELECT deger FROM ayar WHERE anahtar='oran_mobil';` ile 10 yazdığını doğrula.
 6. EKSIKLER 27: `SHOW COLUMNS FROM provider_geo;` ile kolonları gör (`tur` kolonu yok), mobil sağlayıcı sayısını `provider.kind='mobile'` üzerinden say, tek kelimeyle dar kapsamlı gerçek burst at, `hit` ve `burst` kayıtlarında mobil modalite oluştuğunu doğrula.
 
@@ -50,6 +50,9 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 ## Açık altyapı notları
 
 - `.env` içinde hiç `PROXY_*` satırı yok; madde 23'ün env yedeği devrede değil.
-- `provider_geo` tablosunda `tur` kolonu yok.
+- `provider_geo` tablosunda `tur` kolonu yok; tür artık `hit.tur` içinde tutuluyor (045).
+- EKSIKLER 27 kısmi: oran yazımı ve `hit.tur` tamam, mobil sağlayıcı kimliği yok, canlı doğrulama bekliyor.
+- Diakritiksizleştirilmiş yorumlar 38 dosyada duruyor (kullanıcı kararı: şimdilik dokunulmuyor). EKSIKLER bitince 5-6 dosyalık partiler hâlinde, yalnız yorum satırları düzeltilecek.
+- `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.

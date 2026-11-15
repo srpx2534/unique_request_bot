@@ -41,7 +41,7 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 24. Failover 10 saniye altında tamamlanacak (C6).
 25. Sağlayıcı genel CAPTCHA oranı %20'yi geçince 2 saat karantina uygulanacak (§8).
 26. `provider` ve `provider_geo` tabloları henüz boş; seed yazılmadı.
-27. `oran_mobil` hâlâ 0; açılmadan android profil hiç çıkmaz. Mobil yol canlı istekle doğrulanmalı.
+27. Oranlar panelden yazılıyor (`ayar` satırı, `PATCH /api/ayar/oran`, C65) ve `oran_mobil` 10. `hit.tur` kolonu eklendi (045), worker seçilen türü yazıyor. Kalan: mobil sağlayıcılarda (id 4, 5) gateway ve kimlik yok (madde 33); kimlik girilince dar kapsamlı tek burst ile mobil hit doğrulanacak. (KISMI)
 28. Oran 0 ya da mobil pencere kapaliyken tur_sec mobile hic dusmuyor; test_havuz iki durumu da tarayarak sabitliyor. (DUZELTILDI)
 29. Esikler panelden ayarlanir: esik_captcha, esik_geo, asgari_ornek. kaydet ve karantina_kontrol degerleri ayar_db uzerinden okur, okunamazsa sozlesme degeri gecerli. (DUZELTILDI)
 30. Saglayicilar ekraninda oran toplami canli gosterilir; 100 degilse kirmizi ve kaydetme engelli. (DUZELTILDI)

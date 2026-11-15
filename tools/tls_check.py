@@ -1,15 +1,15 @@
-"""Parmak izi doÄŸrulamasÄ± (JA4 tabanlÄ±, kÃ¼me Ã¼yeliÄŸi).
+"""Parmak izi doğrulaması (JA4 tabanlı, küme üyeliği).
 
-Her profille tls.peet.ws adresine istek atar. Chromium 110+ uzantÄ± sÄ±rasÄ±nÄ±
-karÄ±ÅŸtÄ±rdÄ±ÄŸÄ± iÃ§in JA3 baÄŸlantÄ± baÅŸÄ±na deÄŸiÅŸir; JA4 de ALPN/SNI varyansÄ±
-yÃ¼zÃ¼nden birden fazla deÄŸer alabilir. Bu yÃ¼zden kimlik doÄŸrulamasÄ± kÃ¼me
-Ã¼yeliÄŸiyle yapÄ±lÄ±r: Ã¶lÃ§Ã¼len ja4, profilin bilinen kÃ¼mesinde olmalÄ±dÄ±r (C5).
-Windows ve Linux aynÄ± kÃ¼meye dÃ¼ÅŸmelidir (Â§18.7).
+Her profille tls.peet.ws adresine istek atar. Chromium 110+ uzantı sırasını
+karıştırdığı için JA3 bağlantı başına değişir; JA4 de ALPN/SNI varyansı
+yüzünden birden fazla değer alabilir. Bu yüzden kimlik doğrulaması küme
+üyeliğiyle yapılır: ölçülen ja4, profilin bilinen kümesinde olmalıdır (C5).
+Windows ve Linux aynı kümeye düşmelidir (§18.7).
 
-KullanÄ±m:
-    python tools/tls_check.py --all --yaz      # referansÄ± bÃ¼yÃ¼t
-    python tools/tls_check.py --all            # referansa karÅŸÄ± denetle
-    python tools/tls_check.py --temizle        # referansÄ± sÄ±fÄ±rla
+Kullanım:
+    python tools/tls_check.py --all --yaz      # referansı büyüt
+    python tools/tls_check.py --all            # referansa karşı denetle
+    python tools/tls_check.py --temizle        # referansı sıfırla
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-# Proje kÃ¶kÃ¼ sys.path'e eklenir; betik tools iÃ§inden Ã§aÄŸrÄ±lÄ±r.
+# Proje kökü sys.path'e eklenir; betik tools içinden çağrılır.
 KOK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KOK))
 
@@ -29,21 +29,21 @@ from worker import fingerprint  # noqa: E402
 
 HEDEF = "https://tls.peet.ws/api/all"
 REFERANS = KOK / "docs" / "tls_reference.json"
-ZAMAN_ASIMI = 25  # saniye; peet.ws ara sÄ±ra yavaÅŸ yanÄ±t veriyor
-DENEME = 2  # aÄŸ hatasÄ±nda tekrar sayÄ±sÄ±
+ZAMAN_ASIMI = 25  # saniye; peet.ws ara sıra yavaş yanıt veriyor
+DENEME = 2  # ağ hatasında tekrar sayısı
 
 
 def olc(profil: str) -> dict:
-    """Tek profil iÃ§in hash'leri toplar.
+    """Tek profil için hash'leri toplar.
 
     Args:
-        profil: impersonate adÄ±.
+        profil: impersonate adı.
 
     Returns:
-        ja4, ja3_hash, http_version ve ua alanlarÄ±nÄ± taÅŸÄ±yan sÃ¶zlÃ¼k.
+        ja4, ja3_hash, http_version ve ua alanlarını taşıyan sözlük.
 
     Raises:
-        RuntimeError: Ä°stek, tekrar denemelere raÄŸmen baÅŸarÄ±sÄ±z olursa.
+        RuntimeError: İstek, tekrar denemelere rağmen başarısız olursa.
     """
     fingerprint.dogrula(profil)
     son_hata = ""
@@ -67,17 +67,17 @@ def olc(profil: str) -> dict:
 
 
 def referans_oku() -> dict:
-    """ReferansÄ± okur ve eski liste biÃ§imini sÃ¶zlÃ¼ÄŸe Ã§evirir.
+    """Referansı okur ve eski liste biçimini sözlüğe çevirir.
 
     Returns:
-        profil -> {"ja4": [...], "ja3": [...]} sÃ¶zlÃ¼ÄŸÃ¼. Dosya yoksa boÅŸ.
+        profil -> {"ja4": [...], "ja3": [...]} sözlüğü. Dosya yoksa boş.
     """
     if not REFERANS.exists():
         return {}
     ham = json.loads(REFERANS.read_text(encoding="utf-8"))
     if isinstance(ham, dict):
         return ham
-    # Eski biÃ§im: [{"profil":..., "ja4":..., "ja3_hash":...}] listesi.
+    # Eski biçim: [{"profil":..., "ja4":..., "ja3_hash":...}] listesi.
     cevrilmis: dict = {}
     for kayit in ham:
         girdi = cevrilmis.setdefault(kayit["profil"], {"ja4": [], "ja3": []})
@@ -89,9 +89,9 @@ def referans_oku() -> dict:
 
 
 def yaz_referans(kayitlar: list[dict]) -> None:
-    """Ã–lÃ§Ã¼len deÄŸerleri referansa birleÅŸtirir.
+    """Ölçülen değerleri referansa birleştirir.
 
-    KÃ¼meler birleÅŸimle bÃ¼yÃ¼r: yeni bir sÄ±ra veya varyant gÃ¶rÃ¼lmesi
+    Kümeler birleşimle büyür: yeni bir sıra veya varyant görülmesi
     normaldir, eskiler silinmez.
     """
     referans = referans_oku()
@@ -106,42 +106,42 @@ def yaz_referans(kayitlar: list[dict]) -> None:
         json.dumps(referans, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"referans gÃ¼ncellendi: {REFERANS.name}")
+    print(f"referans güncellendi: {REFERANS.name}")
 
 
 def karsilastir(kayitlar: list[dict]) -> int:
-    """Ã–lÃ§Ã¼mleri referansa karÅŸÄ± denetler. Sapma sayÄ±sÄ±nÄ± dÃ¶ndÃ¼rÃ¼r.
+    """Ölçümleri referansa karşı denetler. Sapma sayısını döndürür.
 
-    Sapma Ã¶lÃ§Ã¼tÃ¼ ja4 kÃ¼mesidir. ja3 kÃ¼mede yoksa yalnÄ±zca bilgi verilir.
+    Sapma ölçütü ja4 kümesidir. ja3 kümede yoksa yalnızca bilgi verilir.
     """
     referans = referans_oku()
     if not referans:
-        print("referans yok, karÅŸÄ±laÅŸtÄ±rma atlandÄ±.")
+        print("referans yok, karşılaştırma atlandı.")
         return 0
 
     sapan = 0
     for kayit in kayitlar:
         girdi = referans.get(kayit["profil"])
         if not girdi:
-            print(f"YENÄ°  {kayit['profil']}: referansta yok")
+            print(f"YENİ  {kayit['profil']}: referansta yok")
             continue
         if kayit["ja4"] not in girdi["ja4"]:
-            print(f"SAPMA {kayit['profil']}: ja4 {kayit['ja4']} kÃ¼mede yok")
+            print(f"SAPMA {kayit['profil']}: ja4 {kayit['ja4']} kümede yok")
             sapan += 1
         elif kayit["ja3_hash"] not in girdi["ja3"]:
-            print(f"YENÄ° JA3 {kayit['profil']}: {kayit['ja3_hash']} (sÄ±ra deÄŸiÅŸimi, kabul)")
+            print(f"YENİ JA3 {kayit['profil']}: {kayit['ja3_hash']} (sıra değişimi, kabul)")
         else:
-            print(f"UYAR  {kayit['profil']}: eÅŸleÅŸti")
+            print(f"UYAR  {kayit['profil']}: eşleşti")
     return sapan
 
 
 def main() -> int:
-    """Profilleri Ã¶lÃ§er. Hata veya sapma varsa 1 dÃ¶ner."""
-    ayar = argparse.ArgumentParser(description="Parmak izi doÄŸrulamasÄ±")
-    ayar.add_argument("--profil", help="tek profil Ã¶lÃ§")
-    ayar.add_argument("--all", action="store_true", help="tÃ¼m profilleri Ã¶lÃ§")
-    ayar.add_argument("--yaz", action="store_true", help="referansÄ± gÃ¼ncelle")
-    ayar.add_argument("--temizle", action="store_true", help="referansÄ± sil")
+    """Profilleri ölçer. Hata veya sapma varsa 1 döner."""
+    ayar = argparse.ArgumentParser(description="Parmak izi doğrulaması")
+    ayar.add_argument("--profil", help="tek profil ölç")
+    ayar.add_argument("--all", action="store_true", help="tüm profilleri ölç")
+    ayar.add_argument("--yaz", action="store_true", help="referansı güncelle")
+    ayar.add_argument("--temizle", action="store_true", help="referansı sil")
     secim = ayar.parse_args()
 
     if secim.temizle:
@@ -172,7 +172,7 @@ def main() -> int:
         yaz_referans(kayitlar)
 
     sapan = 0 if secim.yaz else karsilastir(kayitlar)
-    print(f"Ã¶lÃ§Ã¼len: {len(kayitlar)} Â· hata: {hata} Â· sapma: {sapan}")
+    print(f"ölçülen: {len(kayitlar)} · hata: {hata} · sapma: {sapan}")
     return 1 if hata or sapan else 0
 
 

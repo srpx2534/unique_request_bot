@@ -136,3 +136,12 @@ export function ayarYaz() {
     onSuccess: tazele(istemci, "ayar"),
   });
 }
+
+/** Tür oranlarını yazar: üçü birlikte, toplam 100 olmalı. */
+export function oranYaz() {
+  const istemci = useQueryClient();
+  return useMutation<Ayar[], ApiHatasi, Record<string, string>>({
+    mutationFn: (govde) => iste<Ayar[]>("/ayar/oran", { method: "PATCH", body: JSON.stringify(govde) }),
+    onSuccess: tazele(istemci, "ayar"),
+  });
+}

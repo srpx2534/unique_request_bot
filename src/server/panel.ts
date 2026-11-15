@@ -1,9 +1,9 @@
 /**
- * Panel okuma uÃƒÂ§larÃ„Â±.
+ * Panel okuma uçları.
  *
- * EkranlarÃ„Â±n ihtiyaÃƒÂ§ duyduÃ„Å¸u ÃƒÂ¶zet, saÃ„Å¸layÃ„Â±cÃ„Â±, uyarÃ„Â±, ayar ve log verisi
- * burada toplanÃ„Â±r. Yazma uÃƒÂ§larÃ„Â± kendi dosyalarÃ„Â±nda; burada yalnÃ„Â±zca
- * panelin tÃƒÂ¼kettiÃ„Å¸i hafif sorgular var.
+ * Ekranların ihtiyaç duyduğu özet, sağlayıcı, uyarı, ayar ve log verisi
+ * burada toplanır. Yazma uçları kendi dosyalarında; burada yalnızca
+ * panelin tükettiği hafif sorgular var.
  */
 import { Router } from "express";
 import { sorgu, tek } from "./veritabani.js";
@@ -116,7 +116,7 @@ yonlendirici.get("/log", async (istek, yanit) => {
        JOIN site s ON s.id = k.site_id
        LEFT JOIN geo ON geo.code = g.geo_code
        ${nerede}
-      ORDER BY b.id DESC LIMIT ?`,
+      ORDER BY b.id DESC LIMIT ? OFFSET ?`,
     [...degerler, adet, (sayfa - 1) * adet],
   );
   yanit.json({ satirlar, toplam, sayfa, adet });

@@ -8,8 +8,8 @@ export const yonlendirici = Router();
 yonlendirici.get("/", async (istek, yanit) => {
   const kosullar: string[] = [];
   const degerler: unknown[] = [];
-  // Durum ve pencere dÄ±ÅŸÄ±ndaki sÃ¼zgeÃ§ler Ã¶zete de uygulanÄ±r: sayaÃ§, listede
-  // gÃ¶rÃ¼nen kÃ¼menin aynÄ±sÄ±nÄ± saysÄ±n.
+  // Durum ve pencere dışındaki süzgeçler özete de uygulanır: sayaç, listede
+  // görünen kümenin aynısını saysın.
   const ozetKosullar: string[] = [];
   const ozetDegerler: unknown[] = [];
 
@@ -27,9 +27,9 @@ yonlendirici.get("/", async (istek, yanit) => {
   if (durum === "acik") kosullar.push("a.acknowledged = 0");
   if (durum === "kapali") kosullar.push("a.acknowledged = 1");
 
-  // Pencere yalnÄ±zca kapatÄ±lmÄ±ÅŸ uyarÄ±larÄ± sÃ¼zer: aÃ§Ä±k uyarÄ± ne kadar eski
-  // olursa olsun listede kalÄ±r. Aksi halde genel bakÄ±ÅŸtaki sayÄ± ile liste
-  // uyuÅŸmaz.
+  // Pencere yalnızca kapatılmış uyarıları süzer: açık uyarı ne kadar eski
+  // olursa olsun listede kalır. Aksi halde genel bakıştaki sayı ile liste
+  // uyuşmaz.
   const aralik = aralikKosulu(istek.query.aralik as string | undefined, "a.created_at");
   if (aralik) kosullar.push(`(a.acknowledged = 0 OR ${aralik})`);
 
@@ -64,7 +64,7 @@ yonlendirici.get("/", async (istek, yanit) => {
        LEFT JOIN site s ON s.id = a.site_id
        ${nerede}
       ORDER BY a.acknowledged ASC, a.created_at DESC
-      LIMIT ?`,
+      LIMIT ? OFFSET ?`,
     [...degerler, adet, (sayfa - 1) * adet],
   );
   const ozetNerede = ozetKosullar.length ? `WHERE ${ozetKosullar.join(" AND ")}` : "";
@@ -88,8 +88,8 @@ yonlendirici.post("/tumunu-kapat", async (istek, yanit) => {
     kosullar.push("kind = ?");
     degerler.push(tur);
   }
-  // Pencere burada uygulanmaz: aÃ§Ä±k uyarÄ±larÄ±n hepsi kapanÄ±r, yoksa eski
-  // kayÄ±tlar sayaÃ§ta kalÄ±p listeyle uyuÅŸmaz.
+  // Pencere burada uygulanmaz: açık uyarıların hepsi kapanır, yoksa eski
+  // kayıtlar sayaçta kalıp listeyle uyuşmaz.
 
   const etkilenen = await yaz(`UPDATE alert SET acknowledged = 1 WHERE ${kosullar.join(" AND ")}`, degerler);
   await denetim(istek, "uyari-tumunu-kapat", "alert", null);
@@ -99,12 +99,12 @@ yonlendirici.post("/tumunu-kapat", async (istek, yanit) => {
 yonlendirici.post("/:id/kapat", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃ§ersiz uyarÄ± kimliÄŸi" });
+    yanit.status(400).json({ hata: "geçersiz uyarı kimliği" });
     return;
   }
   const etkilenen = await yaz("UPDATE alert SET acknowledged = 1 WHERE id = ?", [id]);
   if (etkilenen === 0) {
-    yanit.status(404).json({ hata: "uyarÄ± yok" });
+    yanit.status(404).json({ hata: "uyarı yok" });
     return;
   }
   await denetim(istek, "uyari-kapat", "alert", id);

@@ -25,7 +25,7 @@ yonlendirici.get("/geo", async (_istek, yanit) => {
 yonlendirici.patch("/provider/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃƒÂ§ersiz saÃ„Å¸layÃ„Â±cÃ„Â± kimliÃ„Å¸i" });
+    yanit.status(400).json({ hata: "geçersiz sağlayıcı kimliği" });
     return;
   }
   const govde = dogrula(saglayiciSemasi, istek.body, yanit);
@@ -40,7 +40,7 @@ yonlendirici.patch("/provider/:id", async (istek, yanit) => {
   if (govde.state !== undefined) {
     alanlar.push("state = ?");
     degerler.push(govde.state);
-    // Karantina agirligi yedege alir, cikista yedekten doner (Ã‚Â§8, C33).
+    // Karantina agirligi yedege alir, cikista yedekten doner (§8, C33).
     if (yeniKarantina) {
       alanlar.push("weight_yedek = COALESCE(?, weight)");
       degerler.push(govde.weight ?? null);
@@ -74,13 +74,13 @@ yonlendirici.patch("/provider/:id", async (istek, yanit) => {
     }
   }
   if (alanlar.length === 0) {
-    yanit.status(400).json({ hata: "gÃƒÂ¼ncellenecek alan yok" });
+    yanit.status(400).json({ hata: "güncellenecek alan yok" });
     return;
   }
   degerler.push(id);
   const etkilenen = await yaz(`UPDATE provider SET ${alanlar.join(", ")} WHERE id = ?`, degerler);
   if (etkilenen === 0) {
-    yanit.status(404).json({ hata: "saÃ„Å¸layÃ„Â±cÃ„Â± yok" });
+    yanit.status(404).json({ hata: "sağlayıcı yok" });
     return;
   }
   await denetim(istek, "saglayici-guncelle", "provider", id);
@@ -91,13 +91,16 @@ yonlendirici.post("/provider", async (istek, yanit) => {
   const govde = dogrula(saglayiciSemasi.extend({ name: z.string().trim().min(2).max(64), kind: z.enum(["residential", "mobile", "datacenter"]) }), istek.body, yanit);
   if (!govde) return;
 
-  // provider.id AUTO_INCREMENT degil; kimlik DB'ye birakilir, es zamanli
-  // eklemede MAX(id)+1 cakisan iki satir uretiyordu.
+  // provider.id AUTO_INCREMENT (043); kimlik DB'ye birakilir, panel id gondermez.
+  // Sayac bos donerse satir kimliksiz kalirdi, insertId bu yuzden dogrulanir.
   const yeniId = await ekle(
     "INSERT INTO provider (name, kind, ulke, gateway, kullanici, sifre, weight) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [govde.name, govde.kind, (govde.ulke ?? "TR").toUpperCase(), govde.gateway ?? null, govde.kullanici ?? null, govde.sifre ?? null, govde.weight ?? 1],
   );
   const id = yeniId;
+  if (!id) {
+    throw new Error("saglayici kimligi uretilmedi");
+  }
   await denetim(istek, "saglayici-ekle", "provider", id);
   yanit.status(201).json(await tek("SELECT id, name, kind, ulke, state, weight FROM provider WHERE id = ?", [id]));
 });
@@ -105,19 +108,19 @@ yonlendirici.post("/provider", async (istek, yanit) => {
 yonlendirici.delete("/provider/:id", async (istek, yanit) => {
   const id = Number(istek.params.id);
   if (!Number.isInteger(id)) {
-    yanit.status(400).json({ hata: "geÃƒÂ§ersiz saÃ„Å¸layÃ„Â±cÃ„Â± kimliÃ„Å¸i" });
+    yanit.status(400).json({ hata: "geçersiz sağlayıcı kimliği" });
     return;
   }
   try {
     const etkilenen = await yaz("DELETE FROM provider WHERE id = ?", [id]);
     if (etkilenen === 0) {
-      yanit.status(404).json({ hata: "saÃ„Å¸layÃ„Â±cÃ„Â± yok" });
+      yanit.status(404).json({ hata: "sağlayıcı yok" });
       return;
     }
     await denetim(istek, "saglayici-sil", "provider", id);
     yanit.status(204).end();
   } catch (hata) {
-    // Hit kaydÃ„Â± olan saÃ„Å¸layÃ„Â±cÃ„Â± silinemez; kapatÃ„Â±lÃ„Â±r.
+    // Hit kaydı olan sağlayıcı silinemez; kapatılır.
     if ((hata as { code?: string }).code === "ER_ROW_IS_REFERENCED_2") {
       await yaz("UPDATE provider SET state = ? WHERE id = ?", ["disabled", id]);
       await denetim(istek, "saglayici-kapat", "provider", id);

@@ -6,6 +6,7 @@ export type MotorHiti = {
   result: string;
   saglayici_id: number | null;
   geo_mode: string | null;
+  tur: string | null;
   http_status: number | null;
   latency_ms: number | null;
   bytes: number | null;
@@ -25,14 +26,14 @@ export async function hitYaz(
   hits: MotorHiti[],
 ): Promise<void> {
   const satirlar = hits.map((h) => [
-    burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback",
+    burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback", h.tur ?? null,
     h.result, h.http_status, h.latency_ms, h.bytes,
   ]);
   for (let i = 0; i < satirlar.length; i += HIT_PARCASI) {
     const parca = satirlar.slice(i, i + HIT_PARCASI);
-    const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+    const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
     await yaz(
-      `INSERT INTO hit (burst_id, provider_id, geo_code, geo_mode, result, http_status, latency_ms, bytes) VALUES ${yerler}`,
+      `INSERT INTO hit (burst_id, provider_id, geo_code, geo_mode, tur, result, http_status, latency_ms, bytes) VALUES ${yerler}`,
       parca.flat(),
     );
   }

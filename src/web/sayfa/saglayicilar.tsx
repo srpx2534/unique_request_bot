@@ -8,7 +8,7 @@ import { Etiket } from "@/bilesen/ui/etiket";
 import { Modal } from "@/bilesen/ui/pencere";
 import { Onay } from "@/bilesen/ui/onay";
 import { useBildirim } from "@/bilesen/ui/bildirim";
-import { ayarKullan, ayarYaz, saglayiciGuncelle, saglayiciKullan, type Saglayici } from "@/lib/panel";
+import { ayarKullan, oranYaz, saglayiciGuncelle, saglayiciKullan, type Saglayici } from "@/lib/panel";
 import { ApiHatasi, iste } from "@/lib/api";
 
 const DURUM_TON: Record<string, "basari" | "uyari" | "notr"> = {
@@ -25,7 +25,7 @@ export default function Saglayicilar() {
   const liste = saglayiciKullan(arama);
   const ayarlar = ayarKullan();
   const guncelle = saglayiciGuncelle();
-  const yaz = ayarYaz();
+  const yaz = oranYaz();
   const bildir = useBildirim();
   const istemci = useQueryClient();
   const [oranlar, setOranlar] = useState<Record<string, string>>({});
@@ -58,7 +58,11 @@ export default function Saglayicilar() {
       bildir(`Oranlar 100 olmalı, şu an ${toplam}`, "hata");
       return;
     }
-    yaz.mutate(oranlar, { onSuccess: () => bildir("Oranlar kaydedildi") });
+    // Yalnızca üç anahtar gider: uç oran dışındaki ayar satırlarını kabul etmez.
+    const govde = Object.fromEntries(
+      ["oran_residential", "oran_mobil", "oran_datacenter"].map((k) => [k, oranlar[k] ?? "0"]),
+    );
+    yaz.mutate(govde, { onSuccess: () => bildir("Oranlar kaydedildi") });
   }
 
   function ekleGonder(olay: FormEvent) {

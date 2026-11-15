@@ -1,4 +1,4 @@
--- ÃƒÅ“retilmiÃ…Å¸ dosya. Elle dÃƒÂ¼zenlenmez.
+-- Üretilmiş dosya. Elle düzenlenmez.
 -- Kaynak: tools/gen_uule.py, girdi: 003_geo.sql
 SET NAMES utf8mb4;
 UPDATE geo SET uule='w+CAIQICIcm9sZToxIHByb2R1Y2VyOjEyIHByb3ZlbmFuY2U6NiB0aW1lc3RhbXA6MTc5NDUxNjM2MDA4MSBsYXRsbmc6MzcuMDAwMDAwLDM1LjMyMTMwMCByYWRpdXM6NjUwMDA' WHERE code=1;

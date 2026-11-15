@@ -157,6 +157,7 @@ def burst_yap(
             # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.
             kayit["saglayici_id"] = saglayici_id
             kayit["geo_mode"] = geo_mod
+            kayit["tur"] = tur
             kayit["cerez"] = bool(cerezler)
             if cerez_profil is not None:
                 havuz.cerez_birak(cerez_profil)

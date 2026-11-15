@@ -1,9 +1,9 @@
-"""SERP isteÄŸini elle dener.
+"""SERP isteğini elle dener.
 
-API yolunu ve HTML yedeÄŸini ayrÄ± ayrÄ± Ã§alÄ±ÅŸtÄ±rÄ±r, sonuÃ§ sayÄ±sÄ±nÄ± ve ilk
+API yolunu ve HTML yedeğini ayrı ayrı çalıştırır, sonuç sayısını ve ilk
 bes adresi yazar. Anahtar ayar tablosundaki serp_decodo alanindan okunur.
 
-KullanÄ±m:
+Kullanım:
     python tools/serp_dene.py --sorgu "veteriner" --domain petlebi.com
 """
 
@@ -20,7 +20,7 @@ from worker import serp  # noqa: E402
 
 
 def yaz(etiket: str, sonuc: dict) -> None:
-    """Bir sonucu okunur biÃ§imde yazar."""
+    """Bir sonucu okunur biçimde yazar."""
     print(f"--- {etiket} ---")
     print(f"result={sonuc['result']} position={sonuc['position']} "
           f"http={sonuc['http_status']} ms={sonuc['elapsed_ms']} "
@@ -32,7 +32,7 @@ def yaz(etiket: str, sonuc: dict) -> None:
 
 
 def main() -> int:
-    """Her iki yolu dener. API baÅŸarÄ±sÄ±zsa 1 dÃ¶ner."""
+    """Her iki yolu dener. API başarısızsa 1 döner."""
     ayar = argparse.ArgumentParser(description="SERP denemesi")
     ayar.add_argument("--sorgu", required=True)
     ayar.add_argument("--domain")
