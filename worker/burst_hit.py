@@ -12,8 +12,13 @@ from worker import click, cookie, serp
 
 
 def sayaclar() -> dict:
-    """Sonuc sayaci iskeletini uretir."""
-    return {"ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
+    """Sonuc sayaci iskeletini uretir.
+
+    hedef_yok bir hit sonucu degil, burst seviyesinde kalir: hedef hic
+    bulunamadi ve hit atilmadi.
+    """
+    return {"ok": 0, "captcha": 0, "not_found": 0, "hedef_yok": 0,
+            "timeout": 0, "error": 0}
 
 
 def tek_hit(

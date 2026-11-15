@@ -28,6 +28,7 @@ type MotorCevabi = {
   ok?: number;
   captcha?: number;
   not_found?: number;
+  hedef_yok?: number;
   timeout?: number;
   error?: number;
   stats?: Record<string, number>;
@@ -154,6 +155,7 @@ async function calistir(is: Is): Promise<void> {
       ok: govde.ok ?? 0,
       captcha: govde.captcha ?? 0,
       not_found: govde.not_found ?? 0,
+      hedef_yok: govde.hedef_yok ?? 0,
       timeout: govde.timeout ?? 0,
       error: govde.error ?? 0,
     };

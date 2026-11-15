@@ -1,0 +1,31 @@
+# BaÄŸÄ±mlÄ±lÄ±klar ve sanal ortamlar
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# SÄ±rlar
+.env
+
+# ÃœretilmiÅŸ dosyalar
+dist/
+build/
+db/migrations/004_uule.sql
+
+# Log ve geÃ§ici
+logs/
+*.log
+coverage/
+.vite/
+.redis/
+
+# Cerez dosyalari: hesap token'i tasir, repoya girmez.
+cerezler/
+cerez/
+
+cerez_yukleme/
+
+# Kalici kok CEREZ_YUKLEME_KOK ile degistirilebilir; degistirilirse
+# o dizin buraya ayrica eklenmeli.
+cerez_yukleme/
+**/cerez_yukleme/

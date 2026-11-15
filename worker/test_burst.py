@@ -75,14 +75,16 @@ def test_devam_yoksa_tum_hitler_atilir(taklit) -> None:
 
 
 def test_hedef_yoksa_not_found_sayilir(taklit, monkeypatch) -> None:
-    """Hedef ilk 100'de yoksa tüm adet not_found yazılır."""
+    """Hedef ilk 100'de yoksa tüm adet hedef_yok yazılır, not_found sıfır kalır."""
     monkeypatch.setattr(serp, "serp_getir", lambda *_a, **_k: {
         "result": "not_found", "position": None, "organik": [], "url": None,
         "profil": None, "kaynak": "api", "mesaj": "", "http_status": 200,
         "elapsed_ms": 1, "bytes": 1})
     sonuc = burst.burst_yap("a", "yok.com", 5)
     assert sonuc["result"] == "hedef_yok"
-    assert sonuc["not_found"] == 5
+    # Hit atılmadığı için kayıp not_found değil, hedef_yok olarak sayılır.
+    assert sonuc["hedef_yok"] == 5
+    assert sonuc["not_found"] == 0
     assert taklit["tik"] == 0
 
 

@@ -88,7 +88,8 @@ def burst_yap(
             return sonuc
         if cozum["result"] == "not_found" or not cozum["position"]:
             sonuc["result"] = "hedef_yok"
-            sonuc["not_found"] = adet
+            # Hic hit atilmadi: kayip sayisi adet degil, hedef_yok olarak yazilir.
+            sonuc["hedef_yok"] = adet
             # Hedef ilk 100'de yok: sayaç artar, eşikte kelime durur.
             sayac, durdu = saglik_db.hedef_yok_islet(sorgu, hedef_domain)
             sonuc["hedef_yok_sayac"] = sayac

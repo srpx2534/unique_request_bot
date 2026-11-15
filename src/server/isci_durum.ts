@@ -49,11 +49,11 @@ export async function hedefYokDenetle(keywordId: number, geoId: number): Promise
   const esik = Number(esikSatiri?.deger ?? ARDA_HEDEF_YOK) || ARDA_HEDEF_YOK;
   if (esik <= 0) return;
 
-  // Burst bazinda bakilir: bir burst'un butun hit'leri hedef_yok ise o burst
-  // hedefsizdir. Hedef_yok burst'u hic hit yazmadigi icin LEFT JOIN sart;
+  // Burst bazinda bakilir: hedef hic bulunamadiysa (hit yok ya da butun hit'ler
+  // not_found) o burst hedefsizdir. Hic hit yazilmayan burst icin LEFT JOIN sart;
   // INNER JOIN bu burst'leri disarida birakip denetimi olu tutuyordu.
   const satirlar = await sorgu<{ hepsi: number }>(
-    `SELECT (COUNT(h.id) = 0 OR SUM(h.result = 'hedef_yok') = COUNT(h.id)) AS hepsi
+    `SELECT (COUNT(h.id) = 0 OR SUM(h.result IN ('hedef_yok', 'not_found')) = COUNT(h.id)) AS hepsi
        FROM burst b LEFT JOIN hit h ON h.burst_id = b.id
       WHERE b.keyword_geo_id = ? AND b.ended_at IS NOT NULL
       GROUP BY b.id ORDER BY b.id DESC LIMIT ?`,

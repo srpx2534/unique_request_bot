@@ -34,14 +34,6 @@ const OLCUM_ALANLARI: SayisalAlan[] = [
     max: 15,
     varsayilan: 0,
   },
-  {
-    anahtar: "esik_captcha",
-    etiket: "CAPTCHA eşiği (%)",
-    aciklama: "Aşılınca sağlayıcı 2 saat karantinaya alınır. En az 10 örnek beklenir.",
-    min: 1,
-    max: 100,
-    varsayilan: 20,
-  },
 ];
 
 const KUYRUK_ALANLARI: SayisalAlan[] = [
@@ -66,21 +58,49 @@ const CEREZ_ALANLARI: MantiksalAlan[] = [
     etiket: "Süresi geçmiş çerezleri de kullan",
     aciklama: "Önce süresi dolmamış çerezler denenir; tükendiyse süresi geçmişler kullanılır.",
   },
+];
+
+// Eşikler sayısaldır. Çerez kartındaki onay kutularına karışınca "1"/"0"
+// yazılıp değer sıfırlanıyordu; ayrı sayısal kartta tutulur.
+const SAGLIK_ALANLARI: SayisalAlan[] = [
   {
     anahtar: "esik_captcha",
     etiket: "Sağlayıcı CAPTCHA eşiği (%)",
     aciklama: "Sağlayıcı genel CAPTCHA oranı bu yüzdeyi geçerse 2 saat karantinaya girer.",
+    min: 1,
+    max: 100,
+    varsayilan: 20,
   },
   {
     anahtar: "esik_geo",
     etiket: "İl çifti CAPTCHA eşiği (%)",
     aciklama: "Bir sağlayıcı-il çifti bu yüzdeyi geçerse 60 dakika tükenmiş sayılır.",
+    min: 1,
+    max: 100,
+    varsayilan: 35,
   },
   {
     anahtar: "asgari_ornek",
     etiket: "En az örnek",
     aciklama: "Eşik, bu sayıda hit toplanmadan değerlendirilmez.",
-  },];
+    min: 1,
+    max: 1000,
+    varsayilan: 10,
+  },
+];
+
+// Hedef ilk 100'de yoksa kelime bu sayıda üst üste denemeden sonra durur.
+// 0 = otomatik durdurma kapalı.
+const DURDURMA_ALANLARI: SayisalAlan[] = [
+  {
+    anahtar: "hedef_yok_durma",
+    etiket: "Hedef yoksa durma (deneme)",
+    aciklama: "Kelime bu sayıda üst üste ilk 100'de bulunamazsa durdurulur. 0 = kapalı.",
+    min: 0,
+    max: 20,
+    varsayilan: 3,
+  },
+];
 
 const SERP = [
   { anahtar: "serp_decodo", ad: "Decodo", not: "sıralama ölçümü · birincil" },
@@ -320,6 +340,32 @@ export default function Ayarlar() {
         </div>
         <Dugme className="mt-4" disabled={yaz.isPending} onClick={mantiksalKaydet}>
           Çerezi kaydet
+        </Dugme>
+      </Kart>
+
+      <Kart baslik="Sağlık eşikleri" aciklama="Sağlayıcı ve il çifti karantina sınırları.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          {SAGLIK_ALANLARI.map(sayisalGirdi)}
+        </div>
+        <Dugme
+          className="mt-4"
+          disabled={yaz.isPending}
+          onClick={() => sayisalKaydet(SAGLIK_ALANLARI)}
+        >
+          Eşikleri kaydet
+        </Dugme>
+      </Kart>
+
+      <Kart baslik="Durdurma" aciklama="Hedefi bulunamayan kelime kendiliğinden durur.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          {DURDURMA_ALANLARI.map(sayisalGirdi)}
+        </div>
+        <Dugme
+          className="mt-4"
+          disabled={yaz.isPending}
+          onClick={() => sayisalKaydet(DURDURMA_ALANLARI)}
+        >
+          Durdurmayı kaydet
         </Dugme>
       </Kart>
     </div>

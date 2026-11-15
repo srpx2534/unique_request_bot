@@ -20,12 +20,14 @@ coverage/
 .redis/
 
 # Cerez dosyalari: hesap token'i tasir, repoya girmez.
-cerezler/
-cerez/
+# Desenler kok dizine sabitlenir; sabitlenmezse cerez/ deseni
+# src/server/cerez/ kaynak modulunu de yutuyor ve repo derlenmiyordu.
+/cerezler/
+/cerez/
 
-cerez_yukleme/
+/cerez_yukleme/
 
 # Kalici kok CEREZ_YUKLEME_KOK ile degistirilebilir; degistirilirse
 # o dizin buraya ayrica eklenmeli.
-cerez_yukleme/
+/cerez_yukleme/
 **/cerez_yukleme/

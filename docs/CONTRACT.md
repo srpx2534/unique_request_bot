@@ -360,8 +360,10 @@ Yüklenici — Ad, tarih, imza: ................................................
 - Ölü kod yorumla gizlenmez, silinir. Yerine yeni davranış yorumlanır.
 ### 23.2 Dosya disiplini
 - Dosya başına tek sorumluluk. Bir dosyada iki farklı iş varsa bölünür.
-- Dosya 250 satırı geçmez. Geçiyorsa sorumluluk ayrıştırılmamış demektir.
-  - Bolme durumu: cerez, serp, burst, kelime, isci, panel bolundu; havuz.py ve saglik_db.py beklemede (EKSIKLER 58).
+- **Bölme işi, proje çalışır hale gelene kadar yapılmaz.** Proje bitmeden hiçbir dosya bölünmez. Bölme, geliştirme aşaması tamamlandıktan sonraki bakım/iyileştirme turunda yapılır. Gerekçe: çalışan hattı bölme sırasında bozmamak.
+- Dosya 450 satırı geçmez. Geçiyorsa sorumluluk ayrıştırılmamış demektir; ancak bölme yukarıdaki kural gereği ertelenir.
+- Sınır `worker/test_boyut.py` ile denetlenir; kapsam `.py`, `.ts` ve `.tsx`. Test iki eşik kullanır: 450 satır bölme hedefi (bilgi), 800 satır sert tavan (bölme zorunlu).
+  - Bölme durumu: cerez, serp, burst, kelime, isci, panel bölündü. Beklemede: `worker/havuz.py` (635). `worker/saglik_db.py` (374) ve `src/web/sayfa/cerezler.tsx` (418) hedef sınırın altında.
 - Sınıf başına ayrı dosya açılmaz; ilgili küçük sınıflar tek dosyada toplanır.
 - `index.ts` / `index.py` barrel zinciri kurulmaz; import doğrudan dosyaya gider.
 - Boş klasör bırakılmaz.
