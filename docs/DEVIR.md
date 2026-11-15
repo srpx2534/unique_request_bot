@@ -1,0 +1,55 @@
+# Devir — 2026-11-15
+
+Bu dosya devralan ajan içindir. Önce tamamını oku, sonra "Sıradaki iş"in 1. adımından başla. Sözleşme `docs/CONTRACT.md` v1.8.5 kilitli, açık maddeler `docs/EKSIKLER.md` (40 açık, 31 kapalı, 2 kısmi).
+
+## Sıradaki iş — sağlayıcılar ekranında kaydet çalışmıyor
+
+Kök neden bulundu, düzeltme yazılmadı: `src/server/panel_ayar.ts` satır 68 `if (anahtar.startsWith("oran_")) continue;` yüzünden genel `PATCH /ayar` ucu `oran_*` anahtarlarını sessizce atlıyor. Sağlayıcılar ekranı `src/web/sayfa/saglayicilar.tsx` satır 61'de `yaz.mutate(oranlar)` ile bu uca `{oran_residential, oran_mobil, oran_datacenter}` gönderiyor; istek 200 dönüyor, tabloya satır yazılmıyor. `ayar.oran_mobil` bu yüzden 0 kalıyor.
+
+Yapılacak, sırayla:
+
+1. `src/server/panel_ayar.ts` içine `yonlendirici.patch("/oran", ...)` ekle. Gövdeyi zod ile doğrula: `oran_residential`, `oran_mobil`, `oran_datacenter`, hepsi `z.coerce.number().int().min(0).max(100)`. Toplam 100 değilse 400 ve `{hata}` dön. Geçerliyse üçünü `INSERT INTO ayar (anahtar, deger) VALUES (?, ?) ON DUPLICATE KEY UPDATE deger = VALUES(deger)` ile yaz, `denetim(istek, "oran-guncelle", "ayar", null)` çağır, maskeli listeyi dön. Genel `PATCH /` içindeki `oran_` atlaması olduğu gibi kalır.
+2. `src/web/lib/panel.ts` içine `oranYaz()` ekle: `PATCH /ayar/oran`, `onSuccess: tazele(istemci, "ayar")`.
+3. `saglayicilar.tsx` satır 11'deki importta `ayarYaz` yerine `oranYaz`, satır 28'de `const yaz = oranYaz();`.
+4. Kapılar: `npm.cmd run tip`, `npm.cmd test`, `.venv\Scripts\python.exe tools\lint_yol.py`, mojibake taraması (`Ã|Ä±|ÅŸ` sayısı 0 olmalı).
+5. Kullanıcı sağlayıcılar ekranından `oran_mobil` değerini 10'a çekecek. `SELECT deger FROM ayar WHERE anahtar='oran_mobil';` ile 10 yazdığını doğrula.
+6. EKSIKLER 27: `SHOW COLUMNS FROM provider_geo;` ile kolonları gör (`tur` kolonu yok), mobil sağlayıcı sayısını `provider.kind='mobile'` üzerinden say, tek kelimeyle dar kapsamlı gerçek burst at, `hit` ve `burst` kayıtlarında mobil modalite oluştuğunu doğrula.
+
+## Sonrası
+
+EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (mysqldump yedek/geri yükleme, metrik ucu), 60 (liste uçlarının dönüş zarfı), 61 (DURUM/EKSIKLER dışındaki belgeler), 62 (README, .env.example, docker-compose, .gitattributes devir kontrolü). Proxy ve kimlik bilgisi gelmeden kapanmayan 17 madde (16, 17, 19, 22, 24, 25, 26, 31, 32, 33, 34, 36, 38, 43, 63, 64) beklemede.
+
+## Çalışma kuralları
+
+- Panel parametrelerini asistan değiştirmez; değeri kullanıcı girer.
+- Kritik sayfa yapısı değişiklikleri önce onaya sunulur.
+- Kod PowerShell copy-paste bloğu olarak verilir. Dosya yazımı `@'...'@` here-string + `[System.IO.File]::WriteAllText` + `New-Object System.Text.UTF8Encoding($false)` ile yapılır; `Set-Content`/`Out-File` Türkçe karakteri bozar.
+- Yamalar `[regex]::Replace` veya `.Replace` ile, dosya satır sonuna dokunmadan. Her yamadan sonra `DEGISMEDI` kontrolü ve mojibake taraması.
+- Yazma sonrası uzunluk kontrolü yap: bu oturumda `isci_durum.ts` bir kez 0 bayta düştü, `git checkout -- <yol>` ile HEAD'den kurtarıldı.
+- `npm.ps1` execution policy'ye takılıyor, `npm.cmd` kullan.
+- Çerezler site+kelime bazlıdır, aktif-önce ve canlı-önce sıralanır, hiç silinmez. Dosya adından il ataması yapılmaz.
+- Dosya bölme proje bitene kadar yok; hedef 450 satır, tavan 800.
+- Sözleşmedeki `kilit_suresi_dk` panel alanı ve çakışma listesi ekranı G4'tür, geliştirme aşamasında.
+
+## Ortam
+
+- Kök: `C:\Users\developer\Desktop\App\unique_request_bot`
+- Python yalnızca `.venv\Scripts\python.exe` altında, PATH'te yok.
+- MySQL: `C:\xampp\mysql\bin\mysql.exe`, kullanıcı `request`, şifre `.env` içinde `MYSQL_PASSWORD`, veritabanı `unique_request_bot`.
+- Worker testleri `worker\test_*.py`, `.venv\Scripts\python.exe -m pytest worker`.
+- UI testleri `src\server\*.test.ts`, `npm.cmd test`.
+- Migration: `.venv\Scripts\python.exe tools\migrate.py`, dosyalar `db\migrations`, sıradaki numara 043.
+- Worker veritabanına yazmaz (§3); DB işleri control plane'de.
+
+## Doğrulanmış davranışlar
+
+- Kilit (C64): beş ayrı süreç aynı satırı sahiplenmeye çalıştığında tam biri kazanıyor, taze yabancı kilitte beşi de kaybediyor, süresi geçmiş kilitte biri devralıyor, uyarı satırdaki sahibi adıyla yazılıyor, 30 dakika sessizlik tutuyor. Araç: `tools/kilit_cakisma_dene.ts` (`npx.cmd tsx tools\kilit_cakisma_dene.ts <id> [sahip|devral|uyari]`).
+- hedef_yok: üst üste 3 hedefsiz burstte kelime `paused`, kampanya kapanıyor, `hedef_yok` uyarısı düşüyor.
+- Kapılar son hâlde yeşil: 173 worker, 49 UI, lint 0, tip 0, ağaç temiz.
+
+## Açık altyapı notları
+
+- `.env` içinde hiç `PROXY_*` satırı yok; madde 23'ün env yedeği devrede değil.
+- `provider_geo` tablosunda `tur` kolonu yok.
+- Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
+- 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
