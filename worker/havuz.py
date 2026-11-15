@@ -455,6 +455,7 @@ def _cift_bul(site_domain: str | None, kelime: str | None) -> tuple[int, int] | 
 
 def _secim_sorgusu(
     gecmis: int,
+    canli: int | None,
     ulke: str,
     geo_kodu: int | None,
     cift: tuple[int, int] | None,
@@ -482,6 +483,11 @@ def _secim_sorgusu(
         "suresi_gecmis = %s",
     ]
     parametreler: list = [gecmis]
+    if canli is None:
+        kosullar.append("canli IS NULL")
+    else:
+        kosullar.append("canli = %s")
+        parametreler.append(canli)
     if geo_kodu:
         kosullar.append("(il_kodu = %s OR il_kodu IS NULL)")
         parametreler.append(geo_kodu)
@@ -495,8 +501,7 @@ def _secim_sorgusu(
     sorgu = (
         "SELECT id, parmak_izzi FROM cookie_profil WHERE "
         + " AND ".join(kosullar)
-        + " ORDER BY (canli = 1) DESC, (canli IS NULL) DESC,"
-        + " (il_kodu = %s) DESC, (COALESCE(mobil, 0) = %s) DESC,"
+        + " ORDER BY (il_kodu = %s) DESC, (COALESCE(mobil, 0) = %s) DESC,"
         + " (ulke IS NULL OR ulke = %s) DESC, kullanim ASC, id ASC LIMIT 1"
     )
     parametreler.extend([geo_kodu or 0, 1 if mobil else 0, ulke])
@@ -556,42 +561,46 @@ def cerez_sec(
             )
             ulke_kodu = ulke or "TR"
             gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
-            for gecmis in gecmisler:
-                sifirlandi = False
-                for _ in range(3):
-                    sorgu, secim_parametreleri = _secim_sorgusu(
-                        gecmis, ulke_kodu, geo_kodu, cift, mobil
-                    )
-                    imlec.execute(sorgu, secim_parametreleri)
-                    satir = imlec.fetchone()
-                    if not satir:
-                        if cift and not sifirlandi:
-                            # Cift tukendi: kullanim kayitlari yaslandirilir ve
-                            # tur basa alinir; havuz bosuna kapanmaz.
-                            imlec.execute(
-                                "DELETE FROM cookie_kullanim"
-                                " WHERE site_id = %s AND keyword_id = %s",
-                                (cift[0], cift[1]),
-                            )
-                            sifirlandi = True
-                            continue
-                        break
-                    profil_id = int(satir[0])
-                    parmak = satir[1]
-                    imlec.execute(
-                        "UPDATE cookie_profil SET durum = 'kullaniliyor', dugum_id = %s,"
-                        " alindi_at = UTC_TIMESTAMP(3) WHERE id = %s AND durum = 'hazir'",
-                        (_dugum_id(), profil_id),
-                    )
-                    if not imlec.rowcount:
-                        continue
-                    if cift:
-                        imlec.execute(
-                            "INSERT IGNORE INTO cookie_kullanim (profil_id, site_id, keyword_id)"
-                            " VALUES (%s, %s, %s)",
-                            (profil_id, cift[0], cift[1]),
+            # Kademe: canli once, sonra olculmemis, en sonda engelli (C45).
+            # Canli, suresi gecmemis VE engellenmiyor olandir; calisan cerez
+            # her halukarda ondedir, tarihi sonra gelir.
+            for canli in (1, None, 0):
+                for gecmis in gecmisler:
+                    sifirlandi = False
+                    for _ in range(3):
+                        sorgu, secim_parametreleri = _secim_sorgusu(
+                            gecmis, canli, ulke_kodu, geo_kodu, cift, mobil
                         )
-                    return profil_id, parmak
+                        imlec.execute(sorgu, secim_parametreleri)
+                        satir = imlec.fetchone()
+                        if not satir:
+                            if cift and not sifirlandi:
+                                # Cift tukendi: kullanim kayitlari yaslandirilir ve
+                                # tur basa alinir; havuz bosuna kapanmaz.
+                                imlec.execute(
+                                    "DELETE FROM cookie_kullanim"
+                                    " WHERE site_id = %s AND keyword_id = %s",
+                                    (cift[0], cift[1]),
+                                )
+                                sifirlandi = True
+                                continue
+                            break
+                        profil_id = int(satir[0])
+                        parmak = satir[1]
+                        imlec.execute(
+                            "UPDATE cookie_profil SET durum = 'kullaniliyor', dugum_id = %s,"
+                            " alindi_at = UTC_TIMESTAMP(3) WHERE id = %s AND durum = 'hazir'",
+                            (_dugum_id(), profil_id),
+                        )
+                        if not imlec.rowcount:
+                            continue
+                        if cift:
+                            imlec.execute(
+                                "INSERT IGNORE INTO cookie_kullanim (profil_id, site_id, keyword_id)"
+                                " VALUES (%s, %s, %s)",
+                                (profil_id, cift[0], cift[1]),
+                            )
+                        return profil_id, parmak
             return None
     except Exception:  # noqa: BLE001
         return None

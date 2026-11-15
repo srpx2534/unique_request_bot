@@ -48,7 +48,7 @@ Dağıtıcı işi düğüm kayıt defterinden seçer: yalnızca `durum='aktif'` 
 Ölçüm daima ulusaldır. İl sıralaması ölçülmez.
 Sağlayıcı seed'i `005_provider.sql` ile yüklenir. `city_capable` yalnızca il hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2 gereği ulusal moda düşer.
 İl seçili kelimede önce o ile ait IP'ler denenir; o ilin tüm türleri tükenmeden TR geneline inilmez. İl seçili değilse doğrudan TR geneli kullanılır (C61). Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır (`oran_residential`, `oran_mobil`, `oran_datacenter`) ve panelden düzenlenir. Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o türde `state='active'`, karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP yalnızca burst'ün ilk 2 hit'inde devreye girer; sonrasında mobil IP kullanılmaz.
-Çerez seçimi kelimenin modalitesine göre yapılır. Mobil işaretli kelimede önce `mobile` türü sağlayıcı denenir, yoksa normal sıraya düşülür ve android profil kullanılır (C48). Çerez önceliği sabittir: önce canlılar, sonra süresi geçmişler. Her iki grupta sıra: il eşleşen, mobil çerez, TR çerez, yabancı çerez. İl eşleşmesi olmayan kelimede TR çerezler yabancıların önüne geçer; yabancı çerez yalnızca TR çerez kalmadığında kullanılır. Proxy tarafı her zaman TR'dir (C45, C46). Çerez hiçbir zaman silinmez. Sıralama önce canlılığa bakar: canlı çerezler, sonra hiç ölçülmemişler, en sonda ölçülüp engellenenler (C62).
+Çerez seçimi kelimenin modalitesine göre yapılır. Mobil işaretli kelimede önce `mobile` türü sağlayıcı denenir, yoksa normal sıraya düşülür ve android profil kullanılır (C48). Çerez önceliği sabittir ve altı kademelidir. Canlı, süresi geçmemiş VE engellenmiyor olandır. Çalışan çerez her hâlükârda önce gelir, tarih sonra bakılır. Kademeler: (1) canlı+süresi geçmemiş, (2) canlı+süresi geçmiş, (3) ölçülmemiş+süresi geçmemiş, (4) ölçülmemiş+süresi geçmiş, (5) engelli+süresi geçmemiş, (6) engelli+süresi geçmiş. Her kademede iç sıra: il eşleşen, mobil çerez, TR çerez, yabancı çerez. İl eşleşmesi olmayan kelimede TR çerezler yabancıların önüne geçer; yabancı çerez yalnızca TR çerez kalmadığında kullanılır. Proxy tarafı her zaman TR'dir (C45, C46). Çerez hiçbir zaman silinmez. Sıralama önce canlılığa bakar: canlı çerezler, sonra hiç ölçülmemişler, en sonda ölçülüp engellenenler (C62).
 Sağlayıcı satırı `ulke` taşır; Türkiye IP'si veren sağlayıcılar `ulke='TR'` ile işaretlenir ve `tr_fallback` adımında yalnızca bunlar aranır.
 Decodo residential ve mobile ayrı ürünlerdir; kimlik bilgileri sağlayıcı satırında tutulur, `.env`'de tek değer yetmez.
 ## 6. Şema
@@ -242,7 +242,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C42 — Yıkıcı işlemler (silme, toplu kapatma) onay ister; bilinmeyen yol 404 ekranına düşer.
 - C43 — `ayar` okuması worker'da önbelleklidir; tablo okunamazsa `.env`, o da yoksa varsayılan devreye girer ve iş durmaz.
 - C44 — Çerez, site+kelime çiftinde bir kez kullanılır; farklı sitede aynı kelime için yeniden kullanılabilir. Çift kaydı `cookie_kullanim` ile tutulur.
-- C45 — Çerez önceliği sabittir: canlılar önce, süresi geçmişler sonra; her grupta sıra il eşleşen, mobil, TR, yabancı. Süresi geçmişler canlılar bitmeden devreye girmez. Çerez hiçbir zaman silinmez; silme yalnızca panelden elle yapılır.
+- C45 — Çerez önceliği altı kademelidir: canlı+süresi geçmemiş, canlı+süresi geçmiş, ölçülmemiş+süresi geçmemiş, ölçülmemiş+süresi geçmiş, engelli+süresi geçmemiş, engelli+süresi geçmiş. Her kademede sıra il eşleşen, mobil, TR, yabancı. Çerez hiçbir zaman silinmez; silme yalnızca panelden elle yapılır.
 - C46 — Çerez ülkesi IP ülkesiyle eşleşmeden çerez yüklenmez ve yabancı çıkışta çerez kullanılmaz. Havuz seçiminde ülke süzgeç değil sıralamadır: TR çerezler yabancıların önüne geçer, yabancı çerez yalnızca TR çerez kalmadığında kullanılır.
 - C47 — Çerez profili parmak izi ailesini (`chrome`, `firefox`, `safari`, `bilinmiyor`) taşır; istek o aileyle gider, çerez yoksa profil rastgele seçilir.
 - C48 — Mobil işaretli kelimede önce mobil çerez ve `mobile` sağlayıcı denenir; mobil sağlayıcı yoksa iş durmaz, normal proxy'ye düşer ve android profil kullanılır.
@@ -259,7 +259,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C59 — Doğrulama hatası 400 `{ hata }`, sunucu hatası 500 `{ hata, ayrinti }` döner; `ayrinti` üretimde boştur.
 - C60 — E-posta başına 5 hatalı giriş denemesinden sonra kilit devreye girer; sayaç Redis'tedir.
 - C61 — İl seçili kelimede seçim önce o ile ait IP'leri dener; il tükenmeden TR geneline inilmez. İl seçili değilken doğrudan TR geneli kullanılır.
-- C62 — Çerez sıralaması canlılığa öncelik verir: canlı, sonra ölçülmemiş, en sonda engellenmiş. Ölçüm `tools/cerez_olcum.py` ile yapılır; sonuç silmez, sıralamayı değiştirir.
+- C62 — Canlı, süresi geçmemiş ve engellenmiyor olandır. Canlılık kademesi tarihin önündedir: çalışan çerez, süresi geçmiş olsa bile engelli taze çerezin önüne geçer. Ölçüm `tools/cerez_olcum.py` ile yapılır; sonuç silmez, yalnızca kademeyi değiştirir.
+- C63 — İl seçiminde şu an tek dayanak proxy'nin il bazlı IP'sidir. Çerezde il eşleşmesi aranmaz; `cookie_profil.il_kodu` boş kalır ve sıralama NULL'a tolerans tanır. Çerez il eşleştirmesi geliştirme aşamasına bırakılmıştır.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -355,6 +356,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.1 — Il atamasi dosya adina gore yapilmaz kurali §26.2''ye islendi; ilBul cagrisi kaldirildi, profil ilsiz birakildi.
 - 1.8.2 — İl seçili kelimede proxy seçimi önce il IP'lerine, il tükenirse TR geneline bağlandı; il yoksa doğrudan TR (§5, C61).
 - 1.8.3 — Çerez canlılık ölçümü eklendi: cookie_profil.canli/son_kontrol_at/olcum_proxy, sıralamada canlı önceliği (§5, §26.2, C62).
+- 1.8.4 — İl seçiminde tek dayanak proxy il IP'si olarak sabitlendi (C63); geliştirme aşaması başlığı açıldı, Araçlar menüsü ve çerez il eşleştirmesi oraya taşındı (§27).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
@@ -466,3 +468,10 @@ CREATE TABLE cookie_kullanim (profil_id BIGINT UNSIGNED NOT NULL, site_id BIGINT
 - Silme partisi 400 profil ve 1000 dosya satırıdır; her parti ayrı işlemde commit edilir.
 - Geçici klasör `CEREZ_YUKLEME_KOK` altındadır ve kalıcı birimde durur; düğüm kimliği `DUGUM_ADI` ile verilir.
 - `temizle` globaldir ve geri alınamaz; onay ister.
+## 27. Geliştirme aşaması (uygulama hayata geçmeden yapılmaz)
+
+Bu başlıktaki maddeler, uygulama çalışır hale gelip hayata geçtikten sonra ele alınır. Hayata geçmeden hiçbiri yapılmaz; hiçbiri mevcut çalışan hattı bloke etmez.
+
+- G1 — **Araçlar menüsü.** Panelde "Araçlar" sayfası açılır; bakım ve toplu işlem araçları burada toplanır. Her araç tek iş yapar, çalışırken ilerleme gösterir ve durdurulabilir.
+- G2 — **Çerez canlılık ölçümü aracı.** `tools/cerez_olcum.py` bu menüden tetiklenir; seçilen adet, bekleme süresi ve proxy kullanımı panelden verilir, sonuç canlı/engelli/ölçülmemiş sayaçlarına yansır.
+- G3 — **Çerez il eşleştirmesi.** Çerezde il bilgisi güvenilir bir kaynaktan okunur (klasör yapısı ya da yükleme anında il seçimi) ve `cookie_profil.il_kodu` doldurulur. Dosya adına göre atama yapılmaz. Doldurulunca il eşleşen çerez, il eşleşmeyenin önüne geçer (C45 kademe içi sıra).

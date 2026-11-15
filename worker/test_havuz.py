@@ -106,7 +106,7 @@ def _hazirla(monkeypatch, sahte) -> None:
 
 
 def test_secim_sorgusu_ulkeyi_parametre_gecirir() -> None:
-    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", None, None, False)
+    sorgu, parametreler = havuz._secim_sorgusu(0, 1, "TR", None, None, False)
     assert "'TR'" not in sorgu
     assert "ulke = %s" in sorgu
     # Ulke artik suzgec degil siralama: TR cerezler yabancilarin onune gecer.
@@ -115,18 +115,18 @@ def test_secim_sorgusu_ulkeyi_parametre_gecirir() -> None:
 
 
 def test_il_kodu_varsa_suzgec_eklenir() -> None:
-    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", 34, None, False)
+    sorgu, parametreler = havuz._secim_sorgusu(0, 1, "TR", 34, None, False)
     assert "(il_kodu = %s OR il_kodu IS NULL)" in sorgu
     assert 34 in parametreler
 
 
 def test_il_kodu_yoksa_suzgec_eklenmez() -> None:
-    sorgu, _ = havuz._secim_sorgusu(0, "TR", None, None, False)
+    sorgu, _ = havuz._secim_sorgusu(0, 1, "TR", None, None, False)
     assert "il_kodu = %s OR" not in sorgu
 
 
 def test_cift_varsa_kullanim_suzgeci_eklenir() -> None:
-    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", None, (5, 9), False)
+    sorgu, parametreler = havuz._secim_sorgusu(0, 1, "TR", None, (5, 9), False)
     assert "NOT EXISTS" in sorgu
     assert 5 in parametreler and 9 in parametreler
 
@@ -138,7 +138,7 @@ def test_parametre_sayisi_yer_tutucuyla_uyusur() -> None:
         (0, None, (2, 3), False),
         (1, 6, (2, 3), True),
     ):
-        sorgu, parametreler = havuz._secim_sorgusu(gecmis, "TR", geo, cift, mobil)
+        sorgu, parametreler = havuz._secim_sorgusu(gecmis, 1, "TR", geo, cift, mobil)
         assert sorgu.count("%s") == len(parametreler)
 
 
@@ -156,7 +156,8 @@ def test_havuz_bossa_sarma_donguye_girmez(monkeypatch) -> None:
     sahte.imlec.fetchone = lambda: None
 
     assert havuz.cerez_sec(34, "a.com", "kelime", False) is None
-    assert len(sahte.imlec.silinen_ciftler()) == 2
+    # Her tarih grubunda cift bir kez sifirlanir (3 kademe x 2 grup).
+    assert len(sahte.imlec.silinen_ciftler()) == 6
 
 
 def test_cerezsiz_kapaliyken_none(monkeypatch) -> None:
@@ -178,7 +179,7 @@ def test_suresiz_kullanim_kapaliyken_gecmis_aranmaz(monkeypatch) -> None:
 
     havuz.cerez_sec(34, "a.com", "kelime", False)
 
-    assert _gecmis_aramalari(sahte) == [0, 0]
+    assert _gecmis_aramalari(sahte) == [0] * 6
 
 
 def test_suresiz_kullanim_acikken_once_tazeler_sonra_gecmisler(monkeypatch) -> None:
@@ -189,7 +190,8 @@ def test_suresiz_kullanim_acikken_once_tazeler_sonra_gecmisler(monkeypatch) -> N
 
     havuz.cerez_sec(34, "a.com", "kelime", False)
 
-    assert _gecmis_aramalari(sahte) == [0, 0, 1, 1]
+    # Her canli kademesinde once taze, sonra gecmis grup denenir.
+    assert _gecmis_aramalari(sahte) == [0, 0, 1, 1] * 3
 
 class _OranImlec:
     def __init__(self, satirlar: list[tuple]) -> None:
@@ -336,3 +338,23 @@ def test_il_secilmemisse_dogrudan_tr(monkeypatch) -> None:
     sira = _sira_izle(monkeypatch)
     havuz.sec_mod(None, True)
     assert sira and all(k is None for k in sira)
+
+def test_canli_kademesi_tarihin_onunde(monkeypatch) -> None:
+    """Calisan cerez her zaman once; sira canli, olculmemis, engelli (C45)."""
+    kademeler: list = []
+
+    def secim_sorgusu(gecmis, canli, *_):
+        kademeler.append(canli)
+        return "SELECT 1", (gecmis,)
+
+    sahte = _SahteBaglanti()
+    _hazirla(monkeypatch, sahte)
+    sahte.imlec.fetchone = lambda: None
+    monkeypatch.setattr(havuz, "_secim_sorgusu", secim_sorgusu)
+
+    havuz.cerez_sec(34, "a.com", "kelime", False)
+
+    # Ilk dort arama canli, sonraki dort olculmemis, en son dort engelli.
+    assert kademeler[:4] == [1, 1, 1, 1]
+    assert kademeler[4:8] == [None, None, None, None]
+    assert kademeler[8:] == [0, 0, 0, 0]

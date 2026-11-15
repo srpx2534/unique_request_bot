@@ -6,20 +6,23 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 
 1. Format: Netscape `cookies.txt` (tercih) veya JSON dizi. Dosya basina tek profil. Dosya adi serbest, yalnizca uzanti (`.txt`/`.json`) denetlenir. (DUZELTILDI)
 2. Havuz: tek cookie yüzlerce hit için yetmez. Dosyalar sırayla, hit başına bir kez kullanılacak; tükenince başa dönülecek. (DUZELTILDI)
-3. Coğrafya: cookie hangi ilden alındıysa o ilin IP'siyle eşleşmeli. TR cookie + yabancı IP çelişki üretir. (KISMI: il atamasi beklemede)
+3. Cografya: il seciminde tek dayanak proxy il IP'sidir; cerezde il eslesmesi aranmaz (C63). Cerez il eslestirmesi gelistirme asamasi (G3). (KISMI)
 4. `SOCS` / `CONSENT` gerçek tarayıcıdan gelirse sabit değerlerden daha doğru; onay duvarı için bunlar yeğlenecek.
 5. Oturum açmış hesap cookie'si (`SID`) güçlü sinyal ama tek hesaptan yüzlerce arama hesabı şüpheli gösterir. Önce oturumsuz cookie ile başlanacak, `SID` ayrı ölçülecek.
 6. Tazelik: haftalar önce alınmış `NID`/`AEC` süresi geçmiş olur, Google yeniden üretir; fayda düşer, zarar yok.
 7. Cookie dosyaları repoya girmez; `.gitignore`'a alınacak, hesap token'ı taşıyabilir. (DUZELTILDI)
 8. `host_only` uretimi 199.229 gercek cerezde dogrulandi: 146.430 noktali alan adi (false), 52.799 noktasiz (true). Iki kol da dolu. (DUZELTILDI)
 9. Modalite artik icerik ya da yol ipucundan okunur, ipucu yoksa yukleme bayragina duser; rastgele dosya adi tek basina kaynak degil. (DUZELTILDI)
-10. Çerez canlılığı ölçülmedi: 22.704 "aktif" profil canlı demek değil.
+10. Cerez canligi olculuyor: `cookie_profil.canli` (NULL olculmedi, 1 engellenmiyor, 0 engelli), `son_kontrol_at`, `olcum_proxy`. Olcum `tools/cerez_olcum.py` ile calisir; engelli cerez silinmez, siralamada sona duser. Havuz sayaclarinda canli/engelli/olculmemis gorunur. (DUZELTILDI)
 11. `cerez_suresiz_kullan` kapatıldığında süresi geçmiş profillerin havuza dönüşü sınanmadı. (DUZELTILDI)
 12. `havuz.cerez_sec()` SQL'inde ülke süzgeci sabit `TR`; yabancı profiller hiç devreye girmiyor. (DUZELTILDI)
 13. Hatalı silme onay akışı ve `silinen` sayacı panelde uçtan uca görülmedi. Elle denendi: hatali kayitlar silindi, sayac dogru dondu. (DUZELTILDI)
 14. `cerez_kendi` parametre degildi; ayarlar ekranindan, sunucudaki okumadan ve `ayar` tablosundan kaldirildi. Sayimlar suan ortak. (DUZELTILDI)
 15. burst_dene.py adedi 60'lik basamaklara boluyor, sayaclari topluyor; AZAMI_HIT siniri korunuyor. (DUZELTILDI)
 16. Kisiye ozel cerez gorunumu ileride kullanici yonetiminde admin izni olarak gelecek. `cerez.ts` icindeki `kendi` degiskeni ile `suzgec` ve `suzgecProfil` SQL'leri yerinde duruyor; eklenirken bunlar kullanilacak, yeni degisken uretilmeyecek.
+
+### Sema hizalamasi (kapandi)
+- `hit.geo_mode` varsayilani `tr_fallback`, `cerez_yukleme.durum` `aktarim`, `cookie_dosya.durum` `bekliyor`, `cookie_profil.durum` `tukendi` tasimiyor. Migration `040`. (DUZELTILDI)
 
 ## E. Burst ve kabul
 
@@ -98,3 +101,9 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 te
 63. M6 pilotu: 5 sunucu, 20 kelime, 2 hafta saha testi.
 64. Pilot kabul ölçümleri: C7, C8, C9, C10, C11, C12, C15.
 65. Bolumleme 10 milyon satir esigiyle canli denenecek: esik asilinca gunluk bolumler kuruluyor mu, ileri gunler aciliyor mu, `partition` uyarisi dusuyor mu, saklama eski bolumleri dusuruyor mu.
+
+## N. Gelistirme asamasi (hayata gecmeden yapilmaz)
+
+- G1 — Araclar menusu acilacak; bakim ve toplu islem araclari orada toplanacak.
+- G2 — Cerez canlilik olcumu araci bu menuden tetiklenecek.
+- G3 — Cerez il eslestirmesi (klasor yapisi ya da yukleme aninda il secimi).
