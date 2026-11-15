@@ -96,15 +96,17 @@ yonlendirici.patch("/provider/:id", async (istek, yanit) => {
   yanit.json(await tek("SELECT id, name, kind, ulke, state, weight FROM provider WHERE id = ?", [id]));
 });
 
-yonlendirici.post("/provider", async (istek, yanit) => {
-  const eklemeSemasi = saglayiciGovdesi
+/** Ekleme: ad, tür ve gateway zorunlu; kimlik çifti kuralı geçerli. */
+const eklemeSemasi = saglayiciGovdesi
   .extend({
     name: z.string().trim().min(2).max(64),
     kind: z.enum(["residential", "mobile", "datacenter"]),
     gateway: z.string().trim().min(3).max(128),
   })
   .refine(kimlikCifti, { message: "kullanıcı ve şifre birlikte girilmeli", path: ["kullanici"] });
-const govde = dogrula(eklemeSemasi, istek.body, yanit);
+
+yonlendirici.post("/provider", async (istek, yanit) => {
+  const govde = dogrula(eklemeSemasi, istek.body, yanit);
   if (!govde) return;
 
   // provider.id AUTO_INCREMENT (043); kimlik DB'ye birakilir, panel id gondermez.

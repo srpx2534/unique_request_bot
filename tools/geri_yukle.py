@@ -3,6 +3,13 @@
 `mysql` istemcisiyle dosyayi akitir; onay ister. Sifre komut satirinda
 gorunmesin diye kimlik gecici secenek dosyasindan verilir (17.6).
 
+Kullanici her zaman root'tur: dump gorunumleri DEFINER=root tasir ve
+`request` kullanicisinda SUPER yoktur (1227). Parola bos olabilir; bos
+parola root'u devre disi birakmaz.
+
+Yuklemeden sonra gorunumler migration tanimlarindan yeniden kurulur; boylece
+DEFINER yuzunden sessizce eksik kalan gorunum kalmaz.
+
 Kullanim:
     python tools/geri_yukle.py veri/yedek/20260101-030000.sql
     python tools/geri_yukle.py veri/yedek/20260101-030000.sql --evet
@@ -35,13 +42,17 @@ def _env(anahtar: str, varsayilan: str = "") -> str:
     return varsayilan
 
 
-def _gorunumleri_onar(arac: Path, secenek: Path) -> None:
+def _gorunumleri_onar(arac: Path, secenek: Path) -> list[str]:
     """Gorunumleri migration tanimlarindan yeniden kurar.
 
-    mysqldump gorunumleri DEFINER=root ile yaziyor; geri yukleme sirasinda
-    gorunum sessizce eksik kalabiliyor (tablo sayisi tutar, view eksik olur).
-    Tanim dosyalarda durdugu icin burada tekrar uygulanir.
+    Args:
+        arac: mysql istemcisi.
+        secenek: Kimligi tasiyan gecici secenek dosyasi.
+
+    Returns:
+        Kurulamayan dosya adlari.
     """
+    hatalar: list[str] = []
     veritabani = _env("MYSQL_DATABASE", "unique_request_bot")
     for dosya in sorted((KOK / "db" / "migrations").glob("*.sql")):
         metin = dosya.read_text(encoding="utf-8")
@@ -49,12 +60,17 @@ def _gorunumleri_onar(arac: Path, secenek: Path) -> None:
             continue
         for parca in metin.split(";"):
             buyuk = parca.upper()
-            if "CREATE" in buyuk and "VIEW" in buyuk:
-                subprocess.run(
-                    [str(arac), f"--defaults-extra-file={secenek}", veritabani],
-                    input=parca.encode("utf-8"), stderr=subprocess.DEVNULL,
-                    shell=False, check=False,
-                )
+            if "CREATE" not in buyuk or "VIEW" not in buyuk:
+                continue
+            kosum = subprocess.run(
+                [str(arac), f"--defaults-extra-file={secenek}", veritabani],
+                input=parca.encode("utf-8"), stderr=subprocess.PIPE,
+                shell=False, check=False,
+            )
+            if kosum.returncode != 0:
+                hatalar.append(dosya.name)
+    return hatalar
+
 
 def main() -> int:
     """Yedegi geri yukler. Basarisizsa 1 doner."""
@@ -78,15 +94,11 @@ def main() -> int:
         print(f"HATA: mysql istemcisi yok: {arac}")
         return 1
 
-    # Geri yukleme her zaman root ile yapilir: dump'taki gorunumler
-    # DEFINER=root tasir, `request` kullanicisinda SUPER yok ve 1227 alinir.
-    # Parola bos olabilir (yerel XAMPP); bos parola root'u devre disi birakmaz.
-    kullanici = "root"
-    sifre = _env("MYSQL_ROOT_PASSWORD")
+    # Parola tirnak icinde: `#`, `;`, bosluk gibi karakterler cnf'yi bozmasin.
     icerik = (
         "[client]\n"
-        f"user={kullanici}\n"
-        f"password={sifre}\n"
+        "user=root\n"
+        f"password=\"{_env('MYSQL_ROOT_PASSWORD')}\"\n"
         f"host={_env('MYSQL_HOST', '127.0.0.1')}\n"
         f"port={_env('MYSQL_PORT', '3306')}\n"
     )
@@ -94,6 +106,7 @@ def main() -> int:
     os.close(tanitici)
     secenek = Path(yol)
     secenek.write_text(icerik, encoding="utf-8")
+    sonuc: subprocess.CompletedProcess | None = None
     try:
         with kaynak.open("rb") as girdi:
             sonuc = subprocess.run(
@@ -102,12 +115,16 @@ def main() -> int:
                  _env("MYSQL_DATABASE", "unique_request_bot")],
                 stdin=girdi, stderr=subprocess.PIPE, shell=False,
             )
-        if sonuc.returncode == 0:
-            _gorunumleri_onar(arac, secenek)
+        if sonuc is not None and sonuc.returncode == 0:
+            for ad in _gorunumleri_onar(arac, secenek):
+                print(f"UYARI: gorunum kurulamadi: {ad}")
     finally:
         secenek.unlink(missing_ok=True)
-    if sonuc.returncode != 0:
-        print(f"HATA: mysql {sonuc.returncode}: {sonuc.stderr.decode()[:200]}")
+
+    if sonuc is None or sonuc.returncode != 0:
+        kod = sonuc.returncode if sonuc else -1
+        ayrinti = sonuc.stderr.decode(errors="replace")[:200] if sonuc else "calistirilamadi"
+        print(f"HATA: mysql {kod}: {ayrinti}")
         return 1
     print("geri yuklendi")
     return 0

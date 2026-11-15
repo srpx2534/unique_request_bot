@@ -54,7 +54,7 @@ export default function Saglayicilar() {
   });
 
   function oranKaydet() {
-        if (toplam !== 100) {
+    if (toplam !== 100) {
       bildir(`Oranlar 100 olmalı, şu an ${toplam}`, "hata");
       return;
     }
@@ -105,10 +105,10 @@ export default function Saglayicilar() {
               <Girdi value={oranlar[k] ?? ""} onChange={(o) => setOranlar({ ...oranlar, [k]: o.target.value })} className="mt-1" />
             </label>
           ))}
-                    <span className={toplam === 100 ? "text-sm text-solgun" : "text-sm text-hata"}>
-            toplam: {toplam}
-          </span>
-<Dugme onClick={oranKaydet} disabled={yaz.isPending}>Kaydet</Dugme>
+            <span className={toplam === 100 ? "text-sm text-solgun" : "text-sm text-hata"}>
+              toplam: {toplam}
+            </span>
+            <Dugme onClick={oranKaydet} disabled={yaz.isPending || toplam !== 100}>Kaydet</Dugme>
         </div>
       </Kart>
 

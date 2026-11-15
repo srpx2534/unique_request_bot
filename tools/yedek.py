@@ -4,6 +4,10 @@ Yedek `veri/yedek` altina UTC damgasiyla yazilir; 7 gunden eski dosyalar
 silinir (17.6). Sifre komut satirinda gorunmesin diye kimlik gecici bir
 secenek dosyasindan verilir, islem bitince dosya silinir.
 
+Dump root ile alinir: gorunumler DEFINER=root tasir, `--routines` icin de
+SUPER gerekir. Boylece yedek, geri yuklemenin kosulsuz root kullanan
+tarafiyla ayni kimlikle alinir.
+
 Kullanim:
     python tools/yedek.py
     python tools/yedek.py --tut 14
@@ -40,11 +44,15 @@ def _env(anahtar: str, varsayilan: str = "") -> str:
 
 
 def _secenek_dosyasi() -> Path:
-    """Kimligi tasiyan gecici mysqldump secenek dosyasini yazar."""
+    """Kimligi tasiyan gecici mysqldump secenek dosyasini yazar.
+
+    Parola tirnak icinde verilir; `#`, `;`, bosluk gibi karakterler option
+    dosyasini bozmasin.
+    """
     icerik = (
         "[client]\n"
-        f"user={_env('MYSQL_USER', 'request')}\n"
-        f"password={_env('MYSQL_PASSWORD')}\n"
+        "user=root\n"
+        f"password=\"{_env('MYSQL_ROOT_PASSWORD')}\"\n"
         f"host={_env('MYSQL_HOST', '127.0.0.1')}\n"
         f"port={_env('MYSQL_PORT', '3306')}\n"
     )
@@ -96,6 +104,7 @@ def main() -> int:
             "--single-transaction",
             "--quick",
             "--no-tablespaces",
+            "--default-character-set=utf8mb4",
             "--routines",
             _env("MYSQL_DATABASE", "unique_request_bot"),
         ]
