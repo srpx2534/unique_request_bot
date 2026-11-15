@@ -70,6 +70,17 @@ def test_soax_bicimi_onek_siz() -> None:
     assert adres == "http://paket-country-tr-session-abc:gizli@host:1"
 
 
+def test_webshare_bicimi_duz_kullanici() -> None:
+    """Webshare hedefleme parametresi kullanmaz, kullanıcı adı düz yazılır."""
+    adres = proxy.dize("host:1", "kullanici", "gizli", ulke="TR", oturum="abc", bicim="webshare")
+    assert adres == "http://kullanici:gizli@host:1"
+
+
+def test_bicim_bul_webshare() -> None:
+    """Webshare adı kendi biçimine çözülür."""
+    assert proxy.bicim_bul("Webshare") == "webshare"
+
+
 def test_brightdata_bicimi_musteri_onekli() -> None:
     """Bright Data brd-customer- öneki ister."""
     adres = proxy.dize("host:1", "musteri", "gizli", oturum="abc", bicim="brightdata")

@@ -33,7 +33,7 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 
 ## F. Sağlayıcı havuzu — M3
 22. Sağlayıcı seçimi ağırlıklı ve devre kesicili hale getirilecek.
-23. Oranlar `.env` ile ayarlanir: PROXY_RESIDENTIAL_ORAN, PROXY_MOBIL_ORAN, PROXY_DATACENTER_ORAN. Tablo degeri varsa o kazanir, yoksa env, yoksa varsayilan. PROXY_MOBIL_ORAN=0 mobil turu kapatir. (DUZELTILDI)
+23. Oranlar `ayar` tablosundan okunur ve yalniz panelden yazilir (C65); `.env` oran anahtari yok. Satir yoksa varsayilan 100/0/0 gecerli, mobil orani 0 mobil turu kapatir. (DUZELTILDI)
 24. Failover 10 saniye altında tamamlanacak (C6).
 27. Oranlar panelden yazılıyor (`ayar` satırı, `PATCH /api/ayar/oran`, C65) ve `oran_mobil` 10. `hit.tur` kolonu eklendi (045), worker seçilen türü yazıyor. Kalan: mobil sağlayıcılarda (id 4, 5) gateway ve kimlik yok (madde 33); kimlik girilince dar kapsamlı tek burst ile mobil hit doğrulanacak. (KISMI)
 28. Oran 0 ya da mobil pencere kapaliyken tur_sec mobile hic dusmuyor; test_havuz iki durumu da tarayarak sabitliyor. (DUZELTILDI)

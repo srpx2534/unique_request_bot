@@ -76,6 +76,7 @@ CREATE TABLE provider (
   weight           SMALLINT UNSIGNED NOT NULL DEFAULT 1,
   state            ENUM('active','quarantine','disabled') NOT NULL DEFAULT 'active',
   captcha_pct      DECIMAL(5,2) NOT NULL DEFAULT 0,
+  hata_sayac       TINYINT UNSIGNED NOT NULL DEFAULT 0,
   bytes_month      BIGINT UNSIGNED NOT NULL DEFAULT 0,
   quota_bytes      BIGINT UNSIGNED NULL,
   quarantine_until DATETIME(3) NULL

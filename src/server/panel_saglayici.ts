@@ -7,15 +7,24 @@ import { ekle, sorgu, tek, yaz } from "./veritabani.js";
 
 export const yonlendirici = Router();
 
-const saglayiciSemasi = z.object({
+/** Kimlik ya tam olur ya hiç olmaz; yarım kimlikli satır havuza girmez. */
+function kimlikCifti(deger: { kullanici?: string | null; sifre?: string | null }): boolean {
+  return Boolean(deger.kullanici) === Boolean(deger.sifre);
+}
+const saglayiciGovdesi = z.object({
   name: z.string().trim().min(2).max(64).optional(),
   kind: z.enum(["residential", "mobile", "datacenter"]).optional(),
   state: z.enum(["active", "quarantine", "disabled"]).optional(),
   weight: z.number().int().min(1).max(100).optional(),
   ulke: z.string().length(2).optional(),
-  gateway: z.string().trim().max(128).nullable().optional(),
+  gateway: z.string().trim().min(3).max(128).nullable().optional(),
   kullanici: z.string().trim().max(128).nullable().optional(),
   sifre: z.string().trim().max(128).nullable().optional(),
+});
+
+const saglayiciSemasi = saglayiciGovdesi.refine(kimlikCifti, {
+  message: "kullanıcı ve şifre birlikte girilmeli",
+  path: ["kullanici"],
 });
 
 yonlendirici.get("/geo", async (_istek, yanit) => {
@@ -88,7 +97,14 @@ yonlendirici.patch("/provider/:id", async (istek, yanit) => {
 });
 
 yonlendirici.post("/provider", async (istek, yanit) => {
-  const govde = dogrula(saglayiciSemasi.extend({ name: z.string().trim().min(2).max(64), kind: z.enum(["residential", "mobile", "datacenter"]) }), istek.body, yanit);
+  const eklemeSemasi = saglayiciGovdesi
+  .extend({
+    name: z.string().trim().min(2).max(64),
+    kind: z.enum(["residential", "mobile", "datacenter"]),
+    gateway: z.string().trim().min(3).max(128),
+  })
+  .refine(kimlikCifti, { message: "kullanıcı ve şifre birlikte girilmeli", path: ["kullanici"] });
+const govde = dogrula(eklemeSemasi, istek.body, yanit);
   if (!govde) return;
 
   // provider.id AUTO_INCREMENT (043); kimlik DB'ye birakilir, panel id gondermez.

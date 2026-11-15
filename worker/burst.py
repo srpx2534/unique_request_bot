@@ -178,6 +178,10 @@ def burst_yap(
 
         # Sağlayıcı sağlığı yalnızca gerçek bir sağlayıcı kullanıldıysa işlenir.
         if saglayici_id:
+            if kayit["result"] == "ok":
+                saglik_db.hata_sifirla(saglayici_id)
+            elif kayit["result"] in ("error", "timeout"):
+                saglik_db.hata_isle(saglayici_id)
             # İl çifti yalnızca gerçekten il hedefli çıkışta işlenir; ulusal ya
             # da yabancı çıkış kodu il çiftine yazarsa eşik yanlış çiftte dolar.
             saglik_db.kaydet(
@@ -203,6 +207,9 @@ def burst_yap(
     # Payda atılan hit'tir: erken durdurulan burst tam adetle bölününce
     # sağlıklı iş yanlışlıkla burst_hata yazıyordu.
     atilan = len(sonuc["hits"])
+    # Hic basarili hit yoksa saglayici calismiyor demektir: kelime durur.
+    if atilan and sonuc["ok"] == 0:
+        saglik_db.saglayici_yok_dur(sorgu, hedef_domain)
     if atilan and sonuc["ok"] / atilan < BASARI_ESIGI:
         saglik_db.uyari(
             "burst_hata", None,

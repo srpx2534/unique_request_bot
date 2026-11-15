@@ -25,12 +25,6 @@ from worker import ayar, proxy
 
 ORAN_ANAHTARLARI = ("oran_residential", "oran_mobil", "oran_datacenter")
 VARSAYILAN_ORAN = {"oran_residential": 100, "oran_mobil": 0, "oran_datacenter": 0}
-# Tabloda deger yoksa .env okunur; boylece oranlar kod degismeden ayarlanir.
-ENV_ANAHTARLARI = {
-    "oran_residential": "PROXY_RESIDENTIAL_ORAN",
-    "oran_mobil": "PROXY_MOBIL_ORAN",
-    "oran_datacenter": "PROXY_DATACENTER_ORAN",
-}
 
 
 def oranlari_normalize(ham: dict[str, int]) -> dict[str, int]:
@@ -122,10 +116,10 @@ def onbellek_temizle() -> None:
 
 
 def oranlari_oku() -> dict[str, int]:
-    """Oranlari okur: once tablo, sonra .env, en son varsayilan.
+    """Oranlari okur: once tablo, sonra varsayilan.
 
-    Tablo okunamazsa .env yine devrededir; oranlar veritabani olmadan da
-    ayarlanabilir (23). Sonuc bir dakika onbellekte tutulur.
+    Tablo okunamazsa varsayilan gecerli olur; oranlar yalniz tablodan gelir (23).
+    Sonuc bir dakika onbellekte tutulur.
 
     Returns:
         normalize edilmis oran sozlugu.
@@ -152,12 +146,6 @@ def oranlari_oku() -> dict[str, int]:
             ham = {}
         finally:
             baglanti.close()
-    for anahtar, env in ENV_ANAHTARLARI.items():
-        if anahtar in ham:
-            continue
-        deger = ayar.oku(env, "")
-        if str(deger).isdigit():
-            ham[anahtar] = int(deger)
     sonuc = oranlari_normalize(ham) if ham else dict(VARSAYILAN_ORAN)
     _oran_onbellek = sonuc
     _oran_onbellek_ts = time.monotonic()

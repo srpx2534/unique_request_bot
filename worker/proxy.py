@@ -6,8 +6,8 @@ il. Her hit yeni oturum kimliği alır; böylece IP hit başına değişir ama h
 içindeki üç istek (izlenim, tıklama, pogo) aynı IP'den çıkar.
 
 Kullanıcı adı biçimi sağlayıcıya göredir: Decodo, Oxylabs ve IPRoyal
-`user-` önekiyle, SOAX paket adıyla, Bright Data `brd-customer-` önekiyle
-çalışır. Biçim sağlayıcı adından çözülür; tanınmayan ad Decodo sayılır.
+`user-` önekiyle, SOAX paket adıyla, Bright Data `brd-customer-` önekiyle,
+Webshare düz kullanıcı adıyla (hedefleme parametresi yok) çalışır. Biçim sağlayıcı adından çözülür; tanınmayan ad Decodo sayılır.
 
 Seçim burada değil, worker/havuz.py içinde yapılır; bu modül yalnızca
 biçimlendirir.
@@ -28,6 +28,8 @@ BICIMLER = {
     "iproyal": "user-{k}{ulke}{city}-session-{s}",
     "soax": "{k}{ulke}{city}-session-{s}",
     "brightdata": "brd-customer-{k}{ulke}{city}-session-{s}",
+    # Webshare hedefleme parametresi kullanmaz: duz kullanici adi yeter.
+    "webshare": "{k}",
 }
 
 

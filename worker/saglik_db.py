@@ -275,7 +275,7 @@ def karantina_kontrol(saglayici_id: int) -> None:
                     "UPDATE provider SET state = 'active',"
                     " weight = COALESCE(weight_yedek, %s), weight_yedek = NULL,"
                     " quarantine_until = NULL, captcha_pct = 0, hits_1h = 0,"
-                    " captcha_1h = 0 WHERE id = %s",
+                    " captcha_1h = 0, hata_sayac = 0 WHERE id = %s",
                     (saglik.VARSAYILAN_AGIRLIK, saglayici_id),
                 )
     except Exception as hata:  # noqa: BLE001
@@ -372,3 +372,109 @@ def hedef_yok_sifirla(sorgu: str, domain: str | None) -> None:
         print(f"[saglik] {hata}")
     finally:
         _kapat(baglanti)
+
+HATA_ESIGI = 3
+
+
+def hata_isle(saglayici_id: int) -> None:
+    """Ardisik basarisiz hit sayar; esikte saglayiciyi kapatir.
+
+    Args:
+        saglayici_id: Hata alan saglayici.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    sayac = 0
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE provider SET hata_sayac = hata_sayac + 1 WHERE id = %s",
+                (saglayici_id,),
+            )
+            imlec.execute("SELECT hata_sayac, state FROM provider WHERE id = %s", (saglayici_id,))
+            satir = imlec.fetchone()
+            if not satir:
+                return
+            sayac = int(satir[0])
+            if sayac < HATA_ESIGI or satir[1] == "disabled":
+                return
+            imlec.execute(
+                "UPDATE provider SET state = 'disabled', hata_sayac = 0 WHERE id = %s",
+                (saglayici_id,),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+        return
+    finally:
+        _kapat(baglanti)
+    uyari("provider_down", saglayici_id,
+          f"saglayici {saglayici_id} calismiyor · {HATA_ESIGI} ardisik hata")
+
+
+def hata_sifirla(saglayici_id: int) -> None:
+    """Basarili hit ardisik hata sayacini sifirlar.
+
+    Args:
+        saglayici_id: Basarili hit alan saglayici.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE provider SET hata_sayac = 0 WHERE id = %s AND hata_sayac > 0",
+                (saglayici_id,),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)
+
+
+def saglayici_yok_dur(sorgu: str, domain: str | None) -> None:
+    """Saglayici calismadigi icin kelimeyi durdurur.
+
+    Args:
+        sorgu: Kelime metni.
+        domain: Kelimenin sitesi.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    kelime_id = None
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "SELECT k.id FROM keyword k JOIN site s ON s.id = k.site_id"
+                " WHERE k.text = %s AND s.domain = %s ORDER BY k.id LIMIT 1",
+                (sorgu, domain),
+            )
+            satir = imlec.fetchone()
+            if not satir:
+                return
+            kelime_id = int(satir[0])
+            imlec.execute(
+                "UPDATE keyword SET state = 'paused' WHERE id = %s AND state = 'active'",
+                (kelime_id,),
+            )
+            imlec.execute(
+                "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3)"
+                " WHERE keyword_id = %s AND stopped_at IS NULL",
+                (kelime_id,),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+        return
+    finally:
+        _kapat(baglanti)
+    uyari("provider_down", None,
+          f"'{sorgu}' durdu · saglayici calismiyor (ok=0)",
+          kelime=sorgu, domain=domain)

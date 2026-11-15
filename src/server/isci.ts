@@ -36,6 +36,20 @@ type MotorCevabi = {
   hits?: MotorHiti[];
 };
 
+/** Havuz boş uyarısı; 30 dakika sessizlikle tek satır yazılır. */
+async function havuzBosUyar(): Promise<void> {
+  const acik = await tek<{ adet: number }>(
+    `SELECT COUNT(*) AS adet FROM alert
+      WHERE kind = 'provider_down' AND acknowledged = 0
+        AND message LIKE 'havuz boş%'
+        AND created_at > UTC_TIMESTAMP(3) - INTERVAL 30 MINUTE`,
+  );
+  if (acik?.adet) return;
+  await yaz("INSERT INTO alert (kind, message) VALUES ('provider_down', ?)", [
+    "havuz boş: kullanılabilir sağlayıcı yok, işler bekliyor",
+  ]);
+}
+
 async function calistir(is: Is): Promise<void> {
   // Govdenin tamami korunur: dugumSec ve DB adimlari da try icinde kalsin ki
   // hata alan satir sonsuza dek 'running' kalmasin.
@@ -58,6 +72,19 @@ async function calistir(is: Is): Promise<void> {
     [is.campaignId, is.keywordGeoId],
   );
   if (!satir) return;
+
+  // Havuzda kullanılabilir sağlayıcı yoksa iş başlamaz (C69): kelime boşuna
+  // dönmesin, satır beklemede kalsın ve tek bir uyarı düşsün.
+  const havuz = await tek<{ adet: number }>(
+    `SELECT COUNT(*) AS adet FROM provider
+      WHERE state = 'active' AND gateway IS NOT NULL
+        AND (quarantine_until IS NULL OR quarantine_until < UTC_TIMESTAMP(3))`,
+  );
+  if (!havuz?.adet) {
+    await havuzBosUyar();
+    await geriAl(is.keywordGeoId, "kullanılabilir sağlayıcı yok");
+    return;
+  }
 
   // Basamak büyüdükçe burst büyür: 5, 10, 15 ... tavan 60 ve kampanya sınırı.
   const adim = satir.burst_count + 1;

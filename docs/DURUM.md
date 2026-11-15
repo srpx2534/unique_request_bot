@@ -96,7 +96,7 @@ Tam liste `docs/EKSIKLER.md`; orada 39 madde açık. Sıra:
 - **`cerez_kendi` parametre değil**, admin izni.
 - **Süresi geçmiş çerezler kullanılır** (`cerez_suresiz_kullan`), aktifler bitmeden devreye girmez. Çerez site+kelime çiftinde bir kez kullanılır.
 - **Öncelik:** aktif+il → aktif TR → diğer aktifler → süresi geçmiş, aynı iç sırayla.
-- **Oranlar `.env` anahtarından** (`PROXY_*_ORAN`), eşikler panelden (`esik_captcha`, `esik_geo`, `asgari_ornek`); eşik panelden, oran tek uçtan yönetilir.
+- **Oranlar `ayar` tablosundan**, eşikler de aynı tablodan (`esik_captcha`, `esik_geo`, `asgari_ornek`); ikisi de yalnız panelden yazılır, `.env` anahtarı yok.
 - **Ölçüm kanalı B ayrı** (`worker/olcum_b.py`): ölçüm trafiği burst IP'sini kirletmez.
 - **Kota muhasebesi bayt üzerinden** (`bytes_ay`, `bayt_ekle`, %90 uyarısı).
 - **Saklama `hit` için `DROP PARTITION`** ile yapılır; DELETE yükü metadata'ya döner.

@@ -71,7 +71,7 @@ export default function Saglayicilar() {
       name: yeni.name,
       kind: yeni.kind,
       ulke: yeni.ulke,
-      gateway: yeni.gateway || null,
+      gateway: yeni.gateway.trim(),
       kullanici: yeni.kullanici || null,
       sifre: yeni.sifre || null,
       weight: Number(yeni.weight) || 1,
@@ -175,7 +175,7 @@ export default function Saglayicilar() {
             </select>
           </label>
           <label className="w-16 text-sm"><span className="text-solgun">Ülke</span><Girdi value={yeni.ulke} onChange={(o) => setYeni({ ...yeni, ulke: o.target.value })} className="mt-1" /></label>
-          <label className="w-48 text-sm"><span className="text-solgun">Ağ geçidi</span><Girdi value={yeni.gateway} onChange={(o) => setYeni({ ...yeni, gateway: o.target.value })} placeholder="host:port" className="mt-1" /></label>
+          <label className="w-48 text-sm"><span className="text-solgun">Ağ geçidi</span><Girdi value={yeni.gateway} onChange={(o) => setYeni({ ...yeni, gateway: o.target.value })} placeholder="host:port" required className="mt-1" /></label>
           <label className="w-32 text-sm"><span className="text-solgun">Kullanıcı</span><Girdi value={yeni.kullanici} onChange={(o) => setYeni({ ...yeni, kullanici: o.target.value })} className="mt-1" /></label>
           <label className="w-32 text-sm"><span className="text-solgun">Şifre</span><Girdi type="password" value={yeni.sifre} onChange={(o) => setYeni({ ...yeni, sifre: o.target.value })} className="mt-1" /></label>
           <label className="w-20 text-sm"><span className="text-solgun">Ağırlık</span><Girdi value={yeni.weight} onChange={(o) => setYeni({ ...yeni, weight: o.target.value })} className="mt-1" /></label>

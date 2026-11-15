@@ -21,6 +21,9 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 
 ## Çalışma kuralları
 
+- **Öncelik canlıya almadır.** Amaç kritik parçaları bitirip canlıya çıkmak. Canlıda etkisi olmayan düzenlemeler (kozmetik, belge süsü, bölme, isimlendirme) kritik madde varken bekletilir.
+- Sıra: güvenlik/üretim → veri kaybı riski → devir paketi → API tutarlılığı → bakım borcu → kozmetik.
+
 - Panel parametrelerini asistan değiştirmez; değeri kullanıcı girer.
 - Kritik sayfa yapısı değişiklikleri önce onaya sunulur.
 - Kod PowerShell copy-paste bloğu olarak verilir. Dosya yazımı `@'...'@` here-string + `[System.IO.File]::WriteAllText` + `New-Object System.Text.UTF8Encoding($false)` ile yapılır; `Set-Content`/`Out-File` Türkçe karakteri bozar.
@@ -45,11 +48,14 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 
 - Kilit (C64): beş ayrı süreç aynı satırı sahiplenmeye çalıştığında tam biri kazanıyor, taze yabancı kilitte beşi de kaybediyor, süresi geçmiş kilitte biri devralıyor, uyarı satırdaki sahibi adıyla yazılıyor, 30 dakika sessizlik tutuyor. Araç: `tools/kilit_cakisma_dene.ts` (`npx.cmd tsx tools\kilit_cakisma_dene.ts <id> [sahip|devral|uyari]`).
 - hedef_yok: üst üste 3 hedefsiz burstte kelime `paused`, kampanya kapanıyor, `hedef_yok` uyarısı düşüyor.
-- Kapılar son hâlde yeşil: 173 worker, 49 UI, lint 0, tip 0, ağaç temiz.
+- Havuz boşken iş başlamıyor: satır beklemede kalıyor, 30 dakikada bir tek `provider_down` uyarısı düşüyor (C69).
+- Üst üste 3 error/timeout sağlayıcıyı `disabled` yapıyor; burst tamamen başarısızsa (ok=0) kelime duruyor (C70). `worker/test_saglik_hata.py`.
+- Kapılar son hâlde yeşil: 179 worker, 64 UI, lint 0, tip 0, ağaç temiz.
 
 ## Açık altyapı notları
 
-- `.env` içinde hiç `PROXY_*` satırı yok; madde 23'ün env yedeği devrede değil.
+- Hiçbir sağlayıcıda `gateway` yok (hepsi örnek satır); C69 devrede, burst başlamıyor. Gerçek gateway girilmeden hiçbir ağ maddesi kapanmaz.
+- `.env` içinde proxy ya da oran anahtarı yok: proxy kimliği `provider` satırında, oranlar `ayar` tablosunda.
 - `provider_geo` tablosunda `tur` kolonu yok; tür artık `hit.tur` içinde tutuluyor (045).
 - EKSIKLER 27 kısmi: oran yazımı ve `hit.tur` tamam, mobil sağlayıcı kimliği yok, canlı doğrulama bekliyor.
 - Diakritiksizleştirilmiş yorumlar 38 dosyada duruyor (kullanıcı kararı: şimdilik dokunulmuyor). EKSIKLER bitince 5-6 dosyalık partiler hâlinde, yalnız yorum satırları düzeltilecek.

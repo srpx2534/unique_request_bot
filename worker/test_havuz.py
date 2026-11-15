@@ -221,25 +221,19 @@ class _OranBaglanti:
         pass
 
 
-def _env(monkeypatch, degerler: dict[str, str]) -> None:
-    monkeypatch.setattr(havuz.ayar, "oku", lambda anahtar, varsayilan="": degerler.get(anahtar, varsayilan))
 
-
-def test_oranlar_tablo_yokken_env_okunur(monkeypatch) -> None:
+def test_oranlar_tablo_okunamazsa_varsayilan(monkeypatch) -> None:
+    """Tablo okunamazsa varsayilan oran gecerli olur; env devrede degil."""
     def patlat():
         raise RuntimeError("db yok")
 
     monkeypatch.setattr(havuz, "_baglan", patlat)
-    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "70", "PROXY_MOBIL_ORAN": "30"})
 
-    assert havuz.oranlari_oku() == {
-        "oran_residential": 70, "oran_mobil": 30, "oran_datacenter": 0
-    }
+    assert havuz.oranlari_oku() == havuz.VARSAYILAN_ORAN
 
 
-def test_oranlar_tablo_envden_once_gelir(monkeypatch) -> None:
-    monkeypatch.setattr(havuz, "_baglan", lambda: _OranBaglanti([("oran_residential", "40")]))
-    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "90", "PROXY_MOBIL_ORAN": "60"})
+def test_oranlar_tablodan_okunur(monkeypatch) -> None:
+    monkeypatch.setattr(havuz, "_baglan", lambda: _OranBaglanti([("oran_residential", "40"), ("oran_mobil", "60")]))
 
     sonuc = havuz.oranlari_oku()
     assert sonuc["oran_residential"] == 40
@@ -251,17 +245,12 @@ def test_oranlar_hicbir_kaynak_yoksa_varsayilan(monkeypatch) -> None:
         raise RuntimeError("db yok")
 
     monkeypatch.setattr(havuz, "_baglan", patlat)
-    _env(monkeypatch, {})
 
     assert havuz.oranlari_oku() == havuz.VARSAYILAN_ORAN
 
 
 def test_mobil_orani_sifirsa_mobil_sec_mez(monkeypatch) -> None:
-    def patlat():
-        raise RuntimeError("db yok")
-
-    monkeypatch.setattr(havuz, "_baglan", patlat)
-    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "100", "PROXY_MOBIL_ORAN": "0"})
+    monkeypatch.setattr(havuz, "_baglan", lambda: _OranBaglanti([("oran_residential", "100"), ("oran_mobil", "0")]))
 
     oranlar = havuz.oranlari_oku()
     for yuzde in range(0, 100, 10):
@@ -274,10 +263,9 @@ def test_oran_onbellegi_ikinci_cagrida_db_okumaz(monkeypatch) -> None:
 
     def bag():
         sayac["n"] += 1
-        return _OranBaglanti([("oran_residential", "40")])
+        return _OranBaglanti([("oran_residential", "40"), ("oran_mobil", "60")])
 
     monkeypatch.setattr(havuz, "_baglan", bag)
-    _env(monkeypatch, {})
     havuz.oranlari_oku()
     havuz.oranlari_oku()
     assert sayac["n"] == 1

@@ -1,7 +1,7 @@
 -- Sağlayıcı referansı (§8). Ağırlıklar sözleşmedeki değerlerdir.
 -- city_capable yalnızca il hedeflemeyi tam destekleyende 1'dir; "kısmi"
 -- olanlar 0 işaretlenir, §5 adım 2 gereği ulusal moda düşerler.
--- Kimlik bilgileri .env'de tutulur, burada yoktur.
+-- Kimlik bilgileri sağlayıcı satırında tutulur (gateway, kullanıcı, şifre).
 
 INSERT INTO provider (id, name, kind, city_capable, weight, state)
 VALUES
