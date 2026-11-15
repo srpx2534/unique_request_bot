@@ -59,9 +59,16 @@ jobs:
 
       - name: Vitest
         shell: bash
+        env:
+          SESSION_SECRET: ci-oturum-sirri-32-karakterden-uzun
         run: |
-          # api.test veritabanı ister; veritabanı işinde tam koşar.
-          npx vitest run --exclude "src/server/api.test.ts"
+          # Veritabani ve Redis isteyen testler yalnizca veritabani isinde kosar.
+          npx vitest run \
+            --exclude "src/server/api.test.ts" \
+            --exclude "src/server/panel_ayar.test.ts" \
+            --exclude "src/server/panel_saglayici.test.ts" \
+            --exclude "src/server/panel_sayfa.test.ts" \
+            --exclude "src/server/panel_metrik.test.ts"
 
       - name: Pytest
         run: python -m pytest -q
@@ -116,7 +123,7 @@ jobs:
           MYSQL_PASSWORD=parola
           MYSQL_ROOT_PASSWORD=kok
           REDIS_URL=redis://127.0.0.1:6379/0
-          SESSION_SECRET=ci-oturum-sirri
+          SESSION_SECRET=ci-oturum-sirri-32-karakterden-uzun
           WORKER_TOKEN=ci-worker-token
           ENV
 
