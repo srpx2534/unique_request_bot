@@ -273,7 +273,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C68 — Kota süpürgesi yalnız SERP 429'una bağlı değildir; proxy bayt kotası da uyarı üretir.
 - C69 — Havuzda kullanılabilir sağlayıcı yoksa (active, gateway dolu, karantinası geçmiş) iş başlamaz; satır beklemede kalır ve `provider_down` uyarısı düşer.
 - C70 — Sağlayıcı varken üst üste 3 hit error/timeout ile biterse sağlayıcı `disabled` olur ve `provider_down` uyarısı yazılır. Burst'ün tamamı başarısızsa (ok=0) kelime `paused` olur, kampanya kapanır ve uyarı düşer. Kapatılan sağlayıcı kendiliğinden açılmaz; kullanıcı panelden `Aç` der. Karantinadan çıkışta `hata_sayac` sıfırlanır.
-- C71 — Yedek dosyası adı UTC damgası taşır, 7 günden eskiler silinir; geri yükleme onay ister ve `.sql` dışındaki dosyalara dokunulmaz. Kanıt: `tools/test_yedek.py`.
+- C71 — Yedek dosyası adı UTC damgası taşır, 7 günden eskiler silinir; geri yükleme onay ister ve `.sql` dışındaki dosyalara dokunulmaz. Geri yükleme koşulsuz root ile koşar (dump görünümleri `DEFINER=root` taşır, `request` 1227 alır) ve başarıdan sonra görünümleri migration tanımlarından yeniden kurar; görünüm sessizce eksik kalmaz. Kanıt: `tools/test_yedek.py`, canlı deneme.
 - C72 — `GET /api/metrik` işletim sayılarını tek gövdede verir: iki pencere (1 saat, 24 saat) için hit dağılımı, yüzde oranlar (payda sıfırsa `null`), modalite sayımı, sağlayıcı sağlığı ve sorunlu ilk 5 sağlayıcı, kelime durumları, burst sayımı, son 5 dakikada kalp atan düğüm sayısı, açık uyarı, kuyruk sayımı, son 24 saatin p95 gecikmesi ve son yedek yaşı. Redis ya da yedek klasörü erişilemezse ilgili blok `null` döner, uç 500 vermez. Kanıt: `src/server/panel_metrik.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
@@ -301,7 +301,7 @@ Kullanıcıda hazır bileşen yoktur; geo seed, uule üretici, migration seti, d
 - 17.6 — MySQL günlük `mysqldump` ile yedeklenir, 7 gün saklanır, offsite kopya alınır. Geri yükleme aylık test edilir.
 - 17.7 — Sırlar ortam değişkeninde veya secret store'da tutulur; repoda düz metin yoktur.
 - 17.9 — HSTS her yanıtta gönderilir (helmet); TLS sonlandırma ters proxy'de yapılır. Oturum çerezi `Secure` değerini `auto` ile alır: HTTPS arkasında Secure, düz HTTP yerelde değil.
-- 17.10 — Günlük yedek `tools/yedek.py` ile alınır, `veri/yedek` altında 7 gün tutulur; offsite kopya kullanıcıya aittir. Geri yükleme `tools/geri_yukle.py` ile root kimliğiyle yapılır (dump görünümleri `DEFINER=root` taşır, `request` yetmez), onay ister ve aylık test edilir. Kimlik komut satırında taşınmaz, geçici seçenek dosyası kullanılır.
+- 17.10 — Günlük yedek `tools/yedek.py` ile alınır, `veri/yedek` altında 7 gün tutulur; offsite kopya kullanıcıya aittir. Geri yükleme `tools/geri_yukle.py` ile koşulsuz root kimliğiyle yapılır (dump görünümleri `DEFINER=root` taşır, `request` 1227 alır); boş root parolası root'u devre dışı bırakmaz. Kimlik komut satırında taşınmaz, geçici seçenek dosyası kullanılır; yükleme `utf8mb4` ile koşar ve ardından görünümler migration tanımlarından yeniden kurulur. Onay ister ve aylık test edilir.
 - 17.8 — Veritabanı kurulumu kullanıcıya aittir; yerelde XAMPP üzerinden, sunucuda kullanıcının kuracağı sunucu üzerinden çalışır. Yüklenici şemayı ve seed verisini uygular, veritabanı sunucusunu kurmaz.
 ## 18. Geliştirme ortamı — Windows'ta yaz, Linux'ta çalıştır
 Kod Windows'ta yazılır, Linux'ta çalışır. Aşağıdaki maddeler bağlayıcıdır.

@@ -76,7 +76,6 @@ CREATE TABLE provider (
   weight           SMALLINT UNSIGNED NOT NULL DEFAULT 1,
   state            ENUM('active','quarantine','disabled') NOT NULL DEFAULT 'active',
   captcha_pct      DECIMAL(5,2) NOT NULL DEFAULT 0,
-  hata_sayac       TINYINT UNSIGNED NOT NULL DEFAULT 0,
   bytes_month      BIGINT UNSIGNED NOT NULL DEFAULT 0,
   quota_bytes      BIGINT UNSIGNED NULL,
   quarantine_until DATETIME(3) NULL
@@ -156,7 +155,6 @@ CREATE TABLE hit (
   profile_id  BIGINT UNSIGNED NULL,
   geo_code    TINYINT UNSIGNED NULL,
   geo_mode    ENUM('city','national') NOT NULL DEFAULT 'national',
-  tur         ENUM('residential','mobile','datacenter') NULL,
   result      ENUM('ok','captcha','not_found','timeout','error') NOT NULL,
   http_status SMALLINT UNSIGNED NULL,
   latency_ms  INT UNSIGNED NULL,

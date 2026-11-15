@@ -58,7 +58,7 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 ## I. Altyapı ve dağıtım
 45. Docker imajları digest ile pinlenmedi (17.2). Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
 46. `read_only`, `cap_drop`, root olmayan kullanıcı doğrulanmadı (17.3).
-47. Yedek/geri yükleme araçları yazıldı (`tools/yedek.py`, `tools/geri_yukle.py`, 3 pytest yeşil, C71) ve metrik ucu kapandı (`GET /api/metrik`, C72). Kalan: geri yükleme canlı koşusu root kimliğiyle doğrulanacak (DEFINER=root), metrik ekranı G5 ile Araçlar menüsüne gelecek. (KISMI: tek örnek kilidi, yedek araçları ve metrik ucu kapandı)
+47. Kapandı: yedek/geri yükleme araçları yazıldı, geri yükleme canlı koştu (1227 sonrası root koşulsuz, görünümler yeniden kuruluyor), `verify.py` tamam döndü. Metrik ucu `GET /api/metrik` (C72). Boş kurulum 46 migration ile sınandı; 001 ile migration kolon çakışması `tools/test_sema_cakisma.py` ile bekçiye alındı. Metrik ekranı G5'te. (DUZELTILDI)
 - Kelime bazlı kilit yazıldı: `keyword_geo.kilit_dugum/kilit_at` (042), sahiplenme, süre aşımında devralma, çakışma uyarısı ve bayat temizleme; `kilit_cakismasi` uyarı türü panelde. (DUZELTILDI)
 48. Kod tarafı bitti ve yerel Memurai'de `requirepass` açıldı: parolasız `NOAUTH`, parolayla `PONG`, uyarı kalktı. HSTS, `secure: "auto"` çerez, sır uzunluğu uyarısı yerinde; Redis parolası URL'den ayrı taşınıyor. Kalan: TLS sonlandırma ters proxy yapılandırması (49 ile birlikte, üretim sunucusunda). (KISMI)
 49. Sunucu tarafı veritabanı kurulumu ve ayarların oraya taşınması (kullanıcının işi).

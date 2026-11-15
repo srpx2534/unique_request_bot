@@ -4,9 +4,11 @@ Tablo sayisi sabit tutulmaz; migration eklendikce liste buyur ve sayi
 degisir. Zorunlu tablolar tek tek aranir, eksik olan adiyla yazilir.
 """
 
+import os
+
 from db import baglan
 
-SEMA = "unique_request_bot"
+SEMA = os.getenv("MYSQL_DATABASE", "unique_request_bot")
 
 # Kurulumda bulunmasi zorunlu tablolar. Yeni tablo eklenince buraya yazilir.
 ZORUNLU = (

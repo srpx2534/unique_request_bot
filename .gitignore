@@ -32,3 +32,6 @@ coverage/
 /cerez_yukleme/
 **/cerez_yukleme/
 veri/yedek/
+
+# Yerel olcum gunlugu
+ci_migrate.log

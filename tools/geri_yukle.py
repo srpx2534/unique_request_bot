@@ -35,6 +35,27 @@ def _env(anahtar: str, varsayilan: str = "") -> str:
     return varsayilan
 
 
+def _gorunumleri_onar(arac: Path, secenek: Path) -> None:
+    """Gorunumleri migration tanimlarindan yeniden kurar.
+
+    mysqldump gorunumleri DEFINER=root ile yaziyor; geri yukleme sirasinda
+    gorunum sessizce eksik kalabiliyor (tablo sayisi tutar, view eksik olur).
+    Tanim dosyalarda durdugu icin burada tekrar uygulanir.
+    """
+    veritabani = _env("MYSQL_DATABASE", "unique_request_bot")
+    for dosya in sorted((KOK / "db" / "migrations").glob("*.sql")):
+        metin = dosya.read_text(encoding="utf-8")
+        if "VIEW" not in metin.upper():
+            continue
+        for parca in metin.split(";"):
+            buyuk = parca.upper()
+            if "CREATE" in buyuk and "VIEW" in buyuk:
+                subprocess.run(
+                    [str(arac), f"--defaults-extra-file={secenek}", veritabani],
+                    input=parca.encode("utf-8"), stderr=subprocess.DEVNULL,
+                    shell=False, check=False,
+                )
+
 def main() -> int:
     """Yedegi geri yukler. Basarisizsa 1 doner."""
     ayar = argparse.ArgumentParser(description="Yedekten geri yukle")
@@ -57,19 +78,15 @@ def main() -> int:
         print(f"HATA: mysql istemcisi yok: {arac}")
         return 1
 
-    # Geri yukleme root ile yapilir: dump'taki görünümler DEFINER=root taşır,
-    # `request` kullanıcısında SUPER yetkisi yok ve 1227 alınıyordu.
-    root_sifre = _env("MYSQL_ROOT_PASSWORD")
-    kullanici = "root" if root_sifre else _env("MYSQL_USER", "request")
-    sifre = root_sifre or _env("MYSQL_PASSWORD")
+    # Geri yukleme her zaman root ile yapilir: dump'taki gorunumler
+    # DEFINER=root tasir, `request` kullanicisinda SUPER yok ve 1227 alinir.
+    # Parola bos olabilir (yerel XAMPP); bos parola root'u devre disi birakmaz.
+    kullanici = "root"
+    sifre = _env("MYSQL_ROOT_PASSWORD")
     icerik = (
         "[client]\n"
         f"user={kullanici}\n"
         f"password={sifre}\n"
-        f"host={_env('MYSQL_HOST', '127.0.0.1')}\n"
-        f"port={_env('MYSQL_PORT', '3306')}\n"
-    )}\n"
-        f"password={_env('MYSQL_PASSWORD')}\n"
         f"host={_env('MYSQL_HOST', '127.0.0.1')}\n"
         f"port={_env('MYSQL_PORT', '3306')}\n"
     )
@@ -81,9 +98,12 @@ def main() -> int:
         with kaynak.open("rb") as girdi:
             sonuc = subprocess.run(
                 [str(arac), f"--defaults-extra-file={secenek}",
+                 "--default-character-set=utf8mb4",
                  _env("MYSQL_DATABASE", "unique_request_bot")],
                 stdin=girdi, stderr=subprocess.PIPE, shell=False,
             )
+        if sonuc.returncode == 0:
+            _gorunumleri_onar(arac, secenek)
     finally:
         secenek.unlink(missing_ok=True)
     if sonuc.returncode != 0:
