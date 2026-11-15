@@ -57,7 +57,7 @@ services:
     env_file: .env
     environment:
       MYSQL_HOST: mysql
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
       PANEL_ADRES: http://panel:8080
       DUGUM_IP: worker
     depends_on:
@@ -85,7 +85,7 @@ services:
     env_file: .env
     environment:
       MYSQL_HOST: mysql
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
       PANEL_HOST: 0.0.0.0
       NODE_ENV: production
       CEREZ_YUKLEME_KOK: /app/cerez_yukleme
@@ -102,6 +102,8 @@ services:
       # Cerez yuklemesi yazilabilir kalici birime yazilir; read_only kokfs
       # yuzunden varsayilan /app/cerez_yukleme salt okunur kaliyordu.
       - cerez_yukleme:/app/cerez_yukleme
+      # Yedekler kalici birimde durur; read_only kokfs yuzunden yazilamazdi.
+      - yedek:/app/veri/yedek
     cap_drop:
       - ALL
     security_opt:
@@ -114,3 +116,4 @@ services:
 volumes:
   mysql_data:
   cerez_yukleme:
+  yedek:

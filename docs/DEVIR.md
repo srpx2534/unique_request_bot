@@ -1,6 +1,6 @@
 # Devir — 2026-11-15
 
-Bu dosya devralan ajan içindir. Önce tamamını oku, sonra "Sıradaki iş"in 1. adımından başla. Sözleşme `docs/CONTRACT.md` v1.8.5 kilitli, açık maddeler `docs/EKSIKLER.md` (40 açık, 31 kapalı, 2 kısmi).
+Bu dosya devralan ajan içindir. Önce tamamını oku, sonra "Sıradaki iş"in 1. adımından başla. Sözleşme `docs/CONTRACT.md` v1.8.7 kilitli, açık maddeler `docs/EKSIKLER.md`.
 
 ## Sıradaki iş — sağlayıcılar ekranında kaydet çalışmıyor
 
@@ -11,13 +11,13 @@ Yapılacak, sırayla:
 1. `src/server/panel_ayar.ts` içine `yonlendirici.patch("/oran", ...)` ekle. Gövdeyi zod ile doğrula: `oran_residential`, `oran_mobil`, `oran_datacenter`, hepsi `z.coerce.number().int().min(0).max(100)`. Toplam 100 değilse 400 ve `{hata}` dön. Geçerliyse üçünü `INSERT INTO ayar (anahtar, deger) VALUES (?, ?) ON DUPLICATE KEY UPDATE deger = VALUES(deger)` ile yaz, `denetim(istek, "oran-guncelle", "ayar", null)` çağır, maskeli listeyi dön. Genel `PATCH /` içindeki `oran_` atlaması olduğu gibi kalır.
 2. `src/web/lib/panel.ts` içine `oranYaz()` ekle: `PATCH /ayar/oran`, `onSuccess: tazele(istemci, "ayar")`.
 3. `saglayicilar.tsx` satır 11'deki importta `ayarYaz` yerine `oranYaz`, satır 28'de `const yaz = oranYaz();`.
-4. Kapılar: `npm.cmd run tip`, `npm.cmd test`, `.venv\Scripts\python.exe tools\lint_yol.py`, mojibake taraması (kod dosyalarında `Ã`, `Ä±`, `ÅŸ` üçlüsü 0 olmalı; bu belgede örnek olarak geçebilir).
+4. Kapılar: `npm.cmd run tip`, `npm.cmd test`, `.venv\Scripts\python.exe tools\lint_yol.py`, mojibake taraması (kod dosyalarında çift kodlama üçlüsü 0 olmalı; bu belgede literal geçmez).
 5. Kullanıcı sağlayıcılar ekranından `oran_mobil` değerini 10'a çekecek. `SELECT deger FROM ayar WHERE anahtar='oran_mobil';` ile 10 yazdığını doğrula.
 6. EKSIKLER 27: `SHOW COLUMNS FROM provider_geo;` ile kolonları gör (`tur` kolonu yok), mobil sağlayıcı sayısını `provider.kind='mobile'` üzerinden say, tek kelimeyle dar kapsamlı gerçek burst at, `hit` ve `burst` kayıtlarında mobil modalite oluştuğunu doğrula.
 
 ## Sonrası
 
-EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (mysqldump yedek/geri yükleme, metrik ucu), 60 (liste uçlarının dönüş zarfı), 61 (DURUM/EKSIKLER dışındaki belgeler), 62 (README, .env.example, docker-compose, .gitattributes devir kontrolü). Proxy ve kimlik bilgisi gelmeden kapanmayan 17 madde (16, 17, 19, 22, 24, 25, 26, 31, 32, 33, 34, 36, 38, 43, 63, 64) beklemede.
+EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçlarının dönüş zarfı), 61 (DURUM/EKSIKLER dışındaki belgeler), 58 (havuz.py ve saglik_db.py bölme). 47 (yedek/geri yükleme, metrik ucu) ve 62 (devir paketi) kapandı. Proxy ve kimlik bilgisi gelmeden kapanmayan 17 madde (16, 17, 19, 22, 24, 25, 26, 31, 32, 33, 34, 36, 38, 43, 63, 64) beklemede.
 
 ## Çalışma kuralları
 
@@ -42,7 +42,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 - MySQL: `C:\xampp\mysql\bin\mysql.exe`, kullanıcı `request`, şifre `.env` içinde `MYSQL_PASSWORD`, veritabanı `unique_request_bot`.
 - Worker testleri `worker\test_*.py`, `.venv\Scripts\python.exe -m pytest worker`.
 - UI testleri `src\server\*.test.ts`, `npm.cmd test`.
-- Migration: `.venv\Scripts\python.exe tools\migrate.py`, dosyalar `db\migrations`, sıradaki numara 043.
+- Migration: `.venv\Scripts\python.exe tools\migrate.py`, dosyalar `db\migrations`, sıradaki numara 047. Son uygulanan 046.
 - Worker veritabanına yazmaz (§3); DB işleri control plane'de.
 
 ## Doğrulanmış davranışlar
@@ -51,11 +51,14 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 - hedef_yok: üst üste 3 hedefsiz burstte kelime `paused`, kampanya kapanıyor, `hedef_yok` uyarısı düşüyor.
 - Havuz boşken iş başlamıyor: satır beklemede kalıyor, 30 dakikada bir tek `provider_down` uyarısı düşüyor (C69).
 - Üst üste 3 error/timeout sağlayıcıyı `disabled` yapıyor; burst tamamen başarısızsa (ok=0) kelime duruyor (C70). `worker/test_saglik_hata.py`.
-- Kapılar son hâlde yeşil: 179 worker, 64 UI, lint 0, tip 0, ağaç temiz.
+- Kapılar son hâlde yeşil: 179 pytest, 80 vitest, lint 0, tip 0, ağaç temiz.
 
 ## Açık altyapı notları
 
 - Yerel Memurai'de `requirepass` 2026-11-16'da açıldı; yapılandırma yedeği `memurai.conf.bak-20261116-000806`. Parola `REDIS_PASSWORD`'de, URL'e gömülmüyor. Yedek dosyası Program Files'ta, repoda değil.
+- `docker-compose.yml` içinde Redis adresi `redis://redis:6379/0`; parola ayrı `REDIS_PASSWORD` değişkeniyle veriliyor. Yedekler `yedek` volume'una `/app/veri/yedek` olarak bağlanıyor.
+- `.env.example` zorunlu sırları listeler: `MYSQL_ROOT_PASSWORD`, `SESSION_SECRET`, `REDIS_PASSWORD`. İsteğe bağlı: `TRUST_PROXY`, `CEREZ_YUKLEME_KOK`.
+- `.env`, `veri/` ve `*.bak` repoya girmez; `.gitignore` ile `.gitattributes` bunları kapsıyor.
 
 - Hiçbir sağlayıcıda `gateway` yok (hepsi örnek satır); C69 devrede, burst başlamıyor. Gerçek gateway girilmeden hiçbir ağ maddesi kapanmaz.
 - `.env` içinde proxy ya da oran anahtarı yok: proxy kimliği `provider` satırında, oranlar `ayar` tablosunda.
@@ -65,3 +68,6 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 47 kalanı (my
 - `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
+
+
+

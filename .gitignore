@@ -1,18 +1,18 @@
-# BaÄŸÄ±mlÄ±lÄ±klar ve sanal ortamlar
+# Bagimliliklar ve sanal ortamlar
 node_modules/
 .venv/
 __pycache__/
 *.pyc
 
-# SÄ±rlar
+# Sirlar
 .env
 
-# ÃœretilmiÅŸ dosyalar
+# Uretilmis dosyalar
 dist/
 build/
 db/migrations/004_uule.sql
 
-# Log ve geÃ§ici
+# Log ve gecici
 logs/
 *.log
 coverage/
@@ -25,13 +25,21 @@ coverage/
 /cerezler/
 /cerez/
 
-/cerez_yukleme/
-
 # Kalici kok CEREZ_YUKLEME_KOK ile degistirilebilir; degistirilirse
 # o dizin buraya ayrica eklenmeli.
 /cerez_yukleme/
 **/cerez_yukleme/
+
+# Yedekler
 veri/yedek/
 
 # Yerel olcum gunlugu
 ci_migrate.log
+
+.env.local
+.env.*.local
+!.env.example
+*.bak
+memurai.conf.bak-*
+*.sql.gz
+/veri/

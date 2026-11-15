@@ -1,6 +1,6 @@
 # DURUM — 2026-11-15
 
-Devralan ajan için tek gerçek durum dosyası. Tamamını oku, sonra "Açık işler"in en üstünden başla. Sözleşme `docs/CONTRACT.md` v1.8.4 kilitli; açık maddeler `docs/EKSIKLER.md`.
+Devralan ajan için tek gerçek durum dosyası. Tamamını oku, sonra "Açık işler"in en üstünden başla. Sözleşme `docs/CONTRACT.md` v1.8.7 kilitli; açık maddeler `docs/EKSIKLER.md`.
 
 ## 1. Amaç ve başarı ölçütü
 
@@ -27,12 +27,13 @@ Tek başarı ölçütü gerçek Google isteklerinde kabul oranı. Ölçülmeyen 
 - Panel: `http://127.0.0.1:8080` — `/saglik` oturumsuz, `/api/*` oturum + CSRF
 - Giriş akışı: `GET /api/token` → `{"token"}`; `POST /api/giris` gövde `{"eposta":"...","sifre":"..."}` başlık `x-csrf-token`; yanıttaki `token` yenilenir. Yanlış alan adı 400, eksik token 403.
 - XAMPP sadece test ortamı, MariaDB. `FOR UPDATE SKIP LOCKED` yok. Docker yok. Decodo ve SERP kimlikleri şu an yok; proxy'siz maddeler öncelikli.
+- Compose dosyası hazır (`docker-compose.yml`); Docker kurulu değil. Sırlar `.env` içinde: `MYSQL_ROOT_PASSWORD`, `SESSION_SECRET`, `REDIS_PASSWORD` zorunlu, `TRUST_PROXY` ve `CEREZ_YUKLEME_KOK` isteğe bağlı.
 - DB kurulumu kullanıcının işi; `my.ini`'ye dokunulmuyor.
 
 ## 4. Mevcut durum (2026-11-15 ölçümü)
 
-- `verify.py`: 25 tablo, 0 eksik, 2 view, geo 81, uule 81, migration 37 — temiz.
-- Testler: **168 pytest, 37 vitest, iki `tsc` configi sessiz.** Yeşil olmayan tek şey yok.
+- `verify.py`: 25 tablo, 0 eksik, 2 view, geo 81, uule 81, migration 46 — temiz.
+- Testler: **179 pytest, 80 vitest, iki `tsc` configi sessiz.** Yeşil olmayan tek şey yok.
 - `cookie_profil`: 3.523 profil, **hepsinde `il_kodu` NULL** (il ataması bilerek kapalı, D-15).
 - `host_only` ölçümü gerçek 199k çerezle yapıldı: 146.430 noktalı, 52.799 host-only.
 - `cerez_kendi` ayar tablosundan ve ayarlar ekranından çıkarıldı; yönetim ekranında admin izni olarak geri gelecek (D-16, mevcut SQL yeniden kullanılacak).
@@ -63,10 +64,10 @@ Tam liste `docs/EKSIKLER.md`; orada 39 madde açık. Sıra:
 3. **D-15 il ataması.** Şu an `il_kodu` tümüyle NULL. Doğrusu UULE koordinatından il çıkarmak ve il sınır poligonuyla eşlemek; dosya adına güvenilmiyor.
 4. **D-65 bölümleme canlı testi.** 10 milyon hit satırı varken `hit` bölümlerinin oluşması/düşmesi ve sorgu planının bozulmaması doğrulanacak.
 5. **58** `havuz.py` (542 satır) dörde bölünecek: oran, sağlayıcı seçimi, çerez seçimi, kuyruk. `saglik_db.py` de sınırı aşıyorsa bölünür.
-6. **60–62** liste yanıt zarfı sözleşmede tekilleştirilecek; kalan belgeler gözden geçirilecek; README, `.env.example`, compose ve `.gitattributes` devir paketi.
+6. **60–61** liste yanıt zarfı sözleşmede tekilleştirilecek; kalan belgeler gözden geçirilecek. **62** devir paketi (README, `.env.example`, compose, `.gitattributes`, `.gitignore`) kapandı.
 7. **Proxy gelince (Decodo):** D-4/D-5/D-6/D-10 (SOCS/CONSENT, SID ölçümü, tazelik, canlılık), F1/F4/F5 (TR çıkış IP doğrulama, click/pogo, 100'lük hit bölme), mobil modun gerçek istekle denenmesi. Bunlar ölçüm olmadan kapatılmaz.
 8. **B6/B8/B9/B12** HTTPS/HSTS, sır saklama, Redis `requirepass`, eşik sınır doğrulaması.
-9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi.
+9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi. Metrik ucu `GET /api/metrik` ile yazıldı; E7 açık.
 10. `cookie_kullanim` yetim satırları; `temizle` sırasında çalışan yüklemenin iptali ve geçici klasörün silinmesi.
 11. Geçersiz sayılan çerez dosyalarının yeniden yüklenmesi (ayrıştırıcı düzeltildi).
 12. `docs/*.py` ve `docs/yedek` temizliği.
@@ -114,4 +115,5 @@ node_modules\.bin\esbuild.cmd src/server/uygulama.ts --bundle --platform=node --
 .venv\Scripts\python.exe tools\lint_yol.py
 ```
 
-Beklenen: 168 pytest, 37 vitest, `tsc` sessiz, `verify` 25 tablo / 0 eksik / migration 37, lint temiz. Bu sayılar düşerse iş bitmemiştir. Proxy'siz hiçbir ölçüm maddesi kapatılmaz.
+Beklenen: 179 pytest, 80 vitest, `tsc` sessiz, `verify` 25 tablo / 0 eksik / migration 46, lint temiz. Bu sayılar düşerse iş bitmemiştir. Proxy'siz hiçbir ölçüm maddesi kapatılmaz.
+

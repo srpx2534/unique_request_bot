@@ -80,7 +80,8 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 ## L. Sözleşme ve belge
 60. Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
 61. `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.
-62. README, `.env.example`, docker-compose ve `.gitattributes` devir paketi kontrolü.
+62. README, `.env.example`, docker-compose ve `.gitattributes` devir paketi kontrolü. (DUZELTILDI)
+Devir paketi tamam: README, `.env.example`, `docker-compose.yml`, `.gitattributes`, `.gitignore` yazıldı; DEVIR/DURUM aynı duruma çekildi. Parola artık kodda geçmiyor, `REDIS_PASSWORD` ayrı taşınıyor, yedekler `yedek` volume'unda.
 
 ## M. Pilot ve devir
 63. M6 pilotu: 5 sunucu, 20 kelime, 2 hafta saha testi.
@@ -94,3 +95,4 @@ A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 173 wo
 - G3 — Cerez il eslestirmesi (klasor yapisi ya da yukleme aninda il secimi).
 - G4 — Cakisma suresi ayari ve cakisma listesi Araclar menusunde; uyarilar orada kapatilacak.
 - G5 — Yedek alma, yedek listesi, geri yukleme ve metrik ucu (E1-E7) Araclar menusunden tetiklenecek; gelistirme asamasinda yapilacak.
+
