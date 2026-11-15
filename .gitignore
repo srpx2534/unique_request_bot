@@ -24,3 +24,8 @@ cerezler/
 cerez/
 
 cerez_yukleme/
+
+# Kalici kok CEREZ_YUKLEME_KOK ile degistirilebilir; degistirilirse
+# o dizin buraya ayrica eklenmeli.
+cerez_yukleme/
+**/cerez_yukleme/

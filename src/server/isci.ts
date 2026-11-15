@@ -10,7 +10,7 @@
 import { createHmac } from "node:crypto";
 import { Worker } from "bullmq";
 import { baglanti, type Is } from "./kuyruk.js";
-import { ekle, tek, yaz } from "./veritabani.js";
+import { ekle, sorgu, tek, yaz } from "./veritabani.js";
 import { dugumSec } from "./dugum_sec.js";
 
 const TOKEN = process.env.WORKER_TOKEN ?? "";
@@ -72,6 +72,34 @@ async function geriAl(geoId: number, sebep: string): Promise<void> {
     [geoId],
   );
   console.error("[isci]", sebep);
+}
+
+/** Üst üste kaç burst hedef bulamazsa kelime durur (A3). */
+const ARDA_HEDEF_YOK = 3;
+
+/** Üst üste hedef_yok alan kelimeyi durdurur (A3). */
+export async function hedefYokDenetle(keywordId: number, geoId: number): Promise<void> {
+  // Burst bazında bakılır: bir burst'ün bütün hit'leri hedef_yok ise o burst
+  // hedefsizdir. Tek tek hit saymak aynı burst'ü üç kez sayardı.
+  const satirlar = await sorgu<{ hepsi: number }>(
+    `SELECT SUM(h.result = 'hedef_yok') = COUNT(*) AS hepsi
+       FROM burst b JOIN hit h ON h.burst_id = b.id
+      WHERE b.keyword_geo_id = ? AND b.ended_at IS NOT NULL
+      GROUP BY b.id ORDER BY b.id DESC LIMIT ?`,
+    [geoId, ARDA_HEDEF_YOK],
+  );
+  if (satirlar.length < ARDA_HEDEF_YOK) return;
+  if (!satirlar.every((satir) => Number(satir.hepsi) === 1)) return;
+
+  await yaz("UPDATE keyword SET state = 'paused' WHERE id = ?", [keywordId]);
+  await yaz(
+    "UPDATE campaign SET stopped_at = UTC_TIMESTAMP(3) WHERE keyword_id = ? AND stopped_at IS NULL",
+    [keywordId],
+  );
+  await yaz("INSERT INTO alert (kind, message) VALUES ('hedef_yok', ?)", [
+    `${ARDA_HEDEF_YOK} burst üst üste hedef bulamadı, kelime durdu`,
+  ]);
+  console.log(`[isci] hedef bulunamadı, kelime durdu: ${keywordId}`);
 }
 
 /** Hacim hedefi dolduysa kelimeyi durdurur. */
@@ -229,6 +257,7 @@ async function calistir(is: Is): Promise<void> {
       [is.keywordGeoId],
     );
     await hedefDenetle(is.keywordId);
+    await hedefYokDenetle(is.keywordId, is.keywordGeoId);
   } catch (hata) {
     await yaz("UPDATE burst SET ended_at = UTC_TIMESTAMP(3), stats = ? WHERE id = ?", [
       JSON.stringify({ hata: (hata as Error).message }),

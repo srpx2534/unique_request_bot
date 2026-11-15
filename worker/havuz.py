@@ -24,6 +24,12 @@ from worker import ayar, proxy
 
 ORAN_ANAHTARLARI = ("oran_residential", "oran_mobil", "oran_datacenter")
 VARSAYILAN_ORAN = {"oran_residential": 100, "oran_mobil": 0, "oran_datacenter": 0}
+# Tabloda deger yoksa .env okunur; boylece oranlar kod degismeden ayarlanir.
+ENV_ANAHTARLARI = {
+    "oran_residential": "PROXY_RESIDENTIAL_ORAN",
+    "oran_mobil": "PROXY_MOBIL_ORAN",
+    "oran_datacenter": "PROXY_DATACENTER_ORAN",
+}
 
 
 def oranlari_normalize(ham: dict[str, int]) -> dict[str, int]:
@@ -101,28 +107,41 @@ def _baglan() -> pymysql.connections.Connection:
 
 
 def oranlari_oku() -> dict[str, int]:
-    """Oranları veritabanından okur.
+    """Oranlari okur: once tablo, sonra .env, en son varsayilan.
+
+    Tablo okunamazsa .env yine devrededir; oranlar veritabani olmadan da
+    ayarlanabilir (23).
 
     Returns:
-        normalize edilmiş oran sözlüğü. Tablo okunamazsa varsayılan döner.
+        normalize edilmis oran sozlugu.
     """
+    ham: dict[str, int] = {}
+    baglanti = None
     try:
         baglanti = _baglan()
     except Exception:  # noqa: BLE001
+        baglanti = None
+    if baglanti is not None:
+        try:
+            with baglanti.cursor() as imlec:
+                imlec.execute(
+                    "SELECT anahtar, deger FROM ayar WHERE anahtar IN (%s, %s, %s)",
+                    ORAN_ANAHTARLARI,
+                )
+                ham = {k: int(v) for k, v in imlec.fetchall() if str(v).isdigit()}
+        except Exception:  # noqa: BLE001
+            ham = {}
+        finally:
+            baglanti.close()
+    for anahtar, env in ENV_ANAHTARLARI.items():
+        if anahtar in ham:
+            continue
+        deger = ayar.oku(env, "")
+        if str(deger).isdigit():
+            ham[anahtar] = int(deger)
+    if not ham:
         return dict(VARSAYILAN_ORAN)
-    try:
-        with baglanti.cursor() as imlec:
-            imlec.execute(
-                "SELECT anahtar, deger FROM ayar WHERE anahtar IN (%s, %s, %s)",
-                ORAN_ANAHTARLARI,
-            )
-            ham = {k: int(v) for k, v in imlec.fetchall() if str(v).isdigit()}
-    except Exception:  # noqa: BLE001
-        return dict(VARSAYILAN_ORAN)
-    finally:
-        baglanti.close()
     return oranlari_normalize(ham)
-
 
 def _aday_sorgusu(geo_kodu: int | None) -> str:
     """Uygun sağlayıcıyı seçen sorguyu kurar.
@@ -138,6 +157,8 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
         " OR (kullanici IS NULL AND sifre IS NULL))",
         "gateway IS NOT NULL",
         "(quarantine_until IS NULL OR quarantine_until < NOW(3))",
+        # Kotasi dolmus saglayici yeni hit almaz; kota yoksa hep uygundur.
+        "(quota_bytes IS NULL OR bytes_month < quota_bytes)",
     ]
     if geo_kodu is not None:
         kosullar.append("city_capable = 1")
@@ -146,7 +167,7 @@ def _aday_sorgusu(geo_kodu: int | None) -> str:
             " AND pg.geo_code = %s AND pg.exhausted_until > NOW(3))"
         )
     return (
-        "SELECT id, gateway, kullanici, sifre, ulke FROM provider WHERE "
+        "SELECT id, name, gateway, kullanici, sifre, ulke FROM provider WHERE "
         + " AND ".join(kosullar)
         + " ORDER BY (ulke = 'TR') DESC, -LOG(RAND()) / weight LIMIT 1"
     )
@@ -194,10 +215,15 @@ def sec_mod(
                     imlec.execute(sorgu, parametreler)
                     kayit = imlec.fetchone()
                     if kayit:
-                        saglayici_id, gateway, kullanici, sifre, ulke = kayit
+                        saglayici_id, ad, gateway, kullanici, sifre, ulke = kayit
                         mod = "city" if kod else ("tr_fallback" if ulke == "TR" else "yabanci")
+                        # Yabanci cikista ulke parametresi saglayicinin kendi ulkesi
+                        # olur; TR yollarinda sabit TR yazilir (C40). Ulke yoksa
+                        # parametre hic yazilmaz, karari saglayici verir.
+                        cikis_ulke = "TR" if mod in ("city", "tr_fallback") else ulke
                         return saglayici_id, proxy.dize(
-                            gateway, kullanici, sifre, geo_slug if kod else None
+                            gateway, kullanici, sifre, cikis_ulke,
+                            geo_slug if kod else None, bicim=proxy.bicim_bul(ad)
                         ), mod, tur
     except Exception:  # noqa: BLE001
         return None
@@ -400,11 +426,59 @@ def _cift_bul(site_domain: str | None, kelime: str | None) -> tuple[int, int] | 
         baglanti.close()
 
 
+def _secim_sorgusu(
+    gecmis: int,
+    ulke: str,
+    geo_kodu: int | None,
+    cift: tuple[int, int] | None,
+    mobil: bool,
+) -> tuple[str, tuple]:
+    """Secim sorgusunu ve parametrelerini kurar.
+
+    Sorgu ayri tutulur; boylece veritabanina cikmadan sinanabilir. Kosullar
+    sirasiyla parametre listesine yazilir, ORDER BY parametreleri sonda kalir.
+
+    Args:
+        gecmis: 0 taze, 1 suresi gecmis.
+        ulke: Cerez ulkesi; ulkesi bos kayitlar toleransli sayilir.
+        geo_kodu: Il kodu; verilirse il suzgeci eklenir.
+        cift: Site-kelime kimlikleri; verilirse kullanim suzgeci eklenir.
+        mobil: Mobil tercih; siralama parametresi.
+
+    Returns:
+        Sorgu metni ve yer tutuculara karsilik gelen parametre demeti.
+    """
+    kosullar = [
+        "durum = 'hazir'",
+        "suresi_gecmis = %s",
+        "(ulke IS NULL OR ulke = %s)",
+    ]
+    parametreler: list = [gecmis, ulke]
+    if geo_kodu:
+        kosullar.append("(il_kodu = %s OR il_kodu IS NULL)")
+        parametreler.append(geo_kodu)
+    if cift:
+        kosullar.append(
+            "NOT EXISTS (SELECT 1 FROM cookie_kullanim ck"
+            " WHERE ck.profil_id = cookie_profil.id"
+            " AND ck.site_id = %s AND ck.keyword_id = %s)"
+        )
+        parametreler.extend([cift[0], cift[1]])
+    sorgu = (
+        "SELECT id, parmak_izzi FROM cookie_profil WHERE "
+        + " AND ".join(kosullar)
+        + " ORDER BY (COALESCE(mobil, 0) = %s) DESC, (il_kodu = %s) DESC,"
+        + " (ulke = %s) DESC, kullanim ASC, id ASC LIMIT 1"
+    )
+    parametreler.extend([1 if mobil else 0, geo_kodu or 0, ulke])
+    return sorgu, tuple(parametreler)
+
 def cerez_sec(
     geo_kodu: int | None = None,
     site_domain: str | None = None,
     kelime: str | None = None,
     mobil: bool = False,
+    ulke: str | None = None,
 ) -> tuple[int, str | None] | None:
     """Havuzdan bir cerez profili sahiplenir.
 
@@ -415,10 +489,16 @@ def cerez_sec(
     suresi gecmisler ayni ic sirayla. Grup icinde en az kullanilan secilir.
     Sahiplenme kosullu UPDATE ile atomiktir.
 
+    Ulke daima TR'dir; parametre yalnizca sabiti kaldirmak icin var.
+    Il kodu verilirse yalnizca o ilin cerezleri secilir (eski kayitlarda il
+    kodu bos olanlar dahil). Cift tukenirse kullanim kayitlari yaslandirilip
+    tur basa alinir; havuz bosuna kapanmaz.
+
     Args:
         geo_kodu: Il kodu; il bazli islemde o ilin cerezleri one alinir.
         site_domain: Hedef alan adi; cifti bulmak icin.
         kelime: Aranan kelime; cifti bulmak icin.
+        ulke: Cerez ulkesi; verilmezse TR.
 
     Returns:
         Profil kimligi ve parmak izi ailesi; havuz bossa ya da cerez kapaliysa None.
@@ -445,37 +525,27 @@ def cerez_sec(
                 " AND suresi_gecmis = 0 AND sona_erme IS NOT NULL"
                 " AND sona_erme < UTC_TIMESTAMP(3)"
             )
+            ulke_kodu = ulke or "TR"
             gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
             for gecmis in gecmisler:
+                sifirlandi = False
                 for _ in range(3):
-                    # C46: cerez ulkesi IP ulkesiyle eslesmeli. Cerez yalnizca
-                    # TR baglamda yuklendigi icin yabanci cerez disarida kalir;
-                    # ulkesi bilinmeyen (NULL) profil denenmeye devam eder.
-                    kosullar = [
-                        "durum = 'hazir'",
-                        "suresi_gecmis = %s",
-                        "(ulke IS NULL OR ulke = 'TR')",
-                    ]
-                    parametreler: list = [gecmis]
-                    if cift:
-                        kosullar.append(
-                            "NOT EXISTS (SELECT 1 FROM cookie_kullanim ck"
-                            " WHERE ck.profil_id = cookie_profil.id"
-                            " AND ck.site_id = %s AND ck.keyword_id = %s)"
-                        )
-                        parametreler.extend([cift[0], cift[1]])
-                    parametreler.append(1 if mobil else 0)
-                    parametreler.append(geo_kodu or 0)
-                    imlec.execute(
-                        "SELECT id, parmak_izzi FROM cookie_profil WHERE "
-                        + " AND ".join(kosullar)
-                        + " ORDER BY (COALESCE(mobil, 0) = %s) DESC, (il_kodu = %s) DESC,"
-                        + " (ulke = 'TR') DESC,"
-                        " kullanim ASC, id ASC LIMIT 1",
-                        tuple(parametreler),
+                    sorgu, secim_parametreleri = _secim_sorgusu(
+                        gecmis, ulke_kodu, geo_kodu, cift, mobil
                     )
+                    imlec.execute(sorgu, secim_parametreleri)
                     satir = imlec.fetchone()
                     if not satir:
+                        if cift and not sifirlandi:
+                            # Cift tukendi: kullanim kayitlari yaslandirilir ve
+                            # tur basa alinir; havuz bosuna kapanmaz.
+                            imlec.execute(
+                                "DELETE FROM cookie_kullanim"
+                                " WHERE site_id = %s AND keyword_id = %s",
+                                (cift[0], cift[1]),
+                            )
+                            sifirlandi = True
+                            continue
                         break
                     profil_id = int(satir[0])
                     parmak = satir[1]

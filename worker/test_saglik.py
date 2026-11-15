@@ -7,7 +7,7 @@ karantinaya girmez.
 
 from __future__ import annotations
 
-from worker import saglik
+from worker import havuz, saglik_db, saglik
 
 
 def test_oran_hesabi() -> None:
@@ -52,3 +52,152 @@ def test_sure_dolunca_acilir() -> None:
 def test_sure_dolmadan_acilmaz() -> None:
     """Süre dolmadan karantina kalkmaz."""
     assert saglik.karantina_karari(30.0, "quarantine", False) == "yok"
+
+class _Imlec:
+    """bayt_ekle akisini taklit eden imlec; fetchone kuyudan beslenir."""
+
+    def __init__(self, kuyruk: list) -> None:
+        self.kuyruk = list(kuyruk)
+        self.calismalar: list[tuple[str, tuple]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, parametre=None):
+        self.calismalar.append((" ".join(sql.split()), tuple(parametre or ())))
+
+    def fetchone(self):
+        return self.kuyruk.pop(0) if self.kuyruk else None
+
+    def sorgular(self) -> list[str]:
+        return [s for s, _ in self.calismalar]
+
+
+class _Baglanti:
+    def __init__(self, kuyruk: list) -> None:
+        self.imlec = _Imlec(kuyruk)
+
+    def cursor(self):
+        return self.imlec
+
+    def close(self) -> None:
+        pass
+
+
+def _kur(monkeypatch, kuyruk: list) -> tuple[_Baglanti, list]:
+    baglanti = _Baglanti(kuyruk)
+    uyarilar: list[tuple] = []
+    monkeypatch.setattr(saglik_db, "_baglan", lambda: baglanti)
+    monkeypatch.setattr(saglik_db, "uyari", lambda *a: uyarilar.append(a))
+    return baglanti, uyarilar
+
+
+def test_sifir_bayt_yazilmaz(monkeypatch) -> None:
+    baglanti, _ = _kur(monkeypatch, [])
+    saglik_db.bayt_ekle(3, 0)
+    saglik_db.bayt_ekle(3, None)
+    assert baglanti.imlec.calismalar == []
+
+
+def test_ay_devri_kolonu_kullanilir(monkeypatch) -> None:
+    baglanti, _ = _kur(monkeypatch, [(500, None)])
+    saglik_db.bayt_ekle(3, 500)
+    guncelleme = baglanti.imlec.sorgular()[0]
+    assert "bytes_ay" in guncelleme
+    assert "DATE_FORMAT" in guncelleme
+
+
+def test_kota_yoksa_uyari_yok(monkeypatch) -> None:
+    _, uyarilar = _kur(monkeypatch, [(10**9, None)])
+    saglik_db.bayt_ekle(3, 1000)
+    assert uyarilar == []
+
+
+def test_esik_altinda_uyari_yok(monkeypatch) -> None:
+    _, uyarilar = _kur(monkeypatch, [(500, 10_000)])
+    saglik_db.bayt_ekle(3, 1000)
+    assert uyarilar == []
+
+
+def test_esik_asilinca_bir_kez_uyarir(monkeypatch) -> None:
+    _, uyarilar = _kur(monkeypatch, [(9_500, 10_000), (0,)])
+    saglik_db.bayt_ekle(3, 1000)
+    assert len(uyarilar) == 1
+    tur, kimlik, mesaj = uyarilar[0]
+    assert tur == "quota"
+    assert kimlik == 3
+    assert "95" in mesaj
+
+
+def test_acik_uyari_varsa_sessiz_kalir(monkeypatch) -> None:
+    _, uyarilar = _kur(monkeypatch, [(9_500, 10_000), (1,)])
+    saglik_db.bayt_ekle(3, 1000)
+    assert uyarilar == []
+
+
+def test_aday_sorgusu_kotayi_suzer() -> None:
+    sorgu = havuz._aday_sorgusu("residential")
+    assert "(quota_bytes IS NULL OR bytes_month < quota_bytes)" in sorgu
+
+def test_asgari_ornek_altinda_esik_asilmaz() -> None:
+    assert saglik.esik_asildi_mi(50.0, 5, 35.0, 10) is False
+
+
+def test_asgari_ornek_dolunca_esik_asilir() -> None:
+    assert saglik.esik_asildi_mi(50.0, 10, 35.0, 10) is True
+
+
+class _EsikImlec:
+    def __init__(self, kuyruk: list) -> None:
+        self.kuyruk = list(kuyruk)
+        self.calismalar: list[tuple] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, parametre=None):
+        self.calismalar.append((" ".join(sql.split()), tuple(parametre or ())))
+
+    def fetchone(self):
+        return self.kuyruk.pop(0) if self.kuyruk else None
+
+
+class _EsikBaglanti:
+    def __init__(self, kuyruk: list) -> None:
+        self.imlec = _EsikImlec(kuyruk)
+
+    def cursor(self):
+        return self.imlec
+
+    def close(self) -> None:
+        pass
+
+
+def test_kaydet_esikleri_ayardan_okur(monkeypatch) -> None:
+    baglanti = _EsikBaglanti([(12, 20, 60.0)])
+    monkeypatch.setattr(saglik_db, "_baglan", lambda: baglanti)
+    monkeypatch.setattr(saglik_db.ayar_db, "oku", lambda anahtar, varsayilan="": {
+        "esik_geo": "50", "asgari_ornek": "20",
+    }.get(anahtar, varsayilan))
+
+    saglik_db.kaydet(4, 34, "captcha")
+
+    tuketim = [p for s, p in baglanti.imlec.calismalar if "exhausted_until" in s]
+    assert tuketim, "il cifti tuketilmedi"
+    assert 60 in tuketim[0]
+
+
+def test_kaydet_esik_altinda_tuketmez(monkeypatch) -> None:
+    baglanti = _EsikBaglanti([(3, 20, 15.0)])
+    monkeypatch.setattr(saglik_db, "_baglan", lambda: baglanti)
+    monkeypatch.setattr(saglik_db.ayar_db, "oku", lambda anahtar, varsayilan="": varsayilan)
+
+    saglik_db.kaydet(4, 34, "captcha")
+
+    assert not [s for s, _ in baglanti.imlec.calismalar if "exhausted_until" in s]

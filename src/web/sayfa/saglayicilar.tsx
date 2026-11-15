@@ -54,8 +54,7 @@ export default function Saglayicilar() {
   });
 
   function oranKaydet() {
-    const toplam = ["oran_residential", "oran_mobil", "oran_datacenter"].reduce((t, k) => t + (Number(oranlar[k]) || 0), 0);
-    if (toplam !== 100) {
+        if (toplam !== 100) {
       bildir(`Oranlar 100 olmalı, şu an ${toplam}`, "hata");
       return;
     }
@@ -88,6 +87,10 @@ export default function Saglayicilar() {
     });
   }
 
+  const toplam = ["oran_residential", "oran_mobil", "oran_datacenter"].reduce(
+    (t, k) => t + (Number(oranlar[k]) || 0),
+    0,
+  );
   return (
     <div className="space-y-4">
       <Kart baslik="Tür oranı" aciklama="Toplam 100 olmalı. Havuz bu orana göre tür çeker.">
@@ -98,7 +101,10 @@ export default function Saglayicilar() {
               <Girdi value={oranlar[k] ?? ""} onChange={(o) => setOranlar({ ...oranlar, [k]: o.target.value })} className="mt-1" />
             </label>
           ))}
-          <Dugme onClick={oranKaydet} disabled={yaz.isPending}>Kaydet</Dugme>
+                    <span className={toplam === 100 ? "text-sm text-solgun" : "text-sm text-hata"}>
+            toplam: {toplam}
+          </span>
+<Dugme onClick={oranKaydet} disabled={yaz.isPending}>Kaydet</Dugme>
         </div>
       </Kart>
 

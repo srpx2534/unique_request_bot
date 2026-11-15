@@ -200,7 +200,7 @@ def burst_yap(
             cerezler: list[dict] = []
             aile: str | None = None
             if geo_mod in ("city", "tr_fallback"):
-                secilen = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu, mobil_hedef)
+                secilen = havuz.cerez_sec(geo_kodu, hedef_domain, sorgu, mobil_hedef, ulke="TR")
                 if secilen is not None:
                     cerez_profil, aile = secilen
                     cerezler = cookie.suz(havuz.cerez_al(cerez_profil), hedef_domain)
@@ -234,6 +234,7 @@ def burst_yap(
         # Sağlayıcı sağlığı yalnızca gerçek bir sağlayıcı kullanıldıysa işlenir.
         if saglayici_id:
             saglik_db.kaydet(saglayici_id, geo_kodu, kayit["result"])
+            saglik_db.bayt_ekle(saglayici_id, kayit["bytes"])
             saglik_db.karantina_kontrol(saglayici_id)
 
         kayit["sira"] = sira

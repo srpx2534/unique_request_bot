@@ -15,6 +15,7 @@ import { kalpKaybiYaz } from "./dugum_olay.js";
 import { olcumYap } from "./olcum.js";
 import { esikDenetle } from "./esik.js";
 import { saklamaDenetle } from "./saklama.js";
+import { bolumDenetle } from "./bolum.js";
 
 const TIK_MS = 60_000;
 const TUR_SINIRI = 200;
@@ -58,6 +59,7 @@ async function bakim(): Promise<void> {
     await kalpKaybiYaz();
     await esikDenetle();
     await saklamaDenetle();
+    await bolumDenetle();
   } catch (hata) {
     console.error("[bakim]", (hata as Error).message);
   } finally {

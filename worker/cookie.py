@@ -170,8 +170,8 @@ def coz(metin: str, tur: str) -> list[dict]:
 
 def bicim_bul(metin: str) -> str | None:
     """Icerige bakarak bicimi tahmin eder; taninamazsa None."""
-    kirpik = metin.lstrip()[:64]
-    if kirpik.startswith("{"):
+    kirpik = metin.lstrip()[:1]
+    if kirpik in ("{", "["):
         return "json"
     for satir in metin.splitlines():
         ham = satir.strip()

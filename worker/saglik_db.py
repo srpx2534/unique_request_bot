@@ -19,6 +19,9 @@ import pymysql
 
 from worker import ayar, ayar_db, saglik
 
+ESIK_ORANI = 0.9
+UYARI_SESSIZ_DK = 30
+
 
 def _baglan() -> pymysql.connections.Connection:
     """Yazma amacli baglanti acar."""
@@ -88,6 +91,59 @@ def uyari(
     finally:
         _kapat(baglanti)
 
+
+def bayt_ekle(saglayici_id: int, bayt: int | None) -> None:
+    """Aylik bayt sayacini artirir, kotaya yaklasinca bir kez uyarir.
+
+    Sayac ay degince sifirlanir; `bytes_ay` hangi aya ait oldugunu tutar.
+    Kota tanimli degilse yalnizca sayac islenir.
+
+    Args:
+        saglayici_id: Saglayici kimligi.
+        bayt: Bu hit'te tasinan bayt; bilinmiyorsa 0 ya da None.
+    """
+    if not bayt or bayt <= 0:
+        return
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    mesaj: str | None = None
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE provider SET"
+                " bytes_month = IF(bytes_ay IS NULL"
+                "   OR bytes_ay <> DATE_FORMAT(UTC_TIMESTAMP(), '%%Y-%%m'), 0, bytes_month) + %s,"
+                " bytes_ay = DATE_FORMAT(UTC_TIMESTAMP(), '%%Y-%%m')"
+                " WHERE id = %s",
+                (bayt, saglayici_id),
+            )
+            imlec.execute(
+                "SELECT bytes_month, quota_bytes FROM provider WHERE id = %s",
+                (saglayici_id,),
+            )
+            satir = imlec.fetchone()
+            if satir and satir[1] is not None:
+                kullanilan = int(satir[0])
+                kota = int(satir[1])
+                if kota > 0 and kullanilan >= kota * ESIK_ORANI:
+                    imlec.execute(
+                        "SELECT COUNT(*) FROM alert WHERE kind = 'quota' AND ref_id = %s"
+                        " AND acknowledged = 0"
+                        " AND created_at > UTC_TIMESTAMP(3) - INTERVAL %s MINUTE",
+                        (saglayici_id, UYARI_SESSIZ_DK),
+                    )
+                    if not int(imlec.fetchone()[0]):
+                        yuzde = round(kullanilan * 100 / kota)
+                        mesaj = f"saglayici {saglayici_id} bayt kotasinin %{yuzde}inde"
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+    finally:
+        _kapat(baglanti)
+    if mesaj:
+        uyari("quota", saglayici_id, mesaj)
 
 def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
     """Hit sonucunu saglayiciya, il varsa il ciftine isler.
@@ -163,7 +219,10 @@ def kaydet(saglayici_id: int, geo_kodu: int | None, sonuc: str) -> None:
                 (saglayici_id, geo_kodu),
             )
             satir = imlec.fetchone()
-            if satir and saglik.esik_asildi_mi(float(satir[2]), int(satir[1]), saglik.GEO_ESIK):
+            # Esikler panelden gelir; okunamazsa sozlesme degerleri gecerli.
+            esik_geo = int(ayar_db.oku("esik_geo", str(saglik.GEO_ESIK)) or saglik.GEO_ESIK)
+            asgari = int(ayar_db.oku("asgari_ornek", str(saglik.ASGARI_ORNEK)) or saglik.ASGARI_ORNEK)
+            if satir and saglik.esik_asildi_mi(float(satir[2]), int(satir[1]), esik_geo, asgari):
                 imlec.execute(
                     "UPDATE provider_geo SET exhausted_until = NOW(3) + INTERVAL %s MINUTE"
                     " WHERE provider_id = %s AND geo_code = %s"

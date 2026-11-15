@@ -102,7 +102,7 @@ CREATE TABLE ayar (anahtar VARCHAR(64) NOT NULL PRIMARY KEY, deger VARCHAR(255) 
 - `alert`: 90 gün
 - `dugum_olay`: 90 gün
 - Saklama turu saatte bir çalışır; tur başına en fazla 10 parça ve parça başına 20.000 satır silinir.
-- Partition, `hit` tablosu 10 milyon satırı geçince eklenir.
+- Partition, `hit` tablosu 10 milyon satırı geçince eklenir. Eşik aşılınca bakım turu günlük bölümlemeyi kurar (30 gün geri, 7 gün ileri) ya da eksik gelecek günleri açar ve `partition` uyarısı düşer. Eşik altında hiçbir bölüm işlemi yapılmaz.
 ## 7. API sözleşmesi
 Kimlik: oturum cookie'si + CSRF token. Worker uçları paylaşılan token ile.
 - Doğrulama hatası 400 `{ hata }` döner (ilk ihlal); sunucu hatası 500 `{ hata, ayrinti }` döner ve `ayrinti` yalnızca üretim dışında doludur. Bilinmeyen panel yolu 404 ekranına düşer.
@@ -186,6 +186,7 @@ Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlan
 - `keyword_geo` cooldown: 20-35 dakika rastgele
 - Ölçüm aralığı: `ayar.olcum_araligi_dk` (varsayılan 0 = yalnızca cooldown sırası)
 - Basamak boyu: en fazla 60 hit
+- Üst üste 3 burst hedef bulamazsa kelime kendiliğinden durur, kampanya kapanır ve `hedef_yok` uyarısı düşer (A3).
 - Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
 - API sayfaları arası bekleme: 0,6-1,3 saniye
 - Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie sürekliliği korunur, oturum hit sonunda kapanır
@@ -445,7 +446,7 @@ CREATE TABLE cookie_kullanim (profil_id BIGINT UNSIGNED NOT NULL, site_id BIGINT
 - Yükleme partisi en fazla 500 dosya ve 32 MB; dosya başına sınır 2 MB, tarama tavanı 300.000 dosyadır.
 - Kiralama 10 dakikadır; süre dolunca satır geri alınır.
 - Bir günden eski `bitti`/`iptal` kayıtlarının geçici klasörü saatte en fazla bir kez süpürülür.
-- İl kodu yolun ilk klasöründen okunur; kırpma ortadan yapılır ki il eşleşmesi kaybolmasın.
+- Dosya adi serbesttir; yalnizca uzanti denetlenir (`.txt` veya `.json`). Il atamasi suan yapilmiyor: adlar serbest oldugu icin guvenilir bir il kaynagi yok, profiller ilsiz kalir ve havuz il suzgeci NULL'a tolerans tanir. Kirpma ortadan yapilir ki il eslesmesi ileride kaybolmasin.
 - Silme partisi 400 profil ve 1000 dosya satırıdır; her parti ayrı işlemde commit edilir.
 - Geçici klasör `CEREZ_YUKLEME_KOK` altındadır ve kalıcı birimde durur; düğüm kimliği `DUGUM_ADI` ile verilir.
 - `temizle` globaldir ve geri alınamaz; onay ister.

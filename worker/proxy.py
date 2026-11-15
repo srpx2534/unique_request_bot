@@ -5,6 +5,10 @@ anladığı dize üretilir. Hedefleme kullanıcı adına eklenir: ülke, gerekiy
 il. Her hit yeni oturum kimliği alır; böylece IP hit başına değişir ama hit
 içindeki üç istek (izlenim, tıklama, pogo) aynı IP'den çıkar.
 
+Kullanıcı adı biçimi sağlayıcıya göredir: Decodo, Oxylabs ve IPRoyal
+`user-` önekiyle, SOAX paket adıyla, Bright Data `brd-customer-` önekiyle
+çalışır. Biçim sağlayıcı adından çözülür; tanınmayan ad Decodo sayılır.
+
 Seçim burada değil, worker/havuz.py içinde yapılır; bu modül yalnızca
 biçimlendirir.
 
@@ -17,22 +21,52 @@ import secrets
 
 OTURUM_UZUNLUK = 8  # karakter; çakışma olasılığı ihmal edilebilir
 
+# Sağlayıcı başına kullanıcı adı kalıbı. {ulke} ve {city} boş olabilir.
+BICIMLER = {
+    "decodo": "user-{k}{ulke}{city}-session-{s}",
+    "oxylabs": "user-{k}{ulke}{city}-session-{s}",
+    "iproyal": "user-{k}{ulke}{city}-session-{s}",
+    "soax": "{k}{ulke}{city}-session-{s}",
+    "brightdata": "brd-customer-{k}{ulke}{city}-session-{s}",
+}
+
+
+def bicim_bul(saglayici_adi: str | None) -> str:
+    """Sağlayıcı adından kullanıcı adı biçimini çözer.
+
+    Args:
+        saglayici_adi: provider.name değeri.
+
+    Returns:
+        BICIMLER anahtarı; tanınmayan ad için "decodo".
+    """
+    ad = (saglayici_adi or "").strip().lower().replace(" ", "")
+    for anahtar in BICIMLER:
+        # "bright data" gibi boşluklu yazım da yakalanır.
+        if anahtar in ad:
+            return anahtar
+    return "decodo"
+
 
 def dize(
     gateway: str,
     kullanici: str,
     sifre: str,
+    ulke: str | None = "TR",
     geo_slug: str | None = None,
     oturum: str | None = None,
+    bicim: str = "decodo",
 ) -> str:
     """Proxy dizesi kurar.
 
     Args:
         gateway: host:port.
-        kullanici: Sağlayıcı kullanıcı adı (user- öneki hariç).
+        kullanici: Sağlayıcı kullanıcı adı (önek hariç).
         sifre: Sağlayıcı şifresi.
+        ulke: Çıkış ülkesi kodu; None ise ülke parametresi yazılmaz.
         geo_slug: İl slug'ı; verilirse city hedeflemesi eklenir.
         oturum: Oturum kimliği; verilmezse rastgele üretilir.
+        bicim: bicim_bul() sonucu.
 
     Returns:
         http://kullanici:sifre@host:port dizesi.
@@ -40,11 +74,14 @@ def dize(
     if not kullanici:
         # Ücretsiz düz proxy: kimlik yok, hedefleme de yok.
         return f"http://{gateway}"
-    ad = f"user-{kullanici}-country-tr"
-    if geo_slug:
-        # İl hedefleme yalnızca destekleyen sağlayıcıda anlamlı (§5 adım 1).
-        ad += f"-city-{geo_slug}"
-    ad += f"-session-{oturum or secrets.token_hex(OTURUM_UZUNLUK // 2)}"
+
+    kalip = BICIMLER.get(bicim, BICIMLER["decodo"])
+    ad = kalip.format(
+        k=kullanici,
+        ulke=f"-country-{ulke.lower()}" if ulke else "",
+        city=f"-city-{geo_slug}" if geo_slug else "",
+        s=oturum or secrets.token_hex(OTURUM_UZUNLUK // 2),
+    )
     return f"http://{ad}:{sifre}@{gateway}"
 
 

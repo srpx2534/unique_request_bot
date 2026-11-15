@@ -1,6 +1,6 @@
 """Yol ve platform disiplini lint'i (§20, C29).
 
-Sabit yol, os.sep, os.system, fcntl ve naive saat kullanimini yakalar.
+Sabit yol, os.sep, os.system, fcntl, shell=True ve naive saat kullanimini yakalar.
 Hepsi Windows'ta calisip Linux'ta kirilan kaliplardir.
 
 Kullanim: python tools/lint_yol.py
@@ -26,6 +26,9 @@ KURALLAR = (
     (re.compile(r"\bos\.fork\("), "os.fork kullanimi"),
     (re.compile(r"\bfcntl\."), "fcntl kullanimi"),
     (re.compile(r"datetime\.now\(\)"), "naive datetime.now()"),
+    (re.compile(r"datetime\.utcnow\(\)"), "naive datetime.utcnow()"),
+    (re.compile(r"shell\s*=\s*True"), "shell=True"),
+    (re.compile(r'\+\s*"/"\s*\+'), "elle / birlestirme"),
 )
 
 # Yorum satirlari ve doküman metni kuraldan muaftir.

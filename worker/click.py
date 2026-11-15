@@ -32,9 +32,8 @@ POGO_MIN = 3  # saniye; hemen dönmek bot gibi görünür
 POGO_MAX = 6  # saniye; üstü pogo penceresini kaçırır
 
 # Tıklama sırasında gönderilen, tarayıcının gezinti isteğine benzeyen başlıklar.
+# Accept burada da yazilmaz: profilin kendi basligi ve sirasi korunur (C11).
 TIKLAMA_BASLIKLARI = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
-              "image/webp,*/*;q=0.8",
     "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
@@ -161,7 +160,6 @@ def pogo(
 
     adres = serp_url or f"https://www.google.com/search?q={sorgu}"
     basliklar = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
         "Referer": urlparse(adres).geturl(),
         "Sec-Fetch-Mode": "navigate",

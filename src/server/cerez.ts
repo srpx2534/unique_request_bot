@@ -106,12 +106,12 @@ function jsonParcalari(metin: string): unknown[] {
       metinIcinde = true;
       continue;
     }
-    if (karakter === "{") {
+    if (karakter === "{" || karakter === "[") {
       if (derinlik === 0) bas = i;
       derinlik += 1;
       continue;
     }
-    if (karakter === "}") {
+    if (karakter === "}" || karakter === "]") {
       derinlik -= 1;
       if (derinlik === 0 && bas >= 0) {
         try {
@@ -223,7 +223,8 @@ function netscapeCoz(metin: string): Cerez[] {
 
 /** İçeriğe bakarak biçimi bulur. */
 function bicimBul(metin: string): "json" | "netscape" | null {
-  if (metin.trimStart().startsWith("{")) return "json";
+  const bas = metin.trimStart().charAt(0);
+  if (bas === "{" || bas === "[") return "json";
   for (const satir of metin.split(/\r?\n/)) {
     const ham = satir.trim();
     if (!ham) continue;
@@ -354,20 +355,31 @@ async function dosyaAktar(
     if (!c.sona_erme) return en;
     return !en || c.sona_erme > en ? c.sona_erme : en;
   }, null);
-  const il = ilBul(path.relative(kokDizin, tam));
+  // Il atamasi suan yapilmiyor: dosya adlari serbest ve guvenilir bir il
+  // kaynagi yok. Profiller ilsiz kalir; havuz il suzgeci NULL'a tolerans
+  // tanir. ilBul ileride icerik temelli cikarim icin duruyor.
+  const goreli = path.relative(kokDizin, tam);
+  const il: number | null = null;
   const ulke = ulkeBul(cerezler.map((c) => c.domain));
   const aile = aileBul(cerezler);
-  const mobil = modaliteBul(ham, path.relative(kokDizin, tam));
-
+  // Modalite once icerik ya da yol ipucundan okunur; ipucu yoksa yukleme
+  // bayragina dusulur, cunku dosya adlari serbest ve tek basina yetmiyor.
+  const ipucuMobil = modaliteBul(ham, goreli);
 
   try {
     await islem(async (baglanti) => {
+      const [yukleme] = await baglanti.query(
+        "SELECT y.modalite FROM cookie_dosya d"
+          + " JOIN cerez_yukleme y ON y.id = d.yukleme_id WHERE d.id = ?",
+        [id],
+      );
+      const mobil = ipucuMobil || ((yukleme as { modalite?: number }[])[0]?.modalite ? 1 : 0);
       await baglanti.query(
         `UPDATE cookie_dosya SET tur = ?, boyut = ?, ozet = ?, satir_sayisi = ?,
            il_kodu = ?, durum = 'aktarildi', hata = NULL WHERE id = ?`,
         [bicim, bilgi.size, ozet, cerezler.length, il, id],
       );
-      // Modalite dosyadan cikarilir: toplu yuklemede kullanici secemez.
+      // Modalite yukarida cozuldu; burada yalnizca yazilir.
       const [profil] = await baglanti.query(
         `INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, mobil, sona_erme, suresi_gecmis)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -470,10 +482,10 @@ const yolSemasi = z.object({ yol: z.string().trim().min(1).max(512) });
 
 /** Ozet sayilar. */
 yonlendirici.get("/cerez", async (istek, yanit) => {
-  // `cerez_kendi` acikken yalnizca kullanicinin kendi yukledigi dosyalar
-  // sayilir; havuz ortak olsa da kisi kendi emegini gorur.
+  // Sayimlar ortaktir. Kisiye ozel gorunum ileride kullanici yonetiminde
+  // admin izni olarak gelecek; suzgec SQL'leri hazir duruyor.
   const kim = await yukleyenKimlik(istek);
-  const kendi = kim !== null && (await ayarOku("cerez_kendi", "0")) === "1";
+  const kendi = false;
   const suzgec = kendi ? " AND yukleyen = ?" : "";
   const suzgecDeger = kendi ? [kim] : [];
   // Profil satirlarinda yukleyen yok; dosya uzerinden suzulur.

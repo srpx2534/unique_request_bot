@@ -31,11 +31,24 @@ def main() -> int:
     secim = ayar.parse_args()
 
     proxy_secici = (lambda: secim.proxy) if secim.proxy else None
-    sonuc = burst.burst_yap(
-        secim.sorgu, secim.domain, secim.adet,
-        proxy_secici=proxy_secici, uule=secim.uule,
-        geo_slug=secim.geo,
-    )
+    # Basamak boyu en fazla AZAMI_HIT'tir (§9); büyük adet basamaklara bölünür.
+    kalan = secim.adet
+    toplam = {"ok": 0, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0}
+    sonuc = None
+    while kalan > 0:
+        parca = min(kalan, burst.AZAMI_HIT)
+        kalan -= parca
+        sonuc = burst.burst_yap(
+            secim.sorgu, secim.domain, parca,
+            proxy_secici=proxy_secici, uule=secim.uule,
+            geo_slug=secim.geo,
+        )
+        for anahtar in toplam:
+            toplam[anahtar] += sonuc[anahtar]
+        if sonuc["result"] != "ok":
+            break
+    assert sonuc is not None
+    sonuc.update(toplam)
 
     print(f"result={sonuc['result']} hedef={sonuc['hedef_url']} "
           f"ms={sonuc['elapsed_ms']}")

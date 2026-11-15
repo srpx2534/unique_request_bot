@@ -34,18 +34,19 @@ def oran_hesapla(captcha: int, toplam: int) -> float:
     return round(captcha * 100.0 / toplam, 2)
 
 
-def esik_asildi_mi(oran: float, toplam: int, esik: float) -> bool:
+def esik_asildi_mi(oran: float, toplam: int, esik: float, asgari: int = ASGARI_ORNEK) -> bool:
     """Esik asildi mi diye bakar.
 
     Args:
         oran: Yuzde degeri.
         toplam: Ornek sayisi.
         esik: Yuzde esigi.
+        asgari: Alt ornek siniri; panelden gelen deger gecirilir.
 
     Returns:
         Ornek yeterliyse ve oran esigi gectiyse True.
     """
-    return toplam >= ASGARI_ORNEK and oran > esik
+    return toplam >= asgari and oran > esik
 
 
 def karantina_karari(

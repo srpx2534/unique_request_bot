@@ -67,11 +67,20 @@ const CEREZ_ALANLARI: MantiksalAlan[] = [
     aciklama: "Önce süresi dolmamış çerezler denenir; tükendiyse süresi geçmişler kullanılır.",
   },
   {
-    anahtar: "cerez_kendi",
-    etiket: "Yalnızca kendi çerezlerimi gör",
-    aciklama: "Havuz ortak kalır; yalnızca çerezler ekranındaki sayımlar kendi yüklediklerinle sınırlanır.",
+    anahtar: "esik_captcha",
+    etiket: "Sağlayıcı CAPTCHA eşiği (%)",
+    aciklama: "Sağlayıcı genel CAPTCHA oranı bu yüzdeyi geçerse 2 saat karantinaya girer.",
   },
-];
+  {
+    anahtar: "esik_geo",
+    etiket: "İl çifti CAPTCHA eşiği (%)",
+    aciklama: "Bir sağlayıcı-il çifti bu yüzdeyi geçerse 60 dakika tükenmiş sayılır.",
+  },
+  {
+    anahtar: "asgari_ornek",
+    etiket: "En az örnek",
+    aciklama: "Eşik, bu sayıda hit toplanmadan değerlendirilmez.",
+  },];
 
 const SERP = [
   { anahtar: "serp_decodo", ad: "Decodo", not: "sıralama ölçümü · birincil" },

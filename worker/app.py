@@ -89,7 +89,11 @@ class Isleyici(BaseHTTPRequestHandler):
         """Sağlık ucu."""
         yol = self.path.split("?")[0]
         if yol == "/health":
-            self._json(200, {"durum": "ayakta"})
+            # §7.2: surum ve doluluk doner; token istemez, dis izleyici kullanir.
+            self._json(200, {
+                "durum": "ayakta", "surum": kalp.SURUM,
+                "doluluk": ESZAMANLI - _semafor._value,
+            })
             return
         if yol == "/durum":
             # Sayac ve saglayici durumu disariya acilir; token yoksa verilmez.

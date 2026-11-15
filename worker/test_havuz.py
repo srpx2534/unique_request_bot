@@ -50,3 +50,207 @@ def test_hic_uygun_tur_yoksa_none() -> None:
     """Tüm oranlar sıfırsa tür seçilemez."""
     sifir = {"oran_residential": 0, "oran_mobil": 0, "oran_datacenter": 0}
     assert havuz.tur_sec(sifir, mobil_acik=True) is None
+class _SahteImlec:
+    """Yalnizca cerez_sec akisini taklit eden imlec."""
+
+    def __init__(self) -> None:
+        self.calismalar: list[tuple[str, tuple]] = []
+        self.secim_sayisi = 0
+        self.rowcount = 1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, parametre=None):
+        self.calismalar.append((sql, tuple(parametre or ())))
+        if sql.startswith("SELECT id, parmak_izzi"):
+            self.secim_sayisi += 1
+
+    def fetchone(self):
+        if self.secim_sayisi == 1:
+            return None
+        return (7, "aile")
+
+    def silinen_ciftler(self) -> list[tuple]:
+        return [p for s, p in self.calismalar if s.startswith("DELETE FROM cookie_kullanim")]
+
+
+class _SahteBaglanti:
+    def __init__(self) -> None:
+        self.imlec = _SahteImlec()
+
+    def cursor(self):
+        return self.imlec
+
+    def close(self) -> None:
+        pass
+
+
+def _hazirla(monkeypatch, sahte) -> None:
+    monkeypatch.setattr(havuz, "cerez_aktif", lambda: True)
+    monkeypatch.setattr(havuz, "_cift_bul", lambda *_: (5, 9))
+    monkeypatch.setattr(havuz, "_dugum_id", lambda: 1)
+    monkeypatch.setattr(havuz, "_ayar_evet", lambda *_: True)
+    monkeypatch.setattr(havuz, "_baglan", lambda: sahte)
+
+
+def test_secim_sorgusu_ulkeyi_parametre_gecirir() -> None:
+    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", None, None, False)
+    assert "'TR'" not in sorgu
+    assert "ulke = %s" in sorgu
+    assert parametreler[1] == "TR"
+
+
+def test_il_kodu_varsa_suzgec_eklenir() -> None:
+    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", 34, None, False)
+    assert "(il_kodu = %s OR il_kodu IS NULL)" in sorgu
+    assert 34 in parametreler
+
+
+def test_il_kodu_yoksa_suzgec_eklenmez() -> None:
+    sorgu, _ = havuz._secim_sorgusu(0, "TR", None, None, False)
+    assert "il_kodu = %s OR" not in sorgu
+
+
+def test_cift_varsa_kullanim_suzgeci_eklenir() -> None:
+    sorgu, parametreler = havuz._secim_sorgusu(0, "TR", None, (5, 9), False)
+    assert "NOT EXISTS" in sorgu
+    assert 5 in parametreler and 9 in parametreler
+
+
+def test_parametre_sayisi_yer_tutucuyla_uyusur() -> None:
+    for gecmis, geo, cift, mobil in (
+        (0, None, None, False),
+        (1, 34, None, True),
+        (0, None, (2, 3), False),
+        (1, 6, (2, 3), True),
+    ):
+        sorgu, parametreler = havuz._secim_sorgusu(gecmis, "TR", geo, cift, mobil)
+        assert sorgu.count("%s") == len(parametreler)
+
+
+def test_cift_tukenince_tur_basa_doner(monkeypatch) -> None:
+    sahte = _SahteBaglanti()
+    _hazirla(monkeypatch, sahte)
+
+    assert havuz.cerez_sec(34, "a.com", "kelime", False) == (7, "aile")
+    assert sahte.imlec.silinen_ciftler() == [(5, 9)]
+
+
+def test_havuz_bossa_sarma_donguye_girmez(monkeypatch) -> None:
+    sahte = _SahteBaglanti()
+    _hazirla(monkeypatch, sahte)
+    sahte.imlec.fetchone = lambda: None
+
+    assert havuz.cerez_sec(34, "a.com", "kelime", False) is None
+    assert len(sahte.imlec.silinen_ciftler()) == 2
+
+
+def test_cerezsiz_kapaliyken_none(monkeypatch) -> None:
+    monkeypatch.setattr(havuz, "cerez_aktif", lambda: False)
+    assert havuz.cerez_sec(34, "a.com", "kelime", False) is None
+
+def _gecmis_aramalari(sahte) -> list[int]:
+    return [
+        p[0] for s, p in sahte.imlec.calismalar if s.startswith("SELECT id, parmak_izzi")
+    ]
+
+
+def test_suresiz_kullanim_kapaliyken_gecmis_aranmaz(monkeypatch) -> None:
+    """Ayar kapaliyken suresi gecmis profiller hic denenmez."""
+    sahte = _SahteBaglanti()
+    _hazirla(monkeypatch, sahte)
+    monkeypatch.setattr(havuz, "_ayar_evet", lambda *_: False)
+    sahte.imlec.fetchone = lambda: None
+
+    havuz.cerez_sec(34, "a.com", "kelime", False)
+
+    assert _gecmis_aramalari(sahte) == [0, 0]
+
+
+def test_suresiz_kullanim_acikken_once_tazeler_sonra_gecmisler(monkeypatch) -> None:
+    """Ayar acikken sira once taze, sonra suresi gecmis gruptadir."""
+    sahte = _SahteBaglanti()
+    _hazirla(monkeypatch, sahte)
+    sahte.imlec.fetchone = lambda: None
+
+    havuz.cerez_sec(34, "a.com", "kelime", False)
+
+    assert _gecmis_aramalari(sahte) == [0, 0, 1, 1]
+
+class _OranImlec:
+    def __init__(self, satirlar: list[tuple]) -> None:
+        self.satirlar = satirlar
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, *_):
+        pass
+
+    def fetchall(self):
+        return self.satirlar
+
+
+class _OranBaglanti:
+    def __init__(self, satirlar: list[tuple]) -> None:
+        self.imlec = _OranImlec(satirlar)
+
+    def cursor(self):
+        return self.imlec
+
+    def close(self) -> None:
+        pass
+
+
+def _env(monkeypatch, degerler: dict[str, str]) -> None:
+    monkeypatch.setattr(havuz.ayar, "oku", lambda anahtar, varsayilan="": degerler.get(anahtar, varsayilan))
+
+
+def test_oranlar_tablo_yokken_env_okunur(monkeypatch) -> None:
+    def patlat():
+        raise RuntimeError("db yok")
+
+    monkeypatch.setattr(havuz, "_baglan", patlat)
+    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "70", "PROXY_MOBIL_ORAN": "30"})
+
+    assert havuz.oranlari_oku() == {
+        "oran_residential": 70, "oran_mobil": 30, "oran_datacenter": 0
+    }
+
+
+def test_oranlar_tablo_envden_once_gelir(monkeypatch) -> None:
+    monkeypatch.setattr(havuz, "_baglan", lambda: _OranBaglanti([("oran_residential", "40")]))
+    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "90", "PROXY_MOBIL_ORAN": "60"})
+
+    sonuc = havuz.oranlari_oku()
+    assert sonuc["oran_residential"] == 40
+    assert sonuc["oran_mobil"] == 60
+
+
+def test_oranlar_hicbir_kaynak_yoksa_varsayilan(monkeypatch) -> None:
+    def patlat():
+        raise RuntimeError("db yok")
+
+    monkeypatch.setattr(havuz, "_baglan", patlat)
+    _env(monkeypatch, {})
+
+    assert havuz.oranlari_oku() == havuz.VARSAYILAN_ORAN
+
+
+def test_mobil_orani_sifirsa_mobil_sec_mez(monkeypatch) -> None:
+    def patlat():
+        raise RuntimeError("db yok")
+
+    monkeypatch.setattr(havuz, "_baglan", patlat)
+    _env(monkeypatch, {"PROXY_RESIDENTIAL_ORAN": "100", "PROXY_MOBIL_ORAN": "0"})
+
+    oranlar = havuz.oranlari_oku()
+    for yuzde in range(0, 100, 10):
+        assert havuz.tur_sec(oranlar, mobil_acik=True, rastgele=yuzde) == "residential"

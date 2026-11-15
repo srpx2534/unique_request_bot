@@ -1,79 +1,100 @@
-# DURUM
+# Eksik maddeler
 
-Bu dosya projenin o anki hâlini ve devir notlarını tutar. İşi devralan ajan önce burayı, sonra `docs/EKSIKLER.md` içindeki 83 maddelik listeyi okur. Liste sırayla kapatılır.
+A (proxy kodu), B (worker testleri) ve C (oturum sürekliliği) kapandı; 112 test yeşil. Kalan maddeler sırayla kapatılır. Bir madde kapanınca buradan silinir, sonucu sözleşmedeki ilgili kritere işlenir.
 
-## Proje
+## D. Gerçek tarayıcı cookie'leri
 
-- Yol: `C:\Users\developer\Desktop\App\unique_request_bot`
-- Ne: Google SERP burst/ölçüm botu. TS panel (Node 20) + Python worker (3.12), MySQL/MariaDB.
-- Sözleşme: `docs/CONTRACT.md`, sürüm 1.7, 26 bölüm, 60 kabul kriteri. Kodla hizalandı.
-- Son commit: `92f4e9b Genel Düzenleme`. Çalışma ağacında kod tarafı temiz.
-- Yerel veritabanı XAMPP üzerinde. **XAMPP ayarlarına dokunulmayacak**; kullanıcı sonra ele alacak.
+1. Format: Netscape `cookies.txt` (tercih) veya JSON dizi. Dosya basina tek profil. Dosya adi serbest, yalnizca uzanti (`.txt`/`.json`) denetlenir. (DUZELTILDI)
+2. Havuz: tek cookie yüzlerce hit için yetmez. Dosyalar sırayla, hit başına bir kez kullanılacak; tükenince başa dönülecek. (DUZELTILDI)
+3. Coğrafya: cookie hangi ilden alındıysa o ilin IP'siyle eşleşmeli. TR cookie + yabancı IP çelişki üretir. (KISMI: il atamasi beklemede)
+4. `SOCS` / `CONSENT` gerçek tarayıcıdan gelirse sabit değerlerden daha doğru; onay duvarı için bunlar yeğlenecek.
+5. Oturum açmış hesap cookie'si (`SID`) güçlü sinyal ama tek hesaptan yüzlerce arama hesabı şüpheli gösterir. Önce oturumsuz cookie ile başlanacak, `SID` ayrı ölçülecek.
+6. Tazelik: haftalar önce alınmış `NID`/`AEC` süresi geçmiş olur, Google yeniden üretir; fayda düşer, zarar yok.
+7. Cookie dosyaları repoya girmez; `.gitignore`'a alınacak, hesap token'ı taşıyabilir. (DUZELTILDI)
+8. `host_only` uretimi 199.229 gercek cerezde dogrulandi: 146.430 noktali alan adi (false), 52.799 noktasiz (true). Iki kol da dolu. (DUZELTILDI)
+9. Modalite artik icerik ya da yol ipucundan okunur, ipucu yoksa yukleme bayragina duser; rastgele dosya adi tek basina kaynak degil. (DUZELTILDI)
+10. Çerez canlılığı ölçülmedi: 22.704 "aktif" profil canlı demek değil.
+11. `cerez_suresiz_kullan` kapatıldığında süresi geçmiş profillerin havuza dönüşü sınanmadı. (DUZELTILDI)
+12. `havuz.cerez_sec()` SQL'inde ülke süzgeci sabit `TR`; yabancı profiller hiç devreye girmiyor. (DUZELTILDI)
+13. Hatalı silme onay akışı ve `silinen` sayacı panelde uçtan uca görülmedi. Elle denendi: hatali kayitlar silindi, sayac dogru dondu. (DUZELTILDI)
+14. `cerez_kendi` parametre degildi; ayarlar ekranindan, sunucudaki okumadan ve `ayar` tablosundan kaldirildi. Sayimlar suan ortak. (DUZELTILDI)
+15. burst_dene.py adedi 60'lik basamaklara boluyor, sayaclari topluyor; AZAMI_HIT siniri korunuyor. (DUZELTILDI)
+16. Kisiye ozel cerez gorunumu ileride kullanici yonetiminde admin izni olarak gelecek. `cerez.ts` icindeki `kendi` degiskeni ile `suzgec` ve `suzgecProfil` SQL'leri yerinde duruyor; eklenirken bunlar kullanilacak, yeni degisken uretilmeyecek.
 
-## Bu oturumda kapatılan işler
+## E. Burst ve kabul
 
-- `isci.ts` sahiplenmesi `last_burst_at` damgasına bağlandı; sistem hiç hit atmıyordu, sebep buydu.
-- `FOR UPDATE SKIP LOCKED` kaldırıldı. MariaDB bu sözdizimini bilmiyor; koşullu `UPDATE ... WHERE id=? AND durum='yeni'` + `affectedRows` kontrolüne geçildi.
-- Çerez silme partili hâle getirildi: 400 profil / 1000 dosya partisi, önce çocuk satır, her parti ayrı işlem. 5,4 milyon satır 1206 (kilit tablosu) hatası vermeden silindi, dört sayaç sıfırlandı.
-- `docker-compose.yml`: `innodb_buffer_pool_size=256M`, `innodb_lock_wait_timeout=20`, `max-connections=300`, `stop_grace_period: 60s`.
-- Sözleşmeye işlendi: `sayac_baslangic`, `host_only`, seed anahtarları, `GET /kelime/:id/ozet`, `DELETE /cerez/hatali`, `cerez_kendi`, modalite çıkarımı, C50-C60, §7.3, §8.1, §23.4, §17.8, §18.5.
-- `docs/EKSIKLER.md` 83 maddelik öncelik listesine çevrildi.
+15. burst_dene.py adedi 60'lik basamaklara boluyor, sayaclari topluyor; AZAMI_HIT siniri korunuyor. (DUZELTILDI)
+16. 100 hit testi sürüyor (60 + 40); proxy hattı bağlanınca proxy üzerinden yeniden koşulacak.
+17. CAPTCHA oranı, `not_found` oranı ve tamamlanma oranı ölçülmedi (C7, C8, C9, C10).
+18. devam False donunce dongu kiriliyor ve fazladan hit atilmiyor; test_burst bunu sabitliyor (C21). (DUZELTILDI)
+19. Aynı `keyword_geo` üzerinde çakışan burst sayısı ölçülmedi (C16).
+20. Ust uste 3 burst hedefsizse kelime paused oluyor, kampanya kapaniyor, hedef_yok uyarisi dusuyor; burst bazinda sayiliyor (A3). (DUZELTILDI)
+21. Özet ekranı ölçüm verisi biriktikten sonra denenmedi; `-` ve `100+` durumları kontrol edilmedi.
 
-## Kritik kararlar — değiştirmeden önce düşün
+## F. Sağlayıcı havuzu — M3
 
-- Çerez modalitesi yüklemede **sorulmaz**; dosyadaki `userAgent` ve yol segmentinden çıkarılır.
-- `host_only` bayrağı çerez satırında saklanır; host-only çerezde baştaki nokta düşürülür, alan adı çerezi yazıldığı gibi kalır.
-- `cerez_kendi` açıkken yalnızca sayım süzülür; havuz ortak kalır, hit'ler tüm havuzdan beslenir.
-- Özet ucu ölçüm yoksa `-`, ilk 100'de yoksa `100+` döner.
-- Kuyruk sahiplenmesi `SKIP LOCKED` kullanmaz.
-- Çerez silmede tek ifadeyle toplu `DELETE` yazılmaz; kilit tablosu taşar.
+22. Sağlayıcı seçimi ağırlıklı ve devre kesicili hale getirilecek.
+23. Oranlar `.env` ile ayarlanir: PROXY_RESIDENTIAL_ORAN, PROXY_MOBIL_ORAN, PROXY_DATACENTER_ORAN. Tablo degeri varsa o kazanir, yoksa env, yoksa varsayilan. PROXY_MOBIL_ORAN=0 mobil turu kapatir. (DUZELTILDI)
+24. Failover 10 saniye altında tamamlanacak (C6).
+25. Sağlayıcı genel CAPTCHA oranı %20'yi geçince 2 saat karantina uygulanacak (§8).
+26. `provider` ve `provider_geo` tabloları henüz boş; seed yazılmadı.
+27. `oran_mobil` hâlâ 0; açılmadan android profil hiç çıkmaz. Mobil yol canlı istekle doğrulanmalı.
+28. Oran 0 ya da mobil pencere kapaliyken tur_sec mobile hic dusmuyor; test_havuz iki durumu da tarayarak sabitliyor. (DUZELTILDI)
+29. Esikler panelden ayarlanir: esik_captcha, esik_geo, asgari_ornek. kaydet ve karantina_kontrol degerleri ayar_db uzerinden okur, okunamazsa sozlesme degeri gecerli. (DUZELTILDI)
+30. Saglayicilar ekraninda oran toplami canli gosterilir; 100 degilse kirmizi ve kaydetme engelli. (DUZELTILDI)
+31. `provider.bytes_month` ve `quota_bytes` hiçbir yerde yazılmıyor; kota muhasebesi fiilen yok.
+32. Kota uyarısı yalnızca SERP 429'una bağlı; proxy bayt kotası için uyarı yok.
+33. Proxy ve SERP kimlik bilgileri (Decodo, SOAX vb.) henüz yok; sağlayıcı biçimleri gerçek anahtarla doğrulanmadı.
 
-## Bilinen kırıklar — ilk bunlar
+## G. Ölçüm hattı — M5
 
-- `proxy.dize()` ülke parametresi almıyor, `country-tr` sabit yazıyor. Yabancı sağlayıcı seçildiğinde IP Türkiye'den çıkar, `hit.geo_mode` yalan söyler (C40).
-- Sağlayıcı kullanıcı adı biçimi tek sağlayıcıya (Decodo) özgü; diğer dört sağlayıcı bu biçimi kabul etmez.
-- `GET /health` token istiyor ve sürüm/doluluk yerine `{"durum":"ayakta"}` dönüyor; §7.2 ile çelişiyor.
+34. Ölçüm-A kanalı SERP API'sinden, `clean` kanaldan, daima ulusal yapılacak (C20).
+35. Ölçüm-B kanalı ayrı küçük havuz ve kalıcı cookie jar ile kurulacak; `profile` tablosu boş.
+36. Ölçüm-B hattı (`post_click`) gerçekten çalışıyor mu doğrulanmadı.
+37. Ölçüm boşluğu 15 dakikayı geçmeyecek şekilde zamanlayıcı yazılacak (C12).
+38. `olcum.ts` ve `serp.py` yedek sağlayıcı sırasını kullanıyor ama gerçek anahtarla sınanmadı; Decodo kotası doluyken Serper ile bir ölçüm turu koşulmalı.
 
-## PowerShell ile çalışma kuralları
+## H. CI ve kalite kapıları
 
-- Betikleri **tek blok** hâlinde ver; kullanıcı tek seferde yapıştırıyor.
-- Dosya yazarken `New-Object System.Text.UTF8Encoding($false)`; BOM ekleme.
-- `$A` ile `$a` aynı değişkendir; yol için `$Yol`, metin için `$Metin` kullan.
-- `String.Replace` üç argüman almaz; ilk geçiş için `IndexOf` + `Substring`.
-- `elseif` satır başında kalırsa kopar; `} elseif` aynı satırda yazılmalı.
-- Metin çapaları harfle başlamalı. `-`, `#`, ters tik ile başlayan çapalar tutmuyor; öyleyse `IndexOf` ile bul, satır başına `LastIndexOf("`n")` ile geri sar.
-- Dosyaya yazmadan önce geçici dosyaya yaz, satır sayısı eşik altındaysa iptal et, sonra `Move-Item -Force`.
-- Uzun belgelerde **iç içe kod çiti kullanma**: dış blok ` ```markdown ` içinde iç ` ```sql ` olursa dış blok orada kapanır. SQL'i düz satır yaz.
-- Tek mesaja uzun çıktı sığmıyor; parçalı vermek gerekiyor.
+39. CI matrisi kurulu: `windows-latest` + `ubuntu-22.04`, iki is. Is akisi henuz kosmadi, yesil gorulmedi (C26, C27).
+40. `python tools/tls_check.py --all` hiç çalıştırılmadı (C5 kanıtı).
+41. `.gitattributes` dolu; 5 bayat CRLF/karma dosya LF'e cevrildi, `git ls-files --eol` temiz (C28). (DUZELTILDI)
+42. `tools/lint_yol.py` kurallari `shell=True`, `datetime.utcnow()` ve elle `/` birlestirmeyi de yakaliyor; lint `worker/test_yol.py` ile pytest'e bagli, ihlal 0 (§20, C29). (DUZELTILDI)
+43. `v_live` p95 400 ms ölçümü 3.300 iş birimiyle yapılmadı (C15).
+44. Bolumleme kodu yazildi: `bolum.ts` esigi asinca gunluk bolumleri kurar ya da ileri gunleri acar, `partition` uyarisi duser, bakim turuna bagli. Canli deneme 10 milyon satirda yapilacak. (KISMI)
 
-## Yapılmayacaklar
+## I. Altyapı ve dağıtım
 
-- Kullanıcı onayı olmadan commit atılmaz.
-- Onay olmadan yeni maddeye geçilmez.
-- XAMPP ayarları ve `my.ini` elle değiştirilmez.
-- `docs/CONTRACT.md` içine `SKIP LOCKED` geri getirilmez.
-- Sözleşmeye karşılığı olmayan özellik eklenmez; önce sözleşme, sonra kod.
+45. Docker imajları digest ile pinlenmedi (17.2). Docker kurulu değil; `docker-compose.yml` yalnızca üretim için duruyor.
+46. `read_only`, `cap_drop`, root olmayan kullanıcı doğrulanmadı (17.3).
+47. `mysqldump` yedek ve geri yükleme testi yok (17.6). Yedek/geri yükleme, metrik ucu, tek örnek kilidi (E1-E7) yok.
+48. HTTPS/HSTS, Redis `requirepass`, sır saklama (B6/B8/B9) üretim öncesi.
+49. Sunucu tarafı veritabanı kurulumu ve ayarların oraya taşınması (kullanıcının işi).
+50. `mysql.db` bir kez CRC hatası verdi ve onarıldı; tekrarı halinde `aria_chk --repair` gerekecek.
+51. XAMPP `my.ini`: `innodb_buffer_pool_size=256M` ve `innodb_lock_wait_timeout=20` henüz uygulanmadı (kullanıcı sonra ele alacak).
 
-## Doğrulama komutları
-npx tsc --noEmit
-python -m pytest worker -q
-git status --short
-git diff --stat
-Çerez silme sonrası dört sayaç da sıfır olmalı:
-SELECT 'cookie' t, COUNT() c FROM cookie
-UNION ALL SELECT 'cookie_profil', COUNT() FROM cookie_profil
-UNION ALL SELECT 'cookie_dosya', COUNT() FROM cookie_dosya
-UNION ALL SELECT 'cerez_yukleme', COUNT() FROM cerez_yukleme;
-## Dosya haritası
+## J. Uyarı takibi
 
-- `docs/CONTRACT.md` — bağlayıcı sözleşme, 26 bölüm, 60 kriter.
-- `docs/EKSIKLER.md` — 83 maddelik liste, sırayla kapatılır.
-- `src/server/` — panel API. `cerez.ts` partili silme, `kelime.ts` özet ucu, `panel.ts` ayar uçları.
-- `worker/` — fetch engine. `havuz.py` seçim, `proxy.py` dize kurma, `burst.py` hit akışı, `saglik_db.py` sayaç ve uyarı.
-- `db/migrations/001-033` — şema geçmişi. `033_cerez_kendi.sql` sonuncusu.
-- `tools/` — kurulum, onarım, ölçüm ve kanıt betikleri.
+52. Uyari ekrani var: /uyarilar, liste, aralik/tur/durum/site/kelime suzgeci, tek ve toplu kapatma, rehber penceresi; ust cubukta acik uyari rozeti. (DUZELTILDI)
+53. Uyari saklama suresi 90 gun; saklama turu parcali siliyor, acik/kapali ayrimi yapmiyor. (DUZELTILDI)
+54. queue_lag esik asilinca yaziliyor (varsayilan 200, kuyruk_esik ayari), 30 dakika sessizlik var. (DUZELTILDI)
+55. Dokuz uyari turunun hepsi kodda uretiliyor; worker/test_uyari.py kaynagi tarayip eksik turu yakaliyor. (DUZELTILDI)
 
-## Sonraki adım
+## K. Kod borcu (250 satır sınırı, §23.2)
 
-`docs/EKSIKLER.md` maddesi 1: `proxy.dize()` imzasına ülke parametresi ekle, `sec_mod()` çağrısında `ulke` geçir, `yabanci` modda `country-tr` yazılmasın. Ardından madde 2: sağlayıcı başına kullanıcı adı biçimi.
-Bu docs/DURUM.md içine, mevcut içeriğin altına eklenir. Yeni ajan buradan devam edebilir.
+56. `cerez.ts` 841 satır — yükleme, içe aktarma ve silme olarak bölünmeli.
+57. `panel.ts` 454, `kelime.ts` 389, `isci.ts` 264 satır.
+58. `havuz.py` 542 satır ve tek dosyada dört iş yapıyor (oran, sağlayıcı seçimi, çerez seçimi, kuyruk).
+59. `serp.py` 367, `burst.py` 260, `cookie.py` 235, `saglik_db.py` 235 satır.
+
+## L. Sözleşme ve belge
+
+60. Liste uçlarının dönüş zarfı sözleşmede tek biçime bağlanmadı: sayfalı uçlar `{satirlar, toplam, sayfa, adet}`, kısa listeler düz dizi dönüyor.
+61. `docs/DURUM.md` ve `docs/EKSIKLER.md` dışındaki belgeler (`CONTRACT.md` dışında) gözden geçirilmedi.
+62. README, `.env.example`, docker-compose ve `.gitattributes` devir paketi kontrolü.
+
+## M. Pilot ve devir
+
+63. M6 pilotu: 5 sunucu, 20 kelime, 2 hafta saha testi.
+64. Pilot kabul ölçümleri: C7, C8, C9, C10, C11, C12, C15.
+65. Bolumleme 10 milyon satir esigiyle canli denenecek: esik asilinca gunluk bolumler kuruluyor mu, ileri gunler aciliyor mu, `partition` uyarisi dusuyor mu, saklama eski bolumleri dusuruyor mu.

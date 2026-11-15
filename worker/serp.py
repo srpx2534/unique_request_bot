@@ -43,9 +43,11 @@ CEREZLER = {
     "SOCS": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
     "CONSENT": "YES+cb.20240101-00-p0.tr+FX+111",
 }
+# Accept bilerek yazilmaz: curl_cffi profilin kendi Accept basligini ve
+# sirasini uygular, ezmek parmak izini bozar (C11). Accept-Language ise
+# bilincli: TR sonuc listesi icin dil sinyali gerekiyor.
 BASLIKLAR = {
     "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
 ELENEN = ("google.", "gstatic.", "googleusercontent.", "policies.google")
