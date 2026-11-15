@@ -47,8 +47,8 @@ Dağıtıcı işi düğüm kayıt defterinden seçer: yalnızca `durum='aktif'` 
 `weight` generated kolondur ve `ROUND(SQRT(population))` ile hesaplanır.
 Ölçüm daima ulusaldır. İl sıralaması ölçülmez.
 Sağlayıcı seed'i `005_provider.sql` ile yüklenir. `city_capable` yalnızca il hedeflemeyi tam destekleyende 1'dir; "kısmi" destek 0 sayılır ve §5 adım 2 gereği ulusal moda düşer.
-Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır (`oran_residential`, `oran_mobil`, `oran_datacenter`) ve panelden düzenlenir. Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o türde `state='active'`, karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP yalnızca burst'ün ilk 8 saniyesinde devreye girer.
-Çerez seçimi kelimenin modalitesine göre yapılır. Mobil işaretli kelimede önce `mobile` türü sağlayıcı denenir, yoksa normal sıraya düşülür ve android profil kullanılır (C48). Çerez önceliği sabittir: aktif+il, aktif TR, diğer aktifler; aktifler bittiğinde süresi geçmişler aynı iç sırayla (C45). Mobil kelimede aynı sıra mobil çerezler öne alınarak uygulanır.
+İl seçili kelimede önce o ile ait IP'ler denenir; o ilin tüm türleri tükenmeden TR geneline inilmez. İl seçili değilse doğrudan TR geneli kullanılır (C61). Sağlayıcı seçimi tür oranına göre yapılır. Oranlar ayar tablosundadır (`oran_residential`, `oran_mobil`, `oran_datacenter`) ve panelden düzenlenir. Toplam 100 değilse okurken normalize edilir. Önce tür kurası çekilir, sonra o türde `state='active'`, karantinası geçmiş, kimlik bilgisi dolu sağlayıcılar arasından A-Res ile seçim yapılır. Tür boş kalırsa sırayla residential ve datacenter denenir, hiçbiri yoksa doğrudan bağlantıya düşülür (C17). Mobil IP yalnızca burst'ün ilk 2 hit'inde devreye girer; sonrasında mobil IP kullanılmaz.
+Çerez seçimi kelimenin modalitesine göre yapılır. Mobil işaretli kelimede önce `mobile` türü sağlayıcı denenir, yoksa normal sıraya düşülür ve android profil kullanılır (C48). Çerez önceliği sabittir: önce canlılar, sonra süresi geçmişler. Her iki grupta sıra: il eşleşen, mobil çerez, TR çerez, yabancı çerez. İl eşleşmesi olmayan kelimede TR çerezler yabancıların önüne geçer; yabancı çerez yalnızca TR çerez kalmadığında kullanılır. Proxy tarafı her zaman TR'dir (C45, C46). Çerez hiçbir zaman silinmez. Sıralama önce canlılığa bakar: canlı çerezler, sonra hiç ölçülmemişler, en sonda ölçülüp engellenenler (C62).
 Sağlayıcı satırı `ulke` taşır; Türkiye IP'si veren sağlayıcılar `ulke='TR'` ile işaretlenir ve `tr_fallback` adımında yalnızca bunlar aranır.
 Decodo residential ve mobile ayrı ürünlerdir; kimlik bilgileri sağlayıcı satırında tutulur, `.env`'de tek değer yetmez.
 ## 6. Şema
@@ -168,7 +168,7 @@ Proxy sağlayıcıları, ağırlık ve şehir hedefleme durumu:
 - IPRoyal, residential, ağırlık 5, şehir hedefleme kısmi
 - Webshare, datacenter, sadece smoke test
 SERP API sağlayıcıları: Decodo /search birincil, Serper yedek, SearchApi.io yedek. Anahtarlar `ayar` tablosundadır, panelden girilir ve maskeli gösterilir. Bir anahtar boşsa sıradaki sağlayıcıya geçilir; ölçüm hattı da aynı sırayı izler, hiçbiri yoksa ölçüm turu atlanır ve uyarı üretilir.
-Mobil IP'ler burst'ün ilk 8 saniyesinde tüketilir. Sağlayıcı anahtarları kullanıcıya aittir, yazılım yalnızca tüketir.
+Mobil IP'ler burst'ün ilk 2 hit'inde tüketilir. Sağlayıcı anahtarları kullanıcıya aittir, yazılım yalnızca tüketir.
 Devre kesici iki seviyelidir. Sağlayıcı/il çiftinde CAPTCHA %35'i geçerse çift 60 dakika tükenir (C18). Sağlayıcı genelinde oran %20'yi geçerse sağlayıcı 2 saat karantinaya alınır, ağırlığı yedeğe alınıp sıfırlanır. Karantina dolunca ağırlık yedekten geri verilir ve oran sıfırlanır. Oranlar en az 10 örnek toplanmadan değerlendirilmez.
 Sayaçlar saatliktir: pencere `sayac_baslangic` damgasıyla açılır, bir saat dolunca `hits_1h`, `captcha_1h` ve `captcha_pct` sıfırlanıp damga yenilenir. Böylece karantina kararı yalnızca son pencereyi taşır (C56).
 Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlanır (C6). Üçüncü deneme yapılmaz.
@@ -190,7 +190,7 @@ Sağlayıcı düşerse hit bir kez, yeni sağlayıcı ve yeni profille tekrarlan
 - Hit arası bekleme: 0,4-1,4 saniye, jitter'lı
 - API sayfaları arası bekleme: 0,6-1,3 saniye
 - Aynı hit içindeki izlenim, tıklama ve pogo tek oturumdan geçer; cookie sürekliliği korunur, oturum hit sonunda kapanır
-- Mobil pencere: burst'ün ilk 8 saniyesi; pencere kapanınca mobil IP kullanılmaz
+- Mobil pencere: burst'ün ilk 2 hit'i; sonrasında mobil IP kullanılmaz
 - SERP ölçümünde sayfa başına 10 sonuç, en fazla 10 sayfa; ilk 100 sıra taranır
 ## 10. Raporlama
 CREATE VIEW v_live AS SELECT k.id, k.text, k.geo_scope, COALESCE(g.name,'—') AS geo, k.state, (SELECT rank FROM position p WHERE p.keyword_id=k.id AND p.channel='clean' ORDER BY checked_at DESC LIMIT 1) AS rank_now, (SELECT rank FROM position p WHERE p.keyword_id=k.id AND p.channel='clean' AND checked_at < NOW()-INTERVAL 24 HOUR ORDER BY checked_at DESC LIMIT 1) AS rank_24h, COALESCE((SELECT SUM(hits_ok) FROM traffic_daily t WHERE t.keyword_geo_id IN (SELECT id FROM keyword_geo WHERE keyword_id=k.id) AND t.day>=CURDATE()-7),0) AS ok_7d, COALESCE((SELECT SUM(hits_fail) FROM traffic_daily t WHERE t.keyword_geo_id IN (SELECT id FROM keyword_geo WHERE keyword_id=k.id) AND t.day>=CURDATE()-7),0) AS fail_7d, COALESCE((SELECT SUM(fallback_count) FROM traffic_daily t WHERE t.keyword_geo_id IN (SELECT id FROM keyword_geo WHERE keyword_id=k.id) AND t.day>=CURDATE()-7),0) AS fb_7d, CASE WHEN rank_now IS NULL THEN 'yok' WHEN rank_24h IS NULL THEN 'yeni' WHEN rank_now < rank_24h THEN 'yukari' WHEN rank_now > rank_24h THEN 'asagi' ELSE 'sabit' END AS trend FROM keyword k LEFT JOIN geo g ON g.code=k.home_geo WHERE k.state IN ('active','paused');
@@ -242,8 +242,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C42 — Yıkıcı işlemler (silme, toplu kapatma) onay ister; bilinmeyen yol 404 ekranına düşer.
 - C43 — `ayar` okuması worker'da önbelleklidir; tablo okunamazsa `.env`, o da yoksa varsayılan devreye girer ve iş durmaz.
 - C44 — Çerez, site+kelime çiftinde bir kez kullanılır; farklı sitede aynı kelime için yeniden kullanılabilir. Çift kaydı `cookie_kullanim` ile tutulur.
-- C45 — Çerez önceliği sabittir: aktif+il, aktif TR, diğer aktifler, sonra süresi geçmiş aynı iç sırayla. Süresi geçmişler aktifler bitmeden devreye girmez.
-- C46 — Çerez ülkesi IP ülkesiyle eşleşmeden çerez yüklenmez; havuz seçiminde ülke süzgeci zorunludur ve yabancı çıkışta çerez kullanılmaz.
+- C45 — Çerez önceliği sabittir: canlılar önce, süresi geçmişler sonra; her grupta sıra il eşleşen, mobil, TR, yabancı. Süresi geçmişler canlılar bitmeden devreye girmez. Çerez hiçbir zaman silinmez; silme yalnızca panelden elle yapılır.
+- C46 — Çerez ülkesi IP ülkesiyle eşleşmeden çerez yüklenmez ve yabancı çıkışta çerez kullanılmaz. Havuz seçiminde ülke süzgeç değil sıralamadır: TR çerezler yabancıların önüne geçer, yabancı çerez yalnızca TR çerez kalmadığında kullanılır.
 - C47 — Çerez profili parmak izi ailesini (`chrome`, `firefox`, `safari`, `bilinmiyor`) taşır; istek o aileyle gider, çerez yoksa profil rastgele seçilir.
 - C48 — Mobil işaretli kelimede önce mobil çerez ve `mobile` sağlayıcı denenir; mobil sağlayıcı yoksa iş durmaz, normal proxy'ye düşer ve android profil kullanılır.
 - C49 — Havuz boşken veya çerez kapalıyken iş hiçbir yolda durmaz; çerez yüklenemezse istek çerezsiz devam eder.
@@ -258,6 +258,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C58 — Yerel veritabanı XAMPP üzerinden çalışır; kurulum kullanıcıya aittir.
 - C59 — Doğrulama hatası 400 `{ hata }`, sunucu hatası 500 `{ hata, ayrinti }` döner; `ayrinti` üretimde boştur.
 - C60 — E-posta başına 5 hatalı giriş denemesinden sonra kilit devreye girer; sayaç Redis'tedir.
+- C61 — İl seçili kelimede seçim önce o ile ait IP'leri dener; il tükenmeden TR geneline inilmez. İl seçili değilken doğrudan TR geneli kullanılır.
+- C62 — Çerez sıralaması canlılığa öncelik verir: canlı, sonra ölçülmemiş, en sonda engellenmiş. Ölçüm `tools/cerez_olcum.py` ile yapılır; sonuç silmez, sıralamayı değiştirir.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -349,6 +351,10 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.5 — §3 `ayar` okuma istisnası, §4 düğüm seçimi, §5 `geo_mode` üç değeri ve `provider.ulke`, §6 `dugum`, `dugum_olay`, `alert` bağlam sütunları, §7 panel ve worker uçlarının tamamı ile sayfalama, §8 SERP anahtarlarının veritabanında tutulması, §9 ölçüm aralığının ayara taşınması, §10 CSV, §11 C35-C43, §14 anahtar değişiminin panelden yapılması, §18.4 `.env` disiplini.
 - 1.6 — §3 cookie tablosu istisnası, §5 mobil öncelik, §6 `keyword.mobil` ve cookie tabloları, §7 cookie uçları, §9 mobil pencere, §11 C4/C5 güncellendi, C44-C49, §24 yeniden yazıldı, §26 cookie alt sistemi.
 - 1.7 — Düzeltme turu: `hit.provider_id` NULL, `dugum.kayit_at`, kelime gövdesi `kelime/kapsam/il`, `/health`, özet ucu, `cerez/hatali`, `cerez_kendi`, modalite çıkarımı, `host_only`, saatlik sayaç penceresi, SERP yedek sırası, C16/C9/C46 güncellendi, C50-C57 eklendi, §26.2 kiralama ifadesi MariaDB gerçeğine çekildi, §7.3 panel yolları, §8.1 eşikler, C39 istisnası, C59/C60, §15/§17.8/§18.5 veritabanı kurulumunun kullanıcıya ait olduğu ve yerelde XAMPP kullanıldığı.
+- 1.8 — Çerez önceliği il, mobil, TR, yabancı sırasına ve canlı/süresi geçmiş ayrımına bağlandı; ülke süzgeçten sıralamaya çevrildi; çerezlerin hiç silinmemesi kurala bağlandı; il kodu yüklemede dosya yolundan okunur; mobil pencere hit sayısına çevrildi; C45/C46 güncellendi.
+- 1.8.1 — Il atamasi dosya adina gore yapilmaz kurali §26.2''ye islendi; ilBul cagrisi kaldirildi, profil ilsiz birakildi.
+- 1.8.2 — İl seçili kelimede proxy seçimi önce il IP'lerine, il tükenirse TR geneline bağlandı; il yoksa doğrudan TR (§5, C61).
+- 1.8.3 — Çerez canlılık ölçümü eklendi: cookie_profil.canli/son_kontrol_at/olcum_proxy, sıralamada canlı önceliği (§5, §26.2, C62).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
@@ -392,8 +398,9 @@ Veri ve bakım: `alert_liste.py`, `anahtar_tasima.py`, `keyword_ekle.py`, `keywo
 - Statik NID yapıştırılmaz; Google'ın üretmesine izin verilir.
 - Gerçek tarayıcıdan alınmış cookie dosyaları desteklenir: Netscape biçimi ve EditThisCookie JSON; dosya başına tek profil.
 - Çerez, site+kelime çiftinde bir kez kullanılır; farklı sitede tekrar kullanılabilir. Kullanım `cookie_kullanim` ile kayıt altındadır.
-- Çerez ülkesi cookie alan adlarından türetilir; yabancı çıkışta çerez yüklenmez.
-- Süresi geçmiş çerezler silinmez; aktifler tükendiğinde `cerez_suresiz_kullan` açıksa kullanılır.
+- Çerez ülkesi cookie alan adlarından türetilir; yabancı çıkışta çerez yüklenmez. Öncelik sırası il eşleşen, mobil, TR, yabancıdır: yabancı çerez ancak TR çerez kalmadığında kullanılır.
+- Çerez hiçbir zaman silinmez; süresi geçmişler de saklanır ve aktifler tükendiğinde `cerez_suresiz_kullan` açıksa kullanılır. Silme yalnızca panelden elle yapılır.
+- Canlılık ölçümü ayrı bir turdur: profil tek istekle sınanır, ölçüt oturum açılması değil engellenmemesidir. `canli` üç değerlidir: NULL ölçülmedi, 1 engellenmiyor, 0 engelleniyor. Ölçülüp engellenen çerez silinmez, sıralamada sona düşer. Proxy düşerse istek bir kez doğrudan tekrarlanır ve `olcum_proxy=0` yazılır.
 - İçe aktarımda profil parmak izi ailesi atanır ve istek boyunca değişmez.
 - Yükleme tarayıcıdan yapılır: parti parti multipart, geçici klasör, canlı ilerleme, iptal. Sunucu yolu paylaşılmaz.
 - Yükleme sırasında modalite sorulmaz; dosyadaki `userAgent` alanı ve yol segmentinden çıkarılır.
@@ -404,6 +411,12 @@ Veri ve bakım: `alert_liste.py`, `anahtar_tasima.py`, `keyword_ekle.py`, `keywo
 - Cookie dosyaları repoya girmez.
 - Cookie'ler JavaScript duvarını aşmaz; sonuç listesi yine API'den gelir.
 ## 25. Değişiklik özeti
+### 25.3 — 1.8
+- §5: çerez önceliği canlı/süresi geçmiş ayrımı ve il, mobil, TR, yabancı sırası; çerez hiçbir zaman silinmez
+- §5, §8, §9: mobil pencere saniyeden hit sayısına çevrildi (ilk 2 hit)
+- §24: silinmezlik ve ülke sırası
+- §26.2: il kodu artık dosya yolundan okunur
+- §11: C45/C46 yeni sıraya göre yeniden yazıldı
 ### 25.1 — 1.7
 - §6: `provider.sayac_baslangic`, `provider_geo.sayac_baslangic`, `cookie.host_only`
 - §6.1: saatlik pencere gerekçesi
@@ -449,7 +462,7 @@ CREATE TABLE cookie_kullanim (profil_id BIGINT UNSIGNED NOT NULL, site_id BIGINT
 - Yükleme partisi en fazla 500 dosya ve 32 MB; dosya başına sınır 2 MB, tarama tavanı 300.000 dosyadır.
 - Kiralama 10 dakikadır; süre dolunca satır geri alınır.
 - Bir günden eski `bitti`/`iptal` kayıtlarının geçici klasörü saatte en fazla bir kez süpürülür.
-- Dosya adi serbesttir; yalnizca uzanti denetlenir (`.txt` veya `.json`). Il atamasi suan yapilmiyor: adlar serbest oldugu icin guvenilir bir il kaynagi yok, profiller ilsiz kalir ve havuz il suzgeci NULL'a tolerans tanir. Kirpma ortadan yapilir ki il eslesmesi ileride kaybolmasin.
+- Dosya adi serbesttir; yalnizca uzanti denetlenir (`.txt` veya `.json`). **Dosya adlari rastgele kimliktir (or. `0vztnSh0.txt`); il atamasi dosya adina gore kesinlikle yapilmaz.** Il baska bir kaynaktan okunana kadar profil ilsiz kalir ve havuz il siralamasi NULL'a tolerans tanir. Kirpma ortadan yapilir ki il eslesmesi ileride kaybolmasin.
 - Silme partisi 400 profil ve 1000 dosya satırıdır; her parti ayrı işlemde commit edilir.
 - Geçici klasör `CEREZ_YUKLEME_KOK` altındadır ve kalıcı birimde durur; düğüm kimliği `DUGUM_ADI` ile verilir.
 - `temizle` globaldir ve geri alınamaz; onay ister.

@@ -121,7 +121,7 @@ yonlendirici.post("/:id/parti", yukle.array("dosyalar", PARTI_DOSYA), async (ist
     await fs.writeFile(hedef, dosya.buffer);
     await yaz(
       `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, yukleyen, yukleme_id, boyut, ozet, durum)
-       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'yeni')`,
+       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'bekliyor')`,
       [hedef, path.basename(hedef), kim, id, createHash("sha256").update(hedef).digest("hex")],
     );
     yazilan += 1;
@@ -165,11 +165,11 @@ yonlendirici.post("/:id/baslat", async (istek, yanit) => {
   for (const tam of dosyalar) {
     await yaz(
       `INSERT IGNORE INTO cookie_dosya (yol, ad, tur, kaynak, yukleyen, yukleme_id, boyut, ozet, durum)
-       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'yeni')`,
+       VALUES (?, ?, 'json', 'yukleme', ?, ?, 0, ?, 'bekliyor')`,
       [tam, path.basename(tam), kim, id, createHash("sha256").update(tam).digest("hex")],
     );
   }
-  await yaz("UPDATE cerez_yukleme SET durum = 'isleniyor', dosya_sayisi = ? WHERE id = ?", [
+  await yaz("UPDATE cerez_yukleme SET durum = 'aktarim', dosya_sayisi = ? WHERE id = ?", [
     dosyalar.length, id,
   ]);
 
@@ -189,7 +189,7 @@ yonlendirici.get("/:id", async (istek, yanit) => {
   }
   const satir = await tek(
     `SELECT y.id, y.durum, y.dosya_sayisi, y.boyut,
-            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'yeni') AS bekleyen,
+            (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'bekliyor') AS bekleyen,
             (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'aktarildi') AS aktarildi,
             (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'mukerrer') AS mukerrer,
             (SELECT COUNT(*) FROM cookie_dosya d WHERE d.yukleme_id = y.id AND d.durum = 'gecersiz') AS gecersiz

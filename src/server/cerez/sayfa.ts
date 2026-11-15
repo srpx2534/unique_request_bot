@@ -27,7 +27,10 @@ yonlendirici.get("/", async (_istek, yanit) => {
        (SELECT COUNT(*) FROM cookie_profil WHERE 1 = 1${suzgecProfil}) AS toplam,
        (SELECT COUNT(*) FROM cookie_profil WHERE il_kodu IS NOT NULL${suzgecProfil}) AS illi,
        (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 1${suzgecProfil}) AS mobil,
-       (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 0${suzgecProfil}) AS web`,
+       (SELECT COUNT(*) FROM cookie_profil WHERE mobil = 0${suzgecProfil}) AS web,
+       (SELECT COUNT(*) FROM cookie_profil WHERE canli = 1${suzgecProfil}) AS canli,
+       (SELECT COUNT(*) FROM cookie_profil WHERE canli = 0${suzgecProfil}) AS olu,
+       (SELECT COUNT(*) FROM cookie_profil WHERE canli IS NULL${suzgecProfil}) AS olculmemis`,
     suzgecDeger,
   );
   const hatalilar = await sorgu(

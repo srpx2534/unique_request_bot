@@ -28,6 +28,9 @@ type Sayim = {
   illi: number;
   ulke_tr: number;
   ulke_yabanci: number;
+  canli: number;
+  olu: number;
+  olculmemis: number;
   toplam: number;
 };
 
@@ -325,7 +328,7 @@ export default function Cerezler() {
         ) : null}
       </Kart>
 
-      <Kart baslik="Havuz" aciklama="Önce süresi dolmamış çerezler kullanılır; ayar açıksa süresi geçmişler de devreye girer.">
+      <Kart baslik="Havuz" aciklama="Canlı çerezler önce, sonra ölçülmemişler, en sonda engellenmişler kullanılır. Ölçüm `tools/cerez_olcum.py` ile çalıştırılır.">
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <p className="text-xs text-solgun">aktif</p>
@@ -346,6 +349,18 @@ export default function Cerezler() {
           <div>
             <p className="text-xs text-solgun">yabancı ip</p>
             <p className="text-lg font-medium text-solgun">{sayim?.ulke_yabanci ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-solgun">canlı</p>
+            <p className="text-lg font-medium text-basari">{sayim?.canli ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-solgun">engelli</p>
+            <p className="text-lg font-medium text-tehlike">{sayim?.olu ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-solgun">ölçülmemiş</p>
+            <p className="text-lg font-medium text-solgun">{sayim?.olculmemis ?? 0}</p>
           </div>
           <div>
             <p className="text-xs text-solgun">toplam</p>

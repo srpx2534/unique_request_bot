@@ -1,0 +1,180 @@
+/** Dosya aktarimi ve kuyruk dongusu. */
+import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { islem, tek, yaz } from "../veritabani.js";
+import { bicimBul, jsonCoz, netscapeCoz } from "./ayristir.js";
+import {
+  type Cerez, aileBul, durum, icerikOzeti, modaliteBul, ulkeBul,
+} from "./ortak.js";
+import { AZAMI_BOYUT, KIRALAMA_DK, PAKET, YUKLEME_KOK } from "./yollar.js";
+
+/**
+ * Tek dosyayi aktarir ve defter satirini yerinde kapatir.
+ *
+ * Ayni icerik baska dosyada aktarilmissa satir `mukerrer` olur ve ozeti yol
+ * ozetine cevrilir, boylece tekil kalir.
+ */
+async function dosyaAktar(
+  id: number,
+  tam: string,
+  kokDizin: string,
+): Promise<"aktarildi" | "mukerrer" | "gecersiz"> {
+  const yolOzeti = createHash("sha256").update(tam).digest("hex");
+  const kapat = async (
+    sonuc: "mukerrer" | "gecersiz",
+    hata: string | null,
+  ): Promise<"mukerrer" | "gecersiz"> => {
+    await yaz("UPDATE cookie_dosya SET durum = ?, hata = ?, ozet = ? WHERE id = ?", [
+      sonuc, hata, yolOzeti, id,
+    ]).catch(() => {});
+    return sonuc;
+  };
+
+  const bilgi = await fs.stat(tam).catch(() => null);
+  if (!bilgi || bilgi.size === 0 || bilgi.size > AZAMI_BOYUT) {
+    return kapat("gecersiz", "boyut siniri ya da dosya yok");
+  }
+  const ham = await fs.readFile(tam, "utf8").catch(() => null);
+  if (ham === null) return kapat("gecersiz", "okunamadi");
+
+  const bicim = bicimBul(ham);
+  if (!bicim) return kapat("gecersiz", "bicim taninmadi");
+
+  let cerezler: Cerez[];
+  try {
+    cerezler = bicim === "json" ? jsonCoz(ham) : netscapeCoz(ham);
+  } catch (hata) {
+    return kapat("gecersiz", (hata as Error).message.slice(0, 255));
+  }
+  if (!cerezler.length) return kapat("gecersiz", "kullanilabilir cerez yok");
+
+  const ozet = icerikOzeti(ham);
+  const ayni = await tek<{ id: number }>(
+    "SELECT id FROM cookie_dosya WHERE ozet = ? AND id <> ? AND durum = 'aktarildi' LIMIT 1",
+    [ozet, id],
+  );
+  if (ayni) return kapat("mukerrer", null);
+
+  const enGec = cerezler.reduce<Date | null>((en, c) => {
+    if (!c.sona_erme) return en;
+    return !en || c.sona_erme > en ? c.sona_erme : en;
+  }, null);
+  const goreli = path.relative(kokDizin, tam);
+  // Dosya adlari rastgele kimliktir (or. 0vztnSh0.txt); il bu yuzden adlara
+  // BAKILARAK atanmaz. Il baska kaynaktan okunana kadar profil ilsiz kalir.
+  const il: number | null = null;
+  const ulke = ulkeBul(cerezler.map((c) => c.domain));
+  const aile = aileBul(cerezler);
+  const ipucuMobil = modaliteBul(ham, goreli);
+  try {
+    await islem(async (baglanti) => {
+      const [yukleme] = await baglanti.query(
+        "SELECT y.modalite FROM cookie_dosya d"
+          + " JOIN cerez_yukleme y ON y.id = d.yukleme_id WHERE d.id = ?",
+        [id],
+      );
+      const mobil = ipucuMobil || ((yukleme as { modalite?: number }[])[0]?.modalite ? 1 : 0);
+      await baglanti.query(
+        `UPDATE cookie_dosya SET tur = ?, boyut = ?, ozet = ?, satir_sayisi = ?,
+           il_kodu = ?, durum = 'aktarildi', hata = NULL WHERE id = ?`,
+        [bicim, bilgi.size, ozet, cerezler.length, il, id],
+      );
+      const [profil] = await baglanti.query(
+        `INSERT INTO cookie_profil (dosya_id, ad, il_kodu, ulke, parmak_izzi, mobil, sona_erme, suresi_gecmis)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, path.basename(tam), il, ulke, aile, mobil, enGec,
+          enGec && enGec.getTime() < Date.now() ? 1 : 0],
+      );
+      const profilId = (profil as { insertId: number }).insertId;
+
+      for (let i = 0; i < cerezler.length; i += PAKET) {
+        const parca = cerezler.slice(i, i + PAKET);
+        const yerler = parca.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        await baglanti.query(
+          `INSERT INTO cookie (profil_id, domain, ad, deger, yol, sona_erme, guvenli, http_only,
+             same_site, oncelik, oturumluk, boyut, kaynak_port, kaynak_sema, same_party, partition_ust, host_only)
+           VALUES ${yerler}`,
+          parca.flatMap((c) => [
+            profilId, c.domain, c.ad, c.deger, c.yol, c.sona_erme, c.guvenli, c.http_only,
+            c.same_site, c.oncelik, c.oturumluk, c.boyut, c.kaynak_port, c.kaynak_sema,
+            c.same_party, c.partition_ust, c.host_only,
+          ]),
+        );
+      }
+    });
+    return "aktarildi";
+  } catch (hata) {
+    if ((hata as { code?: string }).code === "ER_DUP_ENTRY") return kapat("mukerrer", null);
+    return kapat("gecersiz", (hata as Error).message.slice(0, 255));
+  }
+}
+
+let calisma: Promise<void> | null = null;
+
+/** Kuyrugu kirali paketler halinde bosaltir; cagrilar siraya girer. */
+export async function isle(kokDizin: string): Promise<void> {
+  const onceki = calisma;
+  const tur = (async () => {
+    if (onceki) await onceki.catch(() => {});
+    durum.calisiyor = true;
+    try {
+      for (;;) {
+        const paket = await islem(async (baglanti) => {
+          // Coken dugumun kiralari duser; satir baska dugumce alinabilir.
+          await baglanti.query(
+            "UPDATE cookie_dosya SET durum = 'yeni', isleniyor_at = NULL"
+              + " WHERE durum = 'isleniyor' AND (isleniyor_at IS NULL"
+              + " OR isleniyor_at < UTC_TIMESTAMP(3) - INTERVAL ? MINUTE)",
+            [KIRALAMA_DK],
+          );
+          const [satirlar] = await baglanti.query(
+            "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
+            [PAKET],
+          );
+          const adaylar = satirlar as { id: number; yol: string }[];
+          const secilen: { id: number; yol: string }[] = [];
+          for (const aday of adaylar) {
+            const [sonuc] = await baglanti.query(
+              "UPDATE cookie_dosya SET durum = 'isleniyor', isleniyor_at = UTC_TIMESTAMP(3)"
+                + " WHERE id = ? AND durum = 'yeni'",
+              [aday.id],
+            );
+            if ((sonuc as { affectedRows: number }).affectedRows === 1) secilen.push(aday);
+          }
+          return secilen;
+        });
+        if (!paket.length) break;
+        for (const satir of paket) {
+          const sonuc = await dosyaAktar(satir.id, satir.yol, kokDizin);
+          durum.islenen += 1;
+          if (sonuc === "mukerrer") durum.mukerrer += 1;
+          if (sonuc === "gecersiz") durum.hatali += 1;
+          await new Promise((coz) => setImmediate(coz));
+        }
+      }
+    } finally {
+      durum.calisiyor = false;
+    }
+  })();
+  calisma = tur;
+  await tur;
+  if (calisma === tur) calisma = null;
+}
+/** Acilista yarim kalan kuyrugu devam ettirir. */
+export async function kuyrukBaslat(): Promise<void> {
+  const bekleyen = await tek<{ sayi: number }>(
+    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('yeni','isleniyor')",
+  ).catch(() => null);
+  if (!bekleyen?.sayi) return;
+  const ilk = await tek<{ yol: string }>(
+    "SELECT yol FROM cookie_dosya WHERE durum IN ('yeni','isleniyor') ORDER BY id LIMIT 1",
+  ).catch(() => null);
+  console.log(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
+  void isle(ilk?.yol ? path.dirname(ilk.yol) : YUKLEME_KOK);
+}
+/** Calisan aktarim turu varsa bitmesini bekler; kapanista cagrilir. */
+export async function kuyrukKapat(): Promise<void> {
+  // Yarim dosya birakilmasin: tur kendi finally'sinde durumu temizler.
+  if (calisma) await calisma.catch(() => {});
+}

@@ -109,7 +109,9 @@ def test_secim_sorgusu_ulkeyi_parametre_gecirir() -> None:
     sorgu, parametreler = havuz._secim_sorgusu(0, "TR", None, None, False)
     assert "'TR'" not in sorgu
     assert "ulke = %s" in sorgu
-    assert parametreler[1] == "TR"
+    # Ulke artik suzgec degil siralama: TR cerezler yabancilarin onune gecer.
+    assert "TR" in parametreler
+    assert parametreler[-1] == "TR"
 
 
 def test_il_kodu_varsa_suzgec_eklenir() -> None:
@@ -277,3 +279,60 @@ def test_oran_onbellegi_ikinci_cagrida_db_okumaz(monkeypatch) -> None:
     havuz.oranlari_oku()
     havuz.oranlari_oku()
     assert sayac["n"] == 1
+
+class _SiraliImlec:
+    """Il kodu sorgusunda 34 doner, saglayici sorgusunda bos doner."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, parametre=None):
+        self.sql = sql
+
+    def fetchone(self):
+        if "FROM geo WHERE slug" in self.sql:
+            return (34,)
+        return None
+
+
+class _SiraliBaglanti:
+    def cursor(self):
+        return _SiraliImlec()
+
+    def close(self) -> None:
+        pass
+
+
+def _sira_izle(monkeypatch) -> list:
+    """Secim sirasini kaydeder; saglayici bulunamaz, dongu sonuna kadar doner."""
+    sira: list = []
+
+    def aday(kod):
+        sira.append(kod)
+        return "SELECT 1"
+
+    monkeypatch.setattr(havuz, "oranlari_oku", lambda: {"oran_residential": 100, "oran_mobil": 0, "oran_datacenter": 0})
+    monkeypatch.setattr(havuz, "_aday_sorgusu", aday)
+    monkeypatch.setattr(havuz, "_baglan", lambda: _SiraliBaglanti())
+    return sira
+
+
+def test_il_seciliyken_once_il_sonra_tr(monkeypatch) -> None:
+    """Il seciliyken butun türlerde il denenir, sonra TR geneli (C61)."""
+    sira = _sira_izle(monkeypatch)
+    havuz.sec_mod("istanbul", True)
+    assert sira[0] == 34
+    # Il kodlari TR geneline inmeden once gelir; ilk None'un ardindan il yok.
+    ilk_none = sira.index(None)
+    assert all(k == 34 for k in sira[:ilk_none])
+    assert all(k is None for k in sira[ilk_none:])
+
+
+def test_il_secilmemisse_dogrudan_tr(monkeypatch) -> None:
+    """Il secili degilse yalnizca TR geneli denenir."""
+    sira = _sira_izle(monkeypatch)
+    havuz.sec_mod(None, True)
+    assert sira and all(k is None for k in sira)

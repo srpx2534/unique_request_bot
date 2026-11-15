@@ -60,8 +60,9 @@ async function dosyaAktar(
     if (!c.sona_erme) return en;
     return !en || c.sona_erme > en ? c.sona_erme : en;
   }, null);
-  // Il atamasi suan yapilmiyor: adlar serbest, guvenilir kaynak yok.
   const goreli = path.relative(kokDizin, tam);
+  // Dosya adlari rastgele kimliktir (or. 0vztnSh0.txt); il bu yuzden adlara
+  // BAKILARAK atanmaz. Il baska kaynaktan okunana kadar profil ilsiz kalir.
   const il: number | null = null;
   const ulke = ulkeBul(cerezler.map((c) => c.domain));
   const aile = aileBul(cerezler);
@@ -122,13 +123,13 @@ export async function isle(kokDizin: string): Promise<void> {
         const paket = await islem(async (baglanti) => {
           // Coken dugumun kiralari duser; satir baska dugumce alinabilir.
           await baglanti.query(
-            "UPDATE cookie_dosya SET durum = 'yeni', isleniyor_at = NULL"
+            "UPDATE cookie_dosya SET durum = 'bekliyor', isleniyor_at = NULL"
               + " WHERE durum = 'isleniyor' AND (isleniyor_at IS NULL"
               + " OR isleniyor_at < UTC_TIMESTAMP(3) - INTERVAL ? MINUTE)",
             [KIRALAMA_DK],
           );
           const [satirlar] = await baglanti.query(
-            "SELECT id, yol FROM cookie_dosya WHERE durum = 'yeni' ORDER BY id LIMIT ?",
+            "SELECT id, yol FROM cookie_dosya WHERE durum = 'bekliyor' ORDER BY id LIMIT ?",
             [PAKET],
           );
           const adaylar = satirlar as { id: number; yol: string }[];
@@ -136,7 +137,7 @@ export async function isle(kokDizin: string): Promise<void> {
           for (const aday of adaylar) {
             const [sonuc] = await baglanti.query(
               "UPDATE cookie_dosya SET durum = 'isleniyor', isleniyor_at = UTC_TIMESTAMP(3)"
-                + " WHERE id = ? AND durum = 'yeni'",
+                + " WHERE id = ? AND durum = 'bekliyor'",
               [aday.id],
             );
             if ((sonuc as { affectedRows: number }).affectedRows === 1) secilen.push(aday);
@@ -163,11 +164,11 @@ export async function isle(kokDizin: string): Promise<void> {
 /** Acilista yarim kalan kuyrugu devam ettirir. */
 export async function kuyrukBaslat(): Promise<void> {
   const bekleyen = await tek<{ sayi: number }>(
-    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('yeni','isleniyor')",
+    "SELECT COUNT(*) AS sayi FROM cookie_dosya WHERE durum IN ('bekliyor','isleniyor')",
   ).catch(() => null);
   if (!bekleyen?.sayi) return;
   const ilk = await tek<{ yol: string }>(
-    "SELECT yol FROM cookie_dosya WHERE durum IN ('yeni','isleniyor') ORDER BY id LIMIT 1",
+    "SELECT yol FROM cookie_dosya WHERE durum IN ('bekliyor','isleniyor') ORDER BY id LIMIT 1",
   ).catch(() => null);
   console.log(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
   void isle(ilk?.yol ? path.dirname(ilk.yol) : YUKLEME_KOK);

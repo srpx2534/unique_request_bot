@@ -199,8 +199,8 @@ def sec_mod(
     """Bir sağlayıcı seçer ve proxy dizesi üretir.
 
     Args:
-        geo_slug: İl slug'ı; verilirse yalnızca il hedefleyebilenler arasından
-            seçilir. Uygun yoksa ulusal seçime düşülür.
+        geo_slug: İl slug'ı; verilirse önce o ile ait IP'ler denenir, il tükenirse
+            TR geneline düşülür. İl yoksa doğrudan TR geneli kullanılır.
         mobil_acik: Mobil havuzu katılsın mı.
         zorunlu_tur: Mobil kelimede "mobile" gecilir; o tur once denenir, yoksa normal siraya dusulur.
 
@@ -227,9 +227,13 @@ def sec_mod(
                 satir = imlec.fetchone()
                 geo_kodu = satir[0] if satir else None
 
-            for tur in sira:
+            # Sıra: önce il, sonra TR geneli. İl seçiliyken o ile ait IP'ler
+            # bütün türlerde tükenmeden ulusal havuza inilmez (C61). İl seçili
+            # değilse `kodlar` yalnızca (None,) olur ve doğrudan TR geneli gelir.
+            kodlar = (geo_kodu, None) if geo_kodu else (None,)
+            for kod in kodlar:
                 # İl hedefli denemede kimse yoksa ulusal sorguya düşülür (C17).
-                for kod in (geo_kodu, None):
+                for tur in sira:
                     sorgu = _aday_sorgusu(kod)
                     parametreler = (tur, kod) if kod is not None else (tur,)
                     imlec.execute(sorgu, parametreler)
@@ -471,12 +475,13 @@ def _secim_sorgusu(
     Returns:
         Sorgu metni ve yer tutuculara karsilik gelen parametre demeti.
     """
+    # Ulke burada suzgec degil: TR cerezler yabancilarin onune gecer, yabanci
+    # cerez ancak TR cerez kalmadiginda secilir.
     kosullar = [
         "durum = 'hazir'",
         "suresi_gecmis = %s",
-        "(ulke IS NULL OR ulke = %s)",
     ]
-    parametreler: list = [gecmis, ulke]
+    parametreler: list = [gecmis]
     if geo_kodu:
         kosullar.append("(il_kodu = %s OR il_kodu IS NULL)")
         parametreler.append(geo_kodu)
@@ -490,10 +495,11 @@ def _secim_sorgusu(
     sorgu = (
         "SELECT id, parmak_izzi FROM cookie_profil WHERE "
         + " AND ".join(kosullar)
-        + " ORDER BY (COALESCE(mobil, 0) = %s) DESC, (il_kodu = %s) DESC,"
-        + " (ulke = %s) DESC, kullanim ASC, id ASC LIMIT 1"
+        + " ORDER BY (canli = 1) DESC, (canli IS NULL) DESC,"
+        + " (il_kodu = %s) DESC, (COALESCE(mobil, 0) = %s) DESC,"
+        + " (ulke IS NULL OR ulke = %s) DESC, kullanim ASC, id ASC LIMIT 1"
     )
-    parametreler.extend([1 if mobil else 0, geo_kodu or 0, ulke])
+    parametreler.extend([geo_kodu or 0, 1 if mobil else 0, ulke])
     return sorgu, tuple(parametreler)
 
 def cerez_sec(
