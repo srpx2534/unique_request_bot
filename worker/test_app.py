@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
+import time
 
 import pytest
 
@@ -133,4 +135,53 @@ def test_bosaltmada_503_ve_retry_after() -> None:
         assert sahte.retry == 30
     finally:
         app._bosaltiliyor.clear()
+
+
+
+def _govdeli(monkeypatch, govde: dict) -> "Sahte":
+    """Imzali govde tasiyan sahte istek kurar."""
+    ham = json.dumps(govde).encode("utf-8")
+    imza = hmac.new(app.TOKEN.encode("utf-8"), ham, hashlib.sha256).hexdigest()
+    sahte = istek(basliklar={
+        "Authorization": f"Bearer {app.TOKEN}",
+        "x-imza": imza,
+        "Content-Length": str(len(ham)),
+    })
+    sahte.rfile = io.BytesIO(ham)
+    return sahte
+
+
+def test_ulusal_kelimede_il_slug_gonderilmez(monkeypatch) -> None:
+    """Ulusal kelimede proxy icin il cozulmez, yalniz TR kalir (C61)."""
+    yakalanan: dict = {}
+
+    def sahte(*_a, **k):
+        yakalanan.update(k)
+        return {"ok": 1, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0,
+                "elapsed_ms": 1, "hits": [], "durduruldu": False}
+
+    monkeypatch.setattr(app.burst, "burst_yap", sahte)
+    govde = {"keyword": "haber", "target_url": "https://ornek.test",
+             "geo_code": 34, "geo_scope": "national", "ts": int(time.time())}
+    app.Isleyici.do_POST(_govdeli(monkeypatch, govde))
+    assert yakalanan.get("geo_slug") is None
+
+
+def test_il_kelimede_slug_cozulur(monkeypatch) -> None:
+    """Il kapsamli kelimede slug cozulup verilir."""
+    yakalanan: dict = {}
+
+    def sahte(*_a, **k):
+        yakalanan.update(k)
+        return {"ok": 1, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0,
+                "elapsed_ms": 1, "hits": [], "durduruldu": False}
+
+    monkeypatch.setattr(app.burst, "burst_yap", sahte)
+    monkeypatch.setattr(app.havuz, "slug_bul", lambda kod: "istanbul")
+    govde = {"keyword": "haber", "target_url": "https://ornek.test",
+             "geo_code": 34, "geo_scope": "province", "ts": int(time.time())}
+    app.Isleyici.do_POST(_govdeli(monkeypatch, govde))
+    assert yakalanan.get("geo_slug") == "istanbul"
+
+
 

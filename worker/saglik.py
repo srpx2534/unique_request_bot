@@ -69,3 +69,19 @@ def karantina_karari(
     if durum == "quarantine" and suresi_doldu:
         return "ac"
     return "yok"
+
+# Kota bitince proxy 466 dondurur ("bandwidth limit"). Kota bir ariza degil,
+# plan meselesidir: saglayici karantinaya girmez, yalnizca yeni hit almaz (C81).
+KOTA_KODU = 466
+
+
+def kota_mi(mesaj: str | None) -> bool:
+    """Hata metninde kota reddi (466) var mi diye bakar.
+
+    Args:
+        mesaj: Istek hatasinin metni; None olabilir.
+
+    Returns:
+        Metin 466 reddini tasiyorsa True.
+    """
+    return f"response {KOTA_KODU}" in (mesaj or "")

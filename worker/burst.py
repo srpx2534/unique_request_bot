@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from curl_cffi import requests
 
-from worker import cookie, fingerprint, havuz, saglik_db, serp
+from worker import cookie, fingerprint, havuz, saglik, saglik_db, serp
 from worker.burst_hit import sayaclar, tek_hit
 
 AZAMI_HIT = 60  # sözleşme §9: basamak boyu en fazla 60
@@ -181,7 +181,12 @@ def burst_yap(
             if kayit["result"] == "ok":
                 saglik_db.hata_sifirla(saglayici_id)
             elif kayit["result"] in ("error", "timeout"):
-                saglik_db.hata_isle(saglayici_id)
+                # Kota bir ariza degil plan meselesidir: karantina degil,
+                # kota isaretlenir ve saglayici yeni hit almaz (C81).
+                if saglik.kota_mi(kayit.get("mesaj")):
+                    saglik_db.kota_isle(saglayici_id)
+                else:
+                    saglik_db.hata_isle(saglayici_id)
             # İl çifti yalnızca gerçekten il hedefli çıkışta işlenir; ulusal ya
             # da yabancı çıkış kodu il çiftine yazarsa eşik yanlış çiftte dolar.
             saglik_db.kaydet(

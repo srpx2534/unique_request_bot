@@ -184,9 +184,12 @@ class Isleyici(BaseHTTPRequestHandler):
 
         adet = int(govde.get("size") or govde.get("adet") or 1)
         uule = govde.get("uule")
-        # İl slug'ı adresten ya da plaka kodundan çözülür; yoksa ulusal kalır.
+        # İl slug'ı yalnız il kapsamlı kelimede çözülür. Ulusal kelimede
+        # proxy'ye il yazılmaz, yalnız TR sorgulanır; UULE yine ilin kalır.
         geo_slug = govde.get("geo_slug")
-        if not geo_slug and govde.get("geo_code"):
+        if (not geo_slug and govde.get("geo_code")
+                and govde.get("geo_scope") == "province"):
+            geo_slug = havuz.slug_bul(int(govde["geo_code"]))
             geo_slug = havuz.slug_bul(int(govde["geo_code"]))
         # target_url verilmişse domain türetilir, çözüm için API'ye gidilmez.
         hedef_url = govde.get("target_url")
@@ -282,5 +285,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 

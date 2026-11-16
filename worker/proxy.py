@@ -1,27 +1,36 @@
-"""Proxy dizesi biçimlendirme.
+"""Proxy dizesi bicimlendirme.
 
-Sağlayıcı satırındaki ağ geçidi ve kimlik bilgilerinden curl_cffi'nin
-anladığı dize üretilir. Hedefleme kullanıcı adına eklenir: ülke, gerekiyorsa
-il. Her hit yeni oturum kimliği alır; böylece IP hit başına değişir ama hit
-içindeki üç istek (izlenim, tıklama, pogo) aynı IP'den çıkar.
+Saglayici satirindaki ag gecidi ve kimlik bilgilerinden curl_cffi'nin
+anladigi dize uretilir. Hedefleme kullanici adina eklenir: ulke, gerekiyorsa
+il. Her hit yeni oturum kimligi alir; boylece IP hit basina degisir ama hit
+icindeki uc istek (izlenim, tik, pogo) ayni IP'den cikar.
 
-Kullanıcı adı biçimi sağlayıcıya göredir: Decodo, Oxylabs ve IPRoyal
-`user-` önekiyle, SOAX paket adıyla, Bright Data `brd-customer-` önekiyle,
-Webshare düz kullanıcı adıyla (hedefleme parametresi yok) çalışır. Biçim sağlayıcı adından çözülür; tanınmayan ad Decodo sayılır.
+Kullanici adi bicimi saglayiciya goredir: Decodo, Oxylabs ve IPRoyal
+`user-` onekiyle, SOAX paket adiyla, Bright Data `brd-customer-` onekiyle,
+Webshare duz kullanici adiyla (hedefleme parametresi yok) calisir. Geonode
+taban kullanici adi zaten `geonode_` ile baslar: `user-` oneki 407 verdirir,
+ulke kucuk harf, tip `-type-residential`, siki eslesme `-strict-on` yazilir.
+Bicim saglayici adindan cozulur; taninmayan ad Decodo sayilir.
 
-Seçim burada değil, worker/havuz.py içinde yapılır; bu modül yalnızca
-biçimlendirir.
+Geonode oturum eki yalnizca sticky portta gecerlidir (rotasyon 9000-9010,
+sticky 10000-10010); bu yuzden oturum varken port kaydirilir. Rotasyonlu
+portta `-session-` gondermek 403 verir.
 
-Kullanım: worker/havuz.py, tools/proxy_dene.py.
+Secim burada degil, worker/havuz.py icinde yapilir; bu modul yalnizca
+bicimlendirir.
+
+Kullanim: worker/havuz.py, tools/proxy_dene.py.
 """
 
 from __future__ import annotations
 
 import secrets
 
-OTURUM_UZUNLUK = 8  # karakter; çakışma olasılığı ihmal edilebilir
+OTURUM_UZUNLUK = 8  # karakter; cakisma olasiligi ihmal edilebilir
+STICKY_KAYMA = 1000  # 9000-9010 rotasyon portu 10000-10010 sticky olur
+ROTASYON_PORTLARI = range(9000, 9011)
 
-# Sağlayıcı başına kullanıcı adı kalıbı. {ulke} ve {city} boş olabilir.
+# Saglayici basina kullanici adi kalibi. {ulke} ve {city} bos olabilir.
 BICIMLER = {
     "decodo": "user-{k}{ulke}{city}-session-{s}",
     "oxylabs": "user-{k}{ulke}{city}-session-{s}",
@@ -30,24 +39,91 @@ BICIMLER = {
     "brightdata": "brd-customer-{k}{ulke}{city}-session-{s}",
     # Webshare hedefleme parametresi kullanmaz: duz kullanici adi yeter.
     "webshare": "{k}",
+    # Geonode kendi kalibiyla kurulur (bkz. _geonode).
+    "geonode": "{k}",
 }
 
 
 def bicim_bul(saglayici_adi: str | None) -> str:
-    """Sağlayıcı adından kullanıcı adı biçimini çözer.
+    """Saglayici adindan kullanici adi bicimini cozer.
 
     Args:
-        saglayici_adi: provider.name değeri.
+        saglayici_adi: provider.name degeri.
 
     Returns:
-        BICIMLER anahtarı; tanınmayan ad için "decodo".
+        BICIMLER anahtari; taninmayan ad icin "decodo".
     """
     ad = (saglayici_adi or "").strip().lower().replace(" ", "")
     for anahtar in BICIMLER:
-        # "bright data" gibi boşluklu yazım da yakalanır.
+        # "bright data" gibi bosluklu yazim da yakalanir.
         if anahtar in ad:
             return anahtar
     return "decodo"
+
+
+def cekirdek(gateway: str | None, *fazla) -> str:
+    """Ag gecidi metnini host:port'a indirger.
+
+    Panelden gelen deger sema, sonda iki nokta, bastaki/sondaki bosluk ya da
+    egik cizgi tasiyabilir; curl_cffi bunlari reddeder. Fazladan konum
+    argumanlari yok sayilir, boylece cagiran taraf degisse de bozulmaz.
+
+    Args:
+        gateway: Ham ag gecidi metni.
+        *fazla: Yok sayilan ek argumanlar.
+
+    Returns:
+        host:port; metin bossa bos dize.
+    """
+    ham = (gateway or "").strip()
+    if "://" in ham:
+        ham = ham.split("://", 1)[1]
+    ham = ham.strip().strip("/").rstrip(":").strip()
+    return ham.split("/", 1)[0]
+
+
+def _sticky(gateway: str) -> str:
+    """Rotasyonlu portu sticky karsiligina cevirir.
+
+    Args:
+        gateway: host:port.
+
+    Returns:
+        Port 9000-9010 araligindaysa 1000 fazlasi, degilse ayni gecit.
+    """
+    host, ayrac, port = gateway.rpartition(":")
+    if not ayrac or not port.isdigit():
+        return gateway
+    numara = int(port)
+    if numara in ROTASYON_PORTLARI:
+        return f"{host}:{numara + STICKY_KAYMA}"
+    return gateway
+
+
+def _geonode(gateway: str, kullanici: str, sifre: str, ulke: str | None,
+             geo_slug: str | None, oturum: str) -> str:
+    """Geonode dizesini kurar: hedefleme kullanici adinda, oturum sticky portta.
+
+    Args:
+        gateway: host:port.
+        kullanici: Taban kullanici adi; zaten -country-xx tasiyabilir.
+        sifre: Saglayici sifresi.
+        ulke: Cikis ulkesi kodu; None ise yazilmaz.
+        geo_slug: Il slug'i; verilirse city hedeflemesi eklenir.
+        oturum: Oturum kimligi.
+
+    Returns:
+        http://kullanici:sifre@host:sticky_port dizesi.
+    """
+    ad = kullanici
+    # Taban kullanici adi zaten ulke tasiyorsa ikinci kez yazilmaz.
+    if ulke and f"-country-{ulke.lower()}" not in ad.lower():
+        ad += f"-country-{ulke.lower()}"
+    if geo_slug:
+        ad += f"-city-{geo_slug}"
+    ad += "-type-residential"
+    ad += f"-session-{oturum}"
+    return f"http://{ad}:{sifre}@{_sticky(gateway)}"
 
 
 def dize(
@@ -62,39 +138,48 @@ def dize(
     """Proxy dizesi kurar.
 
     Args:
-        gateway: host:port.
-        kullanici: Sağlayıcı kullanıcı adı (önek hariç).
-        sifre: Sağlayıcı şifresi.
-        ulke: Çıkış ülkesi kodu; None ise ülke parametresi yazılmaz.
-        geo_slug: İl slug'ı; verilirse city hedeflemesi eklenir.
-        oturum: Oturum kimliği; verilmezse rastgele üretilir.
+        gateway: host:port; sema ve artik karakter varsa temizlenir.
+        kullanici: Saglayici kullanici adi (onek haric).
+        sifre: Saglayici sifresi.
+        ulke: Cikis ulkesi kodu; None ise ulke parametresi yazilmaz.
+        geo_slug: Il slug'i; verilirse city hedeflemesi eklenir.
+        oturum: Oturum kimligi; verilmezse rastgele uretilir.
         bicim: bicim_bul() sonucu.
 
     Returns:
         http://kullanici:sifre@host:port dizesi.
     """
+    gateway = cekirdek(gateway)
     if not kullanici:
-        # Ücretsiz düz proxy: kimlik yok, hedefleme de yok.
+        # Ucretsiz duz proxy: kimlik yok, hedefleme de yok.
         return f"http://{gateway}"
 
+    oturum = oturum or secrets.token_hex(OTURUM_UZUNLUK // 2)
+    if bicim == "geonode":
+        return _geonode(gateway, kullanici, sifre, ulke, geo_slug, oturum)
+
+    # Taban kullanici adi ulkeyi zaten tasiyorsa ulke eki yazilmaz.
+    ulke_eki = ""
+    if ulke and f"-country-{ulke.lower()}" not in kullanici.lower():
+        ulke_eki = f"-country-{ulke.lower()}"
     kalip = BICIMLER.get(bicim, BICIMLER["decodo"])
     ad = kalip.format(
         k=kullanici,
-        ulke=f"-country-{ulke.lower()}" if ulke else "",
+        ulke=ulke_eki,
         city=f"-city-{geo_slug}" if geo_slug else "",
-        s=oturum or secrets.token_hex(OTURUM_UZUNLUK // 2),
+        s=oturum,
     )
     return f"http://{ad}:{sifre}@{gateway}"
 
 
 def maskele(proxy: str | None) -> str:
-    """Şifreyi gizler.
+    """Sifreyi gizler.
 
     Args:
         proxy: Ham proxy dizesi.
 
     Returns:
-        Şifresi yıldızlanmış dize.
+        Sifresi yildizlanmis dize.
     """
     if not proxy:
         return "(yok)"

@@ -478,3 +478,48 @@ def saglayici_yok_dur(sorgu: str, domain: str | None) -> None:
     uyari("provider_down", None,
           f"'{sorgu}' durdu · saglayici calismiyor (ok=0)",
           kelime=sorgu, domain=domain)
+
+
+def kota_isle(saglayici_id: int) -> None:
+    """Kota bittiginde saglayiciyi tuketir; karantinaya almaz (C81).
+
+    Kota siniri `quota_bytes`e yazilir, boylece secim sorgusu saglayiciyi
+    kendiliginden disarida birakir: kota artirilinca saglayici geri gelir.
+    Arizali sayilmadigi icin hata sayaci sifirlanir ve provider_down yerine
+    tek bir `quota` uyarisi dusulur (30 dakika sessizlik).
+
+    Args:
+        saglayici_id: Kotasi dolan saglayici.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    uyari_gerek = False
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE provider SET quota_bytes = bytes_month, hata_sayac = 0"
+                " WHERE id = %s AND (quota_bytes IS NULL OR quota_bytes > bytes_month)",
+                (saglayici_id,),
+            )
+            if imlec.rowcount:
+                uyari_gerek = True
+            imlec.execute(
+                "SELECT COUNT(*) FROM alert WHERE kind = 'quota' AND ref_id = %s"
+                " AND acknowledged = 0"
+                " AND created_at > UTC_TIMESTAMP(3) - INTERVAL %s MINUTE",
+                (saglayici_id, UYARI_SESSIZ_DK),
+            )
+            satir = imlec.fetchone()
+            if satir and int(satir[0]):
+                uyari_gerek = False
+    except Exception as hata:  # noqa: BLE001
+        print(f"[saglik] {hata}")
+        return
+    finally:
+        _kapat(baglanti)
+    if uyari_gerek:
+        uyari("quota", saglayici_id,
+              f"saglayici {saglayici_id} kotasi doldu (466) · veri alin ya da kotayi artirin")

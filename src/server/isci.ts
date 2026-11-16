@@ -61,8 +61,9 @@ async function calistir(is: Is): Promise<void> {
     domain: string;
     geo_code: number;
     step_size: number;
+    geo_scope: string;
   }>(
-    `SELECT g.burst_count, geo.uule, s.domain, g.geo_code, c.step_size
+    `SELECT g.burst_count, geo.uule, s.domain, g.geo_code, c.step_size, k.geo_scope
        FROM keyword_geo g
        JOIN geo ON geo.code = g.geo_code
        JOIN keyword k ON k.id = g.keyword_id
@@ -150,6 +151,7 @@ async function calistir(is: Is): Promise<void> {
       burst_id: burstId,
       keyword: is.kelime,
       geo_code: satir.geo_code,
+      geo_scope: satir.geo_scope,
       uule: satir.uule,
       target_domain: satir.domain,
       size: adet,
@@ -233,4 +235,5 @@ export const isci = new Worker<Is>("olcum", (is) => calistir(is.data), {
 isci.on("failed", (is, hata) => {
   if (is) void geriAl(is.data.keywordGeoId, `iş ${is.id}: ${hata.message}`);
 });
+
 

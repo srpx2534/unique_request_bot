@@ -2,6 +2,9 @@
 
 Burst dongusunden ayrildi (§23.2); cagiran taraf saglayici ve profili secer,
 burada yalnizca hit yurutulur.
+
+Hata metni kayda tasinir: proxy reddi kodu (407 kimlik, 466 kota, 403 bicim)
+yalnizca metinde gorunur ve cagiran taraf karari buna gore verir (C81).
 """
 
 from __future__ import annotations
@@ -41,7 +44,7 @@ def tek_hit(
     """
     kayit = {"profil": profil, "izlenim": None, "tik": None, "pogo": None,
              "result": "error", "http_status": None, "bytes": None,
-             "latency_ms": 0}
+             "latency_ms": 0, "mesaj": ""}
 
     with requests.Session(impersonate=profil) as oturum:
         # Cerez varsa oturuma yuklenir; yoksa hit cerezsiz gider.
@@ -56,6 +59,7 @@ def tek_hit(
             kayit["http_status"] = izlenim["http_status"]
             kayit["bytes"] = izlenim["bytes"]
             kayit["latency_ms"] = izlenim["elapsed_ms"]
+            kayit["mesaj"] = izlenim.get("mesaj", "")
             return kayit
 
         tik = click.tikla(hedef_url, referer=serp_url, proxy=proxy_adres,
@@ -68,6 +72,7 @@ def tek_hit(
             kayit["http_status"] = tik["http_status"]
             kayit["bytes"] = tik["bytes"]
             kayit["latency_ms"] = max(0, ag_ms)
+            kayit["mesaj"] = tik.get("mesaj", "")
             return kayit
 
         pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
@@ -76,6 +81,8 @@ def tek_hit(
         kayit["http_status"] = tik["http_status"]
         kayit["bytes"] = tik["bytes"]
         kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
+        if pog["result"] != "ok":
+            kayit["mesaj"] = pog.get("mesaj", "")
 
     # Pogo basarisizsa hit "ok" sayilmaz.
     kayit["result"] = "ok" if pog is not None and pog["result"] == "ok" else "error"
