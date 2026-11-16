@@ -8,7 +8,7 @@ import { Dugme } from "@/bilesen/ui/dugme";
 import { FiltreCubugu, type Aralik } from "@/bilesen/filtre";
 import { ApiHatasi, iste } from "@/lib/api";
 
-type Ozet = { hit: number; ok: number; captcha: number; hata: number; burst: number; ort_sn: number };
+type Ozet = { hit: number; ok: number; captcha: number; hata: number; not_found: number; planlanan: number; burst: number; ort_sn: number };
 type SiteSatir = { domain: string; hit: number; ok: number; captcha: number; son: string | null };
 type KelimeSatir = { kelime: string; domain: string; il_adi: string | null; hit: number; ok: number; captcha: number; son: string | null };
 type Gun = { gun: string; hit: number; ok: number; captcha: number };
@@ -84,10 +84,11 @@ export default function Rapor() {
         </select>
       </FiltreCubugu>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi ad="Toplam hit" deger={String(o?.hit ?? 0)} alt={`${o?.burst ?? 0} burst`} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Kpi ad="Toplam hit" deger={String(o?.hit ?? 0)} alt={`${o?.burst ?? 0} burst · ${o?.planlanan ?? 0} planlanan`} />
         <Kpi ad="Başarılı" deger={String(o?.ok ?? 0)} alt={yuzde(o?.ok ?? 0, o?.hit ?? 0)} />
         <Kpi ad="CAPTCHA" deger={yuzde(o?.captcha ?? 0, o?.hit ?? 0)} alt={`${o?.captcha ?? 0} hit`} ton="tehlike" />
+        <Kpi ad="Bulunamadı" deger={String(o?.not_found ?? 0)} alt={yuzde(o?.not_found ?? 0, o?.hit ?? 0)} />
         <Kpi ad="Ortalama burst" deger={`${Math.round(o?.ort_sn ?? 0)} sn`} alt={`${o?.hata ?? 0} hata`} />
       </div>
 

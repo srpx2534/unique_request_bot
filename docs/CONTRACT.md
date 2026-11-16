@@ -293,6 +293,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C86 — Decodo `/search` gövdesi geo ve locale'i her istekte sabit taşır: `geo` ülke adıdır (`Turkey`), `locale` küçük harfli `dil-ulke` (`tr-tr`), `proxy_pool` açıkça `premium`'dur. Ülke kodu ad eşlemesinde yoksa olduğu gibi yazılır. Serper ve SearchApi `gl`/`hl` ile çalışır, `proxy_pool` almaz. Kanıt: `worker/test_serp.py`.
 - C87 — `DELETE /api/log` seçili süzgeçteki burst satırlarını ve bağlı hit'lerini tek işlemde siler; süzgeç liste ucuyla ortak `logKosulu` yardımcısından gelir, iki yerde ayrışmaz. `hit` tablosunda FK yoktur, bu yüzden önce hit sonra burst silinir. Kampanya, kelime, sıralama ve `traffic_daily` etkilenmez. Panel silmeyi onayla sorar ve süzgeçte kayıt yokken düğme kapalıdır. Kanıt: `src/server/panel_sayfa.test.ts`.
 - C88 — Rapor filtresi aramalı değil seçmelidir: site `GET /api/site` listesinden, kelime seçili siteye daraltılmış `GET /api/kelime?site=` listesinden seçilir ve kelime metni tam eşleşir (`k.text = ?`). Site seçilmeden kelime seçilemez; site değişince kelime sıfırlanır. Kanıt: `src/server/rapor.ts`, `src/web/sayfa/rapor.tsx`.
+- C89 — Rapor sayaçları `target_count` toplamından değil hit satırlarından gelir (`COUNT(h.id)`), planlanan ayrı sayılır ve `not_found` kendi kartında durur. Sayaçlar SQL'de `CAST(... AS UNSIGNED)` ile sayıya çevrilir; `hit` birleşimi `WHERE` öncesine alınır, aksi halde bütün sayaçlar sıfır döner. Kanıt: `src/server/rapor.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -415,6 +416,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.17 — Decodo gövdesi `geo: Turkey` ve `locale: tr-tr` ile sabitlendi, `proxy_pool` açıkça premium (C86).
 - 1.8.18 — Loglara süzgeçli silme eklendi: burst ve hit satırları tek işlemde gider (C87).
 - 1.8.19 — Rapor filtresi seçmeli oldu; kelime tam eşleşir (C88).
+- 1.8.20 — Rapor sayaçları hit satırlarından toplandı, `not_found` kendi kartına ayrıldı; kanıt testi `src/server/rapor.test.ts` (C89).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
