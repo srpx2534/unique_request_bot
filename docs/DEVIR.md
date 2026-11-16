@@ -54,6 +54,8 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - Kapılar son hâlde yeşil: 184 pytest, 80 vitest, lint 0, tip 0, ağaç temiz.
 - Zarif boşaltma (E4): sinyalde yeni burst 503 + `Retry-After: 30`, uçan iş bitene kadar kapanmaz, ikinci sinyal zorla çıkar; kontrol düzlemi 503'ü hata saymaz. `worker/test_bosaltma.py` dört test.
 - Migration geri alma (E5): `tools/migrate.py --geri <n>` plan basar, `--uygula` ile koşar. 46 migration'ın tamamı için `db/migrations/geri/` altında geri dosyası var; tam geri-ileri turu ve `verify` temiz. `tools/test_migrate_geri.py` yedi test.
+- Tek örnek kilidi (E7): panel `veri/panel.pid` almadan dinlemez; canlı sahipte ikinci süreç 1 ile çıkar, ölü sahipte devralır. `src/server/tek_ornek.test.ts` altı test, canlı iki süreç denemesi geçti.
+- Test giriş kimliği kodda sabit değil: `TEST_EPOSTA` / `TEST_PAROLA` ortamdan okunur (`src/server/test_kimlik.ts`), `.env` ve CI adım env bloğu taşır. Geçici yönetici silinirse yalnız `kullanici:ekle` ile yeniden kurulur, kod değişmez.
 
 ## Açık altyapı notları
 
@@ -70,6 +72,8 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
+
+
 
 
 

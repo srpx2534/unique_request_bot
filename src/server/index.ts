@@ -10,10 +10,20 @@ import { redis } from "./redis.js";
 import { isci } from "./isci.js";
 import { zamanlayiciBaslat, zamanlayiciDurdur } from "./zamanlayici.js";
 import { kuyrukBaslat, kuyrukKapat } from "./cerez/index.js";
+import { kilitAl, kilitBirak } from "./tek_ornek.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
 const HOST = process.env.PANEL_HOST ?? "127.0.0.1";
+
+// İkinci süreç aynı veritabanına ikinci zamanlayıcı açmasın: kilit alınmadan
+// dinlemeye geçilmez. Port denetimi farklı portu yakalamaz, kilit yakalar.
+try {
+  kilitAl();
+} catch (hata) {
+  console.error(`[panel] ${(hata as Error).message}`);
+  process.exit(1);
+}
 
 const sunucu = uygulama.listen(PORT, HOST, () => {
   console.log(`panel dinliyor: ${HOST}:${PORT}`);
@@ -55,6 +65,8 @@ async function kapat(): Promise<void> {
   await kuyrukKapat().catch(() => undefined);
   await new Promise<void>((cozum) => sunucu.close(() => cozum()));
   await redis.quit().catch(() => undefined);
+  // Kilit en sonda bırakılır: kuyruk ve sunucu kapandıktan sonra.
+  kilitBirak();
   process.exit(0);
 }
 

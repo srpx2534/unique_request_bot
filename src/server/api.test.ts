@@ -8,14 +8,18 @@ import "dotenv/config";
 import request from "supertest";
 import { beforeAll, describe, expect, it } from "vitest";
 import uygulama from "./uygulama.js";
+import { kimlik } from "./test_kimlik.js";
+import { redis } from "./redis.js";
 
-const EPOSTA = "yonetici@ornek.com";
-const PAROLA = "PanelParola2026!";
+const { eposta: EPOSTA, parola: PAROLA } = kimlik();
 
 const ajan = request.agent(uygulama);
 let baslik: Record<string, string> = {};
 
 beforeAll(async () => {
+  // Ardışık koşularda giriş kilidi birikir; e-posta kilidi sıfırlanır.
+  // Aksi hâlde ikinci koşu 429 alır ve CSRF token'ı hiç üretilmez.
+  await redis.del(`kilit:${EPOSTA}`);
   const ilk = await ajan.get("/api/token");
   const giris = await ajan
     .post("/api/giris")
@@ -89,3 +93,4 @@ describe("site ve kelime", () => {
     expect(yanit.status).toBe(204);
   });
 });
+

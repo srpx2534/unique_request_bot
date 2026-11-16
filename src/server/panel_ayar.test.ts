@@ -9,10 +9,10 @@ import "dotenv/config";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import uygulama from "./uygulama.js";
+import { kimlik } from "./test_kimlik.js";
 import { sorgu, yaz } from "./veritabani.js";
 
-const EPOSTA = "yonetici@ornek.com";
-const PAROLA = "PanelParola2026!";
+const { eposta: EPOSTA, parola: PAROLA } = kimlik();
 const ANAHTARLAR = ["oran_residential", "oran_mobil", "oran_datacenter"];
 
 const ajan = request.agent(uygulama);

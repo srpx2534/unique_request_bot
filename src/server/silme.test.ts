@@ -8,11 +8,11 @@ import "dotenv/config";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import uygulama from "./uygulama.js";
+import { kimlik } from "./test_kimlik.js";
 import { ekle, tek, yaz } from "./veritabani.js";
 import { hitYaz } from "./isci_durum.js";
 
-const EPOSTA = "yonetici@ornek.com";
-const PAROLA = "PanelParola2026!";
+const { eposta: EPOSTA, parola: PAROLA } = kimlik();
 
 const ajan = request.agent(uygulama);
 let baslik: Record<string, string> = {};
@@ -147,3 +147,4 @@ describe("sağlayıcı silme", () => {
     expect(cevap.status).toBe(404);
   });
 });
+

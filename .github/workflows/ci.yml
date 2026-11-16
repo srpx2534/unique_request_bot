@@ -126,6 +126,8 @@ jobs:
           REDIS_URL=redis://127.0.0.1:6379/0
           SESSION_SECRET=ci-oturum-sirri-32-karakterden-uzun
           WORKER_TOKEN=ci-worker-token
+          TEST_EPOSTA=yonetici@ornek.com
+          TEST_PAROLA=PanelParola2026!
           ENV
 
       - name: Bağımlılıklar
@@ -140,7 +142,10 @@ jobs:
           python tools/seed.py
 
       - name: Kullanıcı
-        run: npm run kullanici:ekle -- yonetici@ornek.com PanelParola2026!
+        env:
+          TEST_EPOSTA: yonetici@ornek.com
+          TEST_PAROLA: PanelParola2026!
+        run: npm run kullanici:ekle -- "$TEST_EPOSTA" "$TEST_PAROLA"
 
       - name: Kurulum doğrulaması
         run: python tools/kurulum_dene.py
@@ -150,3 +155,4 @@ jobs:
 
       - name: Pytest
         run: python -m pytest -q
+
