@@ -90,3 +90,25 @@ def test_kisa_govde_not_found() -> None:
     """Kisa govde gercek SERP degildir; hit tiklamaya gecmez."""
     sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(2_000))
     assert sonuc["result"] == "not_found"
+
+
+def test_decodo_govdesi_ulke_ve_locale_tasir() -> None:
+    """Decodo govdesi ulke adi ve kucuk harfli locale ister."""
+    govde = serp._govde_kur("decodo", "haber", 1, "tr", "tr", None)
+    assert govde["geo"] == "Turkey"
+    assert govde["locale"] == "tr-tr"
+    assert govde["proxy_pool"] == "premium"
+
+
+def test_decodo_govdesi_uule_verilirse_ekler() -> None:
+    """UULE verilirse govdeye girer."""
+    govde = serp._govde_kur("decodo", "haber", 1, "tr", "tr", "abc")
+    assert govde["uule"] == "abc"
+
+
+def test_serper_govdesi_gl_hl_kullanir() -> None:
+    """Serper ulke kodu ve dil kodu ile calisir, proxy_pool almaz."""
+    govde = serp._govde_kur("serper", "haber", 1, "tr", "tr", None)
+    assert govde["gl"] == "tr"
+    assert govde["hl"] == "tr"
+    assert "proxy_pool" not in govde

@@ -38,6 +38,9 @@ UCLAR = {
     "searchapi": "https://www.searchapi.io/api/v1/search",
 }
 ZAMAN_ASIMI = 25  # saniye; üstü burst'ü geciktirir
+# Decodo `geo` alaninda ulke adi ister, kod degil; locale kucuk harfli
+# dil-ulke bicimidir. Eslemede olmayan ulke kodu oldugu gibi yazilir.
+ULKE_ADLARI = {"tr": "Turkey"}
 SAYFA_BASI = 10  # API'nin tek yanıtta döndürdüğü sonuç sayısı
 AZAMI_SAYFA = 10  # 10 x 10 = ilk 100 sıra
 SAYFA_ARASI_MIN = 0.6  # saniye; API saniyede çok isteği 503 ile kesiyor
@@ -77,8 +80,11 @@ def _govde_kur(saglayici: str, sorgu: str, sayfa: int, dil: str, ulke: str,
         if uule:
             govde["uule"] = uule
         return govde
-    govde = {"query": sorgu, "page": sayfa, "locale": f"{dil}-{ulke.upper()}",
-             "geo": ulke}
+    # Geo ve locale her istekte sabittir: TR sonucu ulke adi ve kucuk harfli
+    # locale ile istenir. proxy_pool premium hedef sablonun varsayilanidir,
+    # acikca yazilir ki plan degisince sessizce dusmesin.
+    govde = {"query": sorgu, "page": sayfa, "locale": f"{dil}-{ulke}".lower(),
+             "geo": ULKE_ADLARI.get(ulke, ulke), "proxy_pool": "premium"}
     if uule:
         govde["uule"] = uule
     return govde
