@@ -17,3 +17,6 @@
 *.bak binary
 *.zip binary
 veri/** -text
+
+# Migration geri dosyalari da depoda, LF ile.
+db/migrations/geri/** text eol=lf

@@ -67,7 +67,7 @@ Tam liste `docs/EKSIKLER.md`; orada 39 madde açık. Sıra:
 6. **60–61** liste yanıt zarfı sözleşmede tekilleştirilecek; kalan belgeler gözden geçirilecek. **62** devir paketi (README, `.env.example`, compose, `.gitattributes`, `.gitignore`) kapandı.
 7. **Proxy gelince (Decodo):** D-4/D-5/D-6/D-10 (SOCS/CONSENT, SID ölçümü, tazelik, canlılık), F1/F4/F5 (TR çıkış IP doğrulama, click/pogo, 100'lük hit bölme), mobil modun gerçek istekle denenmesi. Bunlar ölçüm olmadan kapatılmaz.
 8. **B6/B8/B9/B12** HTTPS/HSTS, sır saklama, Redis `requirepass`, eşik sınır doğrulaması.
-9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi. Yedek/geri yükleme, metrik ucu ve zarif boşaltma (E4) yazıldı; E2, E3, E5, E7 açık.
+9. **E1–E7** yedek, loglama, worker healthcheck, zarif boşaltma, migration geri alma, metrik ucu, tek örnek kilidi. Yedek/geri yükleme, metrik ucu, zarif boşaltma (E4) ve migration geri alma (E5) yazıldı; E2, E3, E7 açık.
 10. `cookie_kullanim` yetim satırları; `temizle` sırasında çalışan yüklemenin iptali ve geçici klasörün silinmesi.
 11. Geçersiz sayılan çerez dosyalarının yeniden yüklenmesi (ayrıştırıcı düzeltildi).
 12. `docs/*.py` ve `docs/yedek` temizliği.
@@ -116,6 +116,7 @@ node_modules\.bin\esbuild.cmd src/server/uygulama.ts --bundle --platform=node --
 ```
 
 Beklenen: 179 pytest, 80 vitest, `tsc` sessiz, `verify` 25 tablo / 0 eksik / migration 46, lint temiz. Bu sayılar düşerse iş bitmemiştir. Proxy'siz hiçbir ölçüm maddesi kapatılmaz.
+
 
 
 

@@ -96,3 +96,6 @@ Devir paketi tamam: README, `.env.example`, `docker-compose.yml`, `.gitattribute
 - G4 — Cakisma suresi ayari ve cakisma listesi Araclar menusunde; uyarilar orada kapatilacak.
 - G5 — Yedek alma, yedek listesi, geri yukleme ve metrik ucu (E1-E7) Araclar menusunden tetiklenecek; gelistirme asamasinda yapilacak.
 
+Migration geri alma (E5) tamamlandı: `tools/migrate.py --geri`, `db/migrations/geri/` altında 46 geri dosyası, `tools/test_migrate_geri.py`. Kalan E maddeleri: E2 loglama, E3 worker healthcheck, E7 tek örnek kilidi.
+
+
