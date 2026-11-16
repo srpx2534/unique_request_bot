@@ -1,5 +1,5 @@
 # SÖZLEŞME — Unique Request Bot
-Sürüm: 1.8.11 (kilitli)
+Sürüm: 1.8.12 (kilitli)
 Kapsam: Çok sunuculu, panelden yönetilen, çoklu sağlayıcı üzerinden çalışan request-burst motoru
 Veritabanı: MySQL 8.0.16+
 Diller: Python 3.12 (fetch engine) + Node 20 / TypeScript (control plane)
@@ -231,7 +231,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C25 — Aynı burst'ün tekrar işlenmesi idempotenttir, aynı sonucu verir.
 - C26 — pytest ve vitest hem Windows hem Linux'ta geçer.
 - C27 — CI matrisi windows-latest ve ubuntu-22.04 içerir; ikisi de yeşildir.
-- C27.1 — Veritabanı ve Redis isteyen testler (`api`, `panel_*`, `silme`) yalnızca veritabanı işinde koşar; platformdan bağımsız iş bunları `--exclude` ile atlar ve `SESSION_SECRET` alır. Yeni bir veritabanı testi eklenirse dışlama listesine de yazılır. Panel testleri giriş kimliğini koda gömmaz: `TEST_EPOSTA` ve `TEST_PAROLA` ortam değişkenlerinden okunur (`src/server/test_kimlik.ts`), yoksa test açık hata verir. Yerelde değerler `.env` içindedir, CI kendi değerini adımın `env` bloğunda taşır.
+- C27.1 — Veritabanı ve Redis isteyen testler (`api`, `panel_*`, `silme`, `dugum_olay`) yalnızca veritabanı işinde koşar; platformdan bağımsız iş bunları `--exclude` ile atlar ve `SESSION_SECRET` alır. Yeni bir veritabanı testi eklenirse dışlama listesine de yazılır. Panel testleri giriş kimliğini koda gömmaz: `TEST_EPOSTA` ve `TEST_PAROLA` ortam değişkenlerinden okunur (`src/server/test_kimlik.ts`), yoksa test açık hata verir. Yerelde değerler `.env` içindedir, CI kendi değerini adımın `env` bloğunda taşır.
 - C28 — Depoda CRLF yoktur; `git ls-files --eol` temiz döner.
 - C29 — Hiçbir modülde sabit `os.sep` veya `\\` yolu yoktur; lint kuralı geçer.
 - C30 — Docker imajı linux/amd64 üzerinde Debian 12'dir.
@@ -284,6 +284,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C77 — Her migration'ın `db/migrations/geri/<ad>.down.sql` geri dosyası vardır; dosya en az bir çalıştırılabilir satır taşır. `tools/migrate.py --geri <n>` en yeniden eskiye plan üretir, onaysız hiçbir şey uygulamaz, `--uygula` ile koşar ve ilk hatada durur. Geri dosyası eksik ya da boşsa plan hiç üretilmez. DDL işlem içinde geri alınamadığı için her migration kendi turunda koşar. Kanıt: `tools/test_migrate_geri.py`, tam geri-ileri turu.
 - C78 — Aynı makinede ikinci panel süreci açılmaz: kilit `veri/panel.pid` dosyasıdır ve `wx` bayrağıyla yaratılır. Dosya varsa sahibi `process.kill(pid, 0)` ile sınanır; canlıysa ikinci süreç `başka bir panel süreci çalışıyor` yazıp 1 ile çıkar, ölüyse dosya devralınır. Kilit kapanışta ve süreç çıkışında bırakılır; başka sürece ait dosya silinmez. Kanıt: `src/server/tek_ornek.test.ts`, canlı iki süreç denemesi.
 - C79 — Günlük tek satır JSON`dur: zaman, seviye, bağlam, mesaj. Seviye eşiği `GUNLUK_SEVIYE` ile verilir (varsayılan `bilgi`); hata ve uyarı stderr`e gider. `console` yalnız `src/server/gunluk.ts` içinde kullanılır, lint başka modülde yakalar; CLI araçları (`tools/`) insan okusun diye muaftır. Sır yazılmaz: parola ve anahtar günlüğe düşmez. Kanıt: `src/server/gunluk.test.ts`, `tools/lint_yol.py`.
+- C80 — Kalbi 90 saniyeyi geçen `aktif` düğüm için `dugum_olu` uyarısı yazılır; aynı düğüm için açık uyarı varken ya da son 30 dakikada yazılmışsa tekrarlanmaz. 45 saniyede `dugum_olay` kaydı düşer, uyarı 90 saniyede: tek gecikme uyarı üretmez. Durdurulmuş düğüm uyarı üretmez. Uyarı düğümün `durum` alanını değiştirmez: dağıtıcı zaten 45 saniyelik tazelikle ölü düğümü atlar, kullanıcı düğümü elle durdurur. Kanıt: `src/server/dugum_olay.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -398,6 +399,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.9 — Migration geri alma (E5) sözleşmeye işlendi: her migration'ın `db/migrations/geri/<ad>.down.sql` karşılığı zorunlu, `--geri <n>` onaysız plan basar, `--uygula` ile en yeniden eskiye koşar, eksik ya da yalnız yorumdan oluşan geri dosyası planı engeller (C77).
 - 1.8.10 — Tek örnek kilidi (E7) sözleşmeye işlendi: panel `veri/panel.pid` kilidini almadan dinlemez, sahibi canlıysa ikinci süreç 1 ile çıkar, sahibi ölüyse kilit devralınır (C78).
 - 1.8.11 — Yapılandırılmış günlük (E2) sözleşmeye işlendi: tek satır JSON, seviye eşiği `GUNLUK_SEVIYE`, `console` yalnız `gunluk.ts`te, lint kuralı `tools/` dışında zorunlu (C79).
+- 1.8.12 — Worker sağlık denetimi (E3) sözleşmeye işlendi: kalbi 90 saniyeyi geçen aktif düğüm için `dugum_olu` uyarısı düşer, düğüm başına 30 dakika sessizlik vardır (C80).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.
@@ -518,6 +520,8 @@ Bu başlıktaki maddeler, uygulama çalışır hale gelip hayata geçtikten sonr
 - G3 — **Çerez il eşleştirmesi.** Çerezde il bilgisi güvenilir bir kaynaktan okunur (klasör yapısı ya da yükleme anında il seçimi) ve `cookie_profil.il_kodu` doldurulur. Dosya adına göre atama yapılmaz. Doldurulunca il eşleşen çerez, il eşleşmeyenin önüne geçer (C45 kademe içi sıra).
 - G5 — **Yedek alanı.** Araçlar menüsünde yedek bölümü açılır; yedek listesi, elle yedek alma, indirme ve geri yükleme buradan yapılır. Geri yükleme onay ister ve root kimliğiyle koşar; 7 günden eski yedekler listede soluk görünür.
 - G4 — **Çakışma süresi ve çakışma listesi.** `kilit_suresi_dk` ayarı Araçlar menüsünden verilir; açık `kilit_cakismasi` uyarıları aynı sayfada listelenir ve tek tek ya da toplu kapatılır. Kapatma kilidi bırakmaz, yalnızca uyarıyı düşürür.
+
+
 
 
 

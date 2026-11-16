@@ -57,6 +57,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - Tek örnek kilidi (E7): panel `veri/panel.pid` almadan dinlemez; canlı sahipte ikinci süreç 1 ile çıkar, ölü sahipte devralır. `src/server/tek_ornek.test.ts` altı test, canlı iki süreç denemesi geçti.
 - Test giriş kimliği kodda sabit değil: `TEST_EPOSTA` / `TEST_PAROLA` ortamdan okunur (`src/server/test_kimlik.ts`), `.env` ve CI adım env bloğu taşır. Geçici yönetici silinirse yalnız `kullanici:ekle` ile yeniden kurulur, kod değişmez.
 - Yapılandırılmış günlük (E2): `gunluk.ts` tek satır JSON yazar, `console` başka modülde yasak (lint). Seviye `GUNLUK_SEVIYE` ile. `gunluk.test.ts` altı test.
+- Worker sağlık denetimi (E3): kalbi 90 saniyeyi geçen düğüm için `dugum_olu` uyarısı (30 dakika sessizlik), 45 saniyede olay kaydı. Migration 047 + geri dosyası. `dugum_olay.test.ts` üç test.
 
 ## Açık altyapı notları
 
@@ -73,6 +74,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
+
 
 
 

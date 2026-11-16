@@ -96,7 +96,8 @@ Devir paketi tamam: README, `.env.example`, `docker-compose.yml`, `.gitattribute
 - G4 — Cakisma suresi ayari ve cakisma listesi Araclar menusunde; uyarilar orada kapatilacak.
 - G5 — Yedek alma, yedek listesi, geri yukleme ve metrik ucu (E1-E7) Araclar menusunden tetiklenecek; gelistirme asamasinda yapilacak.
 
-E2, E4, E5 ve E7 tamamlandı. Kalan tek E maddesi: E3 worker healthcheck.
+E1–E7 tamamlandı: yedek/geri yükleme, metrik ucu, E2 günlük, E3 düğüm sağlığı, E4 zarif boşaltma, E5 migration geri alma, E7 tek örnek kilidi.
+
 
 
 
