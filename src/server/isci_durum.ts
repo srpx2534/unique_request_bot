@@ -19,11 +19,12 @@ const HIT_PARCASI = 500;
  * Hit dizisini toplu yazar.
  *
  * Saglayicisiz hit de yazilir; provider_id NULL olabilir. Parca boyu 500'u
+ * Ulusal kelimede geoKodu NULL gelir: il olcum birimi degil, rotasyon
  * gecmez, tek INSERT fazla parametreye carpmaz.
  */
 export async function hitYaz(
   burstId: number,
-  geoKodu: number,
+  geoKodu: number | null,
   hits: MotorHiti[],
 ): Promise<void> {
   const satirlar = hits.map((h) => [

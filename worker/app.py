@@ -183,9 +183,9 @@ class Isleyici(BaseHTTPRequestHandler):
             return
 
         adet = int(govde.get("size") or govde.get("adet") or 1)
-        uule = govde.get("uule")
+        uule: str | None = None  # yalniz il kapsaminda doldurulur
         # İl slug'ı yalnız il kapsamlı kelimede çözülür. Ulusal kelimede
-        # proxy'ye il yazılmaz, yalnız TR sorgulanır; UULE yine ilin kalır.
+        # proxy'ye il yazılmaz, yalnız TR sorgulanır.
         # Kapsam verilmezse eski davranis korunur; ulusal kelimede il slug'i
         # govdede gelse bile kullanilmaz, yalniz TR sorgulanir.
         kapsam = govde.get("geo_scope") or "province"
@@ -194,6 +194,10 @@ class Isleyici(BaseHTTPRequestHandler):
             geo_slug = govde.get("geo_slug") or (
                 havuz.slug_bul(int(govde["geo_code"])) if govde.get("geo_code") else None
             )
+        # Ulusal kelimede UULE gonderilmez: il sinyali ne proxy'de ne UULE'de
+        # kalir, Google TR genelinden yanit verir.
+        if kapsam == "province":
+            uule = govde.get("uule")
         # target_url verilmişse domain türetilir, çözüm için API'ye gidilmez.
         hedef_url = govde.get("target_url")
         domain = govde.get("target_domain") or ""

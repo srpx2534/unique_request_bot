@@ -109,7 +109,12 @@ yonlendirici.get("/log", async (istek, yanit) => {
     )?.sayi ?? 0;
   const satirlar = await sorgu(
     `SELECT b.id, k.text AS kelime, s.domain, b.step, b.target_count,
-            b.started_at, b.ended_at, b.stats, g.geo_code, g.tier, geo.name AS il_adi
+            b.started_at, b.ended_at, b.stats, k.geo_scope,
+            -- Il yalniz il kapsamli kelimede yazilir: ulusal kelimede
+            -- keyword_geo satiri rotasyon defteridir, hedefleme degildir.
+            CASE WHEN k.geo_scope = 'province' THEN g.geo_code END AS geo_code,
+            g.tier,
+            CASE WHEN k.geo_scope = 'province' THEN geo.name END AS il_adi
        FROM burst b
        JOIN keyword_geo g ON g.id = b.keyword_geo_id
        JOIN keyword k ON k.id = g.keyword_id

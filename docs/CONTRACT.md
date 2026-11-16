@@ -288,6 +288,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C81 — Proxy sağlayıcısı kota reddiyle (HTTP 466) dönerse sağlayıcı arızalı sayılmaz: karantinaya girmez, `quota_bytes` bayt sayacına eşitlenir ve seçim sorgusu onu kendiliğinden atlar; `hata_sayac` sıfırlanır ve `provider_down` yerine tek bir `quota` uyarısı düşer (30 dakika sessizlik). Kota artırılınca sağlayıcı kendiliğinden havuza döner. Reddi ayırt etmek için hit kaydı hata metnini taşır. Kanıt: `worker/test_saglik.py`, `worker/test_proxy.py`.
 - C82 — Google 2025'ten beri sonuç listesini JS ile bastığı için HTML yedeğinde gövde ~90 KB'lik boş kabuktur ve tek sonuç bağlantısı taşımaz. Bu yüzden HTML izleniminde sonuç bağlantısı bulunamazsa hit yine `ok` sayılır: sıralama burst hattında SERP API'sinden gelir, burada korunmak istenen arama ve tıklamanın aynı IP'den çıkmasıdır. 20 KB altındaki gövde gerçek SERP değildir ve `not_found` kalır. Kanıt: `worker/test_serp.py`.
 - C83 — Sağlayıcı kullanıcı adı biçimleri kayıtlıdır ve sağlayıcı adından çözülür: Decodo, Oxylabs ve IPRoyal `user-` önekiyle, SOAX paket adıyla, Bright Data `brd-customer-`, Webshare düz ad, Geonode `-type-residential` ve sticky port, DataImpulse `__cr.xx` ve `;sessid.` ile çalışır. Kullanıcı adı `__cr.` taşıyorsa ad tanınmasa da DataImpulse sayılır; ülke eki taban adda varsa tekrarlanmaz. Kanıt: `worker/test_proxy.py`.
+- C84 — Canlı çerez işareti iki kanaldan yazılır: esas kanal ölçüm turudur (`tools/cerez_olcum.py`), ikinci kanal çerezle başarılı hit'tir (hit `ok` ise profil `canli = 1` yazılır). Canlı çerez daima önde olduğu için ölçülmemişler hiç kullanılmıyordu; bu yüzden `cerez_olcum_orani` (varsayılan 20, 0-100 aralığına kırpılır) kadar hit kademeyi çevirir ve ölçülmemiş çerezi öne alır. Oran 0 iken eski davranış geçerlidir. Kanıt: `worker/test_havuz.py`.
+- C85 — Ulusal kelimede il hiçbir kayda yazılmaz: `hit.geo_code` NULL kalır, `/api/log` satırında `geo_code` ve `il_adi` NULL döner ve satır `geo_scope` taşır. `keyword_geo` satırı 81 ile dağıtılmış olsa da rotasyon defteridir, hedefleme değildir (§6.1). İl yalnız il kapsamlı kelimede görünür. Kanıt: `worker/test_app.py`, `src/server/panel_sayfa.test.ts`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -405,6 +407,8 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.12 — Worker sağlık denetimi (E3) sözleşmeye işlendi: kalbi 90 saniyeyi geçen aktif düğüm için `dugum_olu` uyarısı düşer, düğüm başına 30 dakika sessizlik vardır (C80).
 - 1.8.13 — Proxy kota reddi (466) arıza sayılmıyor: sağlayıcı karantinaya girmiyor, kotası işaretleniyor (C81).
 - 1.8.14 — DataImpulse biçimi eklendi (`__cr.` / `;sessid.`), ulusal kelimede il slug'ı hiç çözülmüyor, HTML izleniminde kabuk gövde `ok` sayılıyor (C82, C83).
+- 1.8.15 — Canlı çerez işareti çerezle başarılı hitte de yazılıyor; `cerez_olcum_orani` ile ölçülmemiş çerez öne alınıyor (C84).
+- 1.8.16 — Ulusal kelimede il hit kaydından ve log satırından kaldırıldı, `geo_scope` taşınıyor (C85).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.

@@ -346,3 +346,72 @@ def test_canli_kademesi_tarihin_onunde(monkeypatch) -> None:
     assert kademeler[:4] == [1, 1, 1, 1]
     assert kademeler[4:8] == [None, None, None, None]
     assert kademeler[8:] == [0, 0, 0, 0]
+
+
+class _CanliImlec:
+    """cerez_canli akisini taklit eden imlec."""
+
+    def __init__(self) -> None:
+        self.calismalar: list[tuple[str, tuple]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, parametre=None):
+        self.calismalar.append((" ".join(sql.split()), tuple(parametre or ())))
+
+
+class _CanliBaglanti:
+    def __init__(self) -> None:
+        self.imlec = _CanliImlec()
+
+    def cursor(self):
+        return self.imlec
+
+    def close(self) -> None:
+        pass
+
+
+def test_cerez_canli_isaretler(monkeypatch) -> None:
+    """Basarili hit profili canli yazar; zaten canliyi tekrar yazmaz."""
+    baglanti = _CanliBaglanti()
+    monkeypatch.setattr(havuz, "_baglan", lambda: baglanti)
+    havuz.cerez_canli(9)
+    sql, parametre = baglanti.imlec.calismalar[0]
+    assert "canli = 1" in sql
+    assert "canli IS NULL OR canli = 0" in sql
+    assert parametre == (9,)
+
+
+def test_cerez_canli_baglanti_yoksa_susar(monkeypatch) -> None:
+    """Baglanti acilamazsa istisna sizmaz."""
+    def patlat():
+        raise RuntimeError("yok")
+
+    monkeypatch.setattr(havuz, "_baglan", patlat)
+    havuz.cerez_canli(9)
+
+
+def test_canli_sirasi_normalde_canli_once() -> None:
+    """Olcum kapaliyken canli cerez onde, olculmemis sonda."""
+    assert havuz._canli_sirasi(False) == (1, None, 0)
+
+
+def test_canli_sirasi_olcumde_olculmemis_once() -> None:
+    """Olcum acikken olculmemis cerez one gecer."""
+    assert havuz._canli_sirasi(True) == (None, 1, 0)
+
+
+def test_cerez_olcum_orani_kirpilir(monkeypatch) -> None:
+    """Oran 0-100 araligina kirpilir, bozuk deger 20 sayilir."""
+    from worker import ayar_db
+
+    monkeypatch.setattr(ayar_db, "oku", lambda anahtar, varsayilan="": "150")
+    assert havuz.cerez_olcum_orani() == 100
+    monkeypatch.setattr(ayar_db, "oku", lambda anahtar, varsayilan="": "-5")
+    assert havuz.cerez_olcum_orani() == 0
+    monkeypatch.setattr(ayar_db, "oku", lambda anahtar, varsayilan="": "abc")
+    assert havuz.cerez_olcum_orani() == 20

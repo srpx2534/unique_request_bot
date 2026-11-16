@@ -185,3 +185,38 @@ def test_il_kelimede_slug_cozulur(monkeypatch) -> None:
 
 
 
+
+
+def test_ulusal_kelimede_uule_gonderilmez(monkeypatch) -> None:
+    """Ulusal kelimede UULE il sinyali tasimaz."""
+    yakalanan: dict = {}
+
+    def sahte(*_a, **k):
+        yakalanan.update(k)
+        return {"ok": 1, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0,
+                "elapsed_ms": 1, "hits": [], "durduruldu": False}
+
+    monkeypatch.setattr(app.burst, "burst_yap", sahte)
+    govde = {"keyword": "haber", "target_url": "https://ornek.test",
+             "geo_code": 34, "geo_scope": "national", "uule": "abc123",
+             "ts": int(time.time())}
+    app.Isleyici.do_POST(_govdeli(monkeypatch, govde))
+    assert yakalanan.get("uule") is None
+
+
+def test_il_kelimede_uule_gonderilir(monkeypatch) -> None:
+    """Il kapsamli kelimede UULE korunur."""
+    yakalanan: dict = {}
+
+    def sahte(*_a, **k):
+        yakalanan.update(k)
+        return {"ok": 1, "captcha": 0, "not_found": 0, "timeout": 0, "error": 0,
+                "elapsed_ms": 1, "hits": [], "durduruldu": False}
+
+    monkeypatch.setattr(app.burst, "burst_yap", sahte)
+    monkeypatch.setattr(app.havuz, "slug_bul", lambda kod: "istanbul")
+    govde = {"keyword": "haber", "target_url": "https://ornek.test",
+             "geo_code": 34, "geo_scope": "province", "uule": "abc123",
+             "ts": int(time.time())}
+    app.Isleyici.do_POST(_govdeli(monkeypatch, govde))
+    assert yakalanan.get("uule") == "abc123"

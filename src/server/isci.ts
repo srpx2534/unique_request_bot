@@ -152,7 +152,7 @@ async function calistir(is: Is): Promise<void> {
       keyword: is.kelime,
       geo_code: satir.geo_code,
       geo_scope: satir.geo_scope,
-      uule: satir.uule,
+      uule: satir.geo_scope === "province" ? satir.uule : null,
       target_domain: satir.domain,
       size: adet,
       ts: Math.floor(Date.now() / 1000),
@@ -182,7 +182,8 @@ async function calistir(is: Is): Promise<void> {
     }
 
     const govde = (await yanit.json()) as MotorCevabi;
-    await hitYaz(burstId, satir.geo_code, govde.hits ?? []);
+    // Ulusal kelimede il kolonu bos kalir; il yalniz il kapsaminda yazilir.
+    await hitYaz(burstId, satir.geo_scope === "province" ? satir.geo_code : null, govde.hits ?? []);
     // Sayaçlar burst satırına yazılır; log ve rapor buradan okur.
     const sayac = {
       ok: govde.ok ?? 0,

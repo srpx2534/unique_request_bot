@@ -388,6 +388,37 @@ def cerez_aktif() -> bool:
     return _ayar_evet("cerez_kullan", "1")
 
 
+def cerez_olcum_orani() -> int:
+    """Olculmemis cerez secme yuzdesi.
+
+    Canli cerez daima onde oldugu icin tek canli cerez sonsuza kadar donuyor
+    ve olculmemisler hic kullanilmiyordu. Bu oran kadar hit olculmemis
+    cerezden gider; boylece hem canli sayaci artar hem parmak izi yayilir.
+
+    Returns:
+        0-100 arasi yuzde; ayar okunamazsa 20.
+    """
+    try:
+        from worker import ayar_db
+
+        ham = int(ayar_db.oku("cerez_olcum_orani", "20") or 20)
+    except Exception:  # noqa: BLE001
+        ham = 20
+    return max(0, min(100, ham))
+
+
+def _canli_sirasi(olcum: bool) -> tuple[int | None, ...]:
+    """Canli kademesi sirasi.
+
+    Args:
+        olcum: True ise olculmemis cerezler once gelir.
+
+    Returns:
+        Kademe demeti.
+    """
+    return (None, 1, 0) if olcum else (1, None, 0)
+
+
 def _dugum_id() -> int | None:
     """Bu dugumun kayit kimligi; ad varsa ad, yoksa IP ile cozulur."""
     if _dugum_onbellek:
@@ -548,11 +579,14 @@ def cerez_sec(
                 " AND sona_erme < UTC_TIMESTAMP(3)"
             )
             ulke_kodu = ulke or "TR"
+            # Olcum karari cagri basina bir kez verilir: kademeler arasi
+            # gecis ayni hit icinde degismesin.
+            olcum = random.randrange(100) < cerez_olcum_orani()
             gecmisler = (0, 1) if _ayar_evet("cerez_suresiz_kullan", "1") else (0,)
             # Kademe: canli once, sonra olculmemis, en sonda engelli (C45).
             # Canli, suresi gecmemis VE engellenmiyor olandir; calisan cerez
             # her halukarda ondedir, tarihi sonra gelir.
-            for canli in (1, None, 0):
+            for canli in _canli_sirasi(olcum):
                 for gecmis in gecmisler:
                     sifirlandi = False
                     for _ in range(3):
@@ -615,6 +649,34 @@ def cerez_al(profil_id: int) -> list[dict]:
             ]
     except Exception:  # noqa: BLE001
         return []
+    finally:
+        baglanti.close()
+
+
+def cerez_canli(profil_id: int) -> None:
+    """Basarili hit alan cerez profilini canli isaretler.
+
+    Esas kanal olcum turudur (`tools/cerez_olcum.py`); bu yalnizca calisan
+    cerez sayaci artirsin diye eklenen ikinci kanaldir. Yazim basarisiz
+    olursa sessiz kalinir, hit durmaz.
+
+    Args:
+        profil_id: Basarili hit alan profil.
+    """
+    baglanti = None
+    try:
+        baglanti = _baglan()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        with baglanti.cursor() as imlec:
+            imlec.execute(
+                "UPDATE cookie_profil SET canli = 1, son_kontrol_at = UTC_TIMESTAMP(3)"
+                " WHERE id = %s AND (canli IS NULL OR canli = 0)",
+                (profil_id,),
+            )
+    except Exception as hata:  # noqa: BLE001
+        print(f"[havuz] {hata}")
     finally:
         baglanti.close()
 

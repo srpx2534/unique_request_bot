@@ -159,6 +159,10 @@ def burst_yap(
             kayit["geo_mode"] = geo_mod
             kayit["tur"] = tur
             kayit["cerez"] = bool(cerezler)
+            # Cerezle basarili hit, cerezi canli isaretler; olcum turu esas
+            # kanal olarak kalir, bu ikinci kanal sayaci calisirken de artirir.
+            if cerez_profil is not None and kayit["result"] == "ok":
+                havuz.cerez_canli(cerez_profil)
             if cerez_profil is not None:
                 havuz.cerez_birak(cerez_profil)
             if kayit["result"] == "ok" or kayit["result"] == "captcha":
