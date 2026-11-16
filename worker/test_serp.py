@@ -7,7 +7,7 @@ bu yüzden davranış burada kilitlenir.
 
 from __future__ import annotations
 
-from worker import serp
+from worker import serp, serp_html
 
 
 def test_kok_www_atar() -> None:
@@ -55,3 +55,38 @@ def test_captcha_govdeden_anlasilir() -> None:
 def test_temiz_serp_captcha_degil() -> None:
     """Normal sonuç sayfası CAPTCHA sayılmaz."""
     assert serp._captcha_mi("https://www.google.com/search?q=a", "<h3>a</h3>") is False
+
+
+class _Yanit:
+    """Sabit yanit; govde uzunlugu testten gelir."""
+
+    status_code = 200
+    url = "https://www.google.com/search?q=haber"
+
+    def __init__(self, boy: int) -> None:
+        self.content = b"<html><title>Google Search</title>" + b"x" * boy
+
+
+class _Oturum:
+    def __init__(self, boy: int) -> None:
+        self.boy = boy
+
+    def get(self, *_a, **_k):
+        return _Yanit(self.boy)
+
+    def close(self) -> None:
+        pass
+
+
+def test_kabuk_govde_izlenim_sayilir() -> None:
+    """Sonuc baglantisi olmayan uzun kabuk govde ok sayilir, tiklama surer."""
+    sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(90_000))
+    assert sonuc["result"] == "ok"
+    assert sonuc["position"] is None
+    assert "kabuk" in sonuc["mesaj"]
+
+
+def test_kisa_govde_not_found() -> None:
+    """Kisa govde gercek SERP degildir; hit tiklamaya gecmez."""
+    sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(2_000))
+    assert sonuc["result"] == "not_found"

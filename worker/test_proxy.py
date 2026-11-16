@@ -156,3 +156,33 @@ def test_cekirdek_semayi_ve_artigi_atar() -> None:
 def test_bicim_bul_geonode() -> None:
     """Geonode adi kendi bicimine cozulur."""
     assert proxy.bicim_bul("Geonode residential") == "geonode"
+
+
+def test_dataimpulse_bicimi_ulke_ve_oturum_yazar() -> None:
+    """DataImpulse __cr. ve ;sessid. kullanir, user- oneki almaz."""
+    adres = proxy.dize("gw.dataimpulse.com:823", "login", "p", oturum="aabb", bicim="dataimpulse")
+    assert adres == "http://login__cr.tr;sessid.aabb:p@gw.dataimpulse.com:823"
+    assert "user-" not in adres
+
+
+def test_dataimpulse_ulke_tekrari_yazilmaz() -> None:
+    """Taban kullanici adi __cr.tr tasiyorsa ikinci kez eklenmez."""
+    adres = proxy.dize("gw.dataimpulse.com:823", "login__cr.tr", "p", oturum="a", bicim="dataimpulse")
+    assert adres.count("__cr.") == 1
+
+
+def test_dataimpulse_il_eklenir() -> None:
+    """Il slug'i ;city eki olarak oturumdan once yazilir."""
+    adres = proxy.dize("gw.dataimpulse.com:823", "login__cr.tr", "p", geo_slug="istanbul", oturum="a", bicim="dataimpulse")
+    assert ";city.istanbul;sessid.a" in adres
+
+
+def test_dataimpulse_kullanici_adindan_tanir() -> None:
+    """Ad taninmasa da __cr. tasiyan kullanici DataImpulse sayilir."""
+    adres = proxy.dize("gw.dataimpulse.com:823", "login__cr.tr", "p", oturum="a", bicim="decodo")
+    assert adres == "http://login__cr.tr;sessid.a:p@gw.dataimpulse.com:823"
+
+
+def test_bicim_bul_dataimpulse() -> None:
+    """DataImpulse adi kendi bicimine cozulur."""
+    assert proxy.bicim_bul("DataImpulse residential") == "dataimpulse"

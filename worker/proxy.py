@@ -39,6 +39,8 @@ BICIMLER = {
     "brightdata": "brd-customer-{k}{ulke}{city}-session-{s}",
     # Webshare hedefleme parametresi kullanmaz: duz kullanici adi yeter.
     "webshare": "{k}",
+    # DataImpulse parametreleri __ ve ; ile ayirir: __cr.tr, ;city.x, ;sessid.y.
+    "dataimpulse": "{k}",
     # Geonode kendi kalibiyla kurulur (bkz. _geonode).
     "geonode": "{k}",
 }
@@ -126,6 +128,35 @@ def _geonode(gateway: str, kullanici: str, sifre: str, ulke: str | None,
     return f"http://{ad}:{sifre}@{_sticky(gateway)}"
 
 
+def _dataimpulse(gateway: str, kullanici: str, sifre: str, ulke: str | None,
+                 geo_slug: str | None, oturum: str) -> str:
+    """DataImpulse dizesini kurar.
+
+    Parametreler `__` ile ayrilir ve nokta ile deger alir: `__cr.tr`; coklu
+    parametre `;` ile eklenir. Oturum eki `;sessid.<deger>` sticky IP verir,
+    port degismez (823 hem rotasyon hem oturum icin gecerlidir).
+
+    Args:
+        gateway: host:port.
+        kullanici: Taban kullanici adi; zaten __cr.xx tasiyabilir.
+        sifre: Saglayici sifresi.
+        ulke: Cikis ulkesi kodu; None ise yazilmaz.
+        geo_slug: Il slug'i; verilirse ;city eki eklenir.
+        oturum: Oturum kimligi.
+
+    Returns:
+        http://kullanici:sifre@host:port dizesi.
+    """
+    ad = kullanici
+    # Taban kullanici adi zaten ulke tasiyorsa ikinci kez yazilmaz.
+    if ulke and "__cr." not in ad.lower():
+        ad += f"__cr.{ulke.lower()}"
+    if geo_slug:
+        ad += f";city.{geo_slug}"
+    ad += f";sessid.{oturum}"
+    return f"http://{ad}:{sifre}@{gateway}"
+
+
 def dize(
     gateway: str,
     kullanici: str,
@@ -155,8 +186,14 @@ def dize(
         return f"http://{gateway}"
 
     oturum = oturum or secrets.token_hex(OTURUM_UZUNLUK // 2)
+    # Kullanici adi __cr. tasiyorsa saglayici DataImpulse demektir; ad
+    # taninmasa da bicim buradan duzeltilir.
+    if bicim == "decodo" and "__cr." in kullanici.lower():
+        bicim = "dataimpulse"
     if bicim == "geonode":
         return _geonode(gateway, kullanici, sifre, ulke, geo_slug, oturum)
+    if bicim == "dataimpulse":
+        return _dataimpulse(gateway, kullanici, sifre, ulke, geo_slug, oturum)
 
     # Taban kullanici adi ulkeyi zaten tasiyorsa ulke eki yazilmaz.
     ulke_eki = ""

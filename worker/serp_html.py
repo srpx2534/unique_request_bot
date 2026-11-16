@@ -1,8 +1,9 @@
 """Yedek yol: Google'a dogrudan HTML istegi.
 
-Bugun kabuk dondugu icin genelde not_found verir, ama istek Google'a gercek
-IP'den gider ve izlenim sayilir. Oturum verilirse cerezler cagiran tarafta
-korunur ve tiklamaya tasinir.
+Google 2025'ten beri sonuc listesini JS ile basiyor; govde ~90 KB'lik bos
+kabuk olarak donuyor. Istek yine Google'a gercek IP'den gider, bu yuzden
+izlenim sayilir ve tiklama ayni oturumdan yapilir. Oturum verilirse cerezler
+cagiran tarafta korunur ve tiklamaya tasinir.
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ from worker import fingerprint
 from worker.serp_ortak import bos_sonuc, kok
 
 ZAMAN_ASIMI = 25  # saniye
+# Kabuk govde esigi: 2025'ten beri Google sonuclari JS ile basiyor, govde
+# ~90 KB'lik bos kabuk oluyor. Bundan kisa govde gercek SERP degildir.
+KABUK_ESIGI = 20_000
 ARAMA_URL = "https://www.google.com/search"
 CEREZLER = {
     "SOCS": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
@@ -118,8 +122,19 @@ def serp_getir_html(
         return sonuc
 
     hostlar = sonuclari_ayikla(html)
+    hostlar = sonuclari_ayikla(html)
+    # Govdede host yoksa izlenim yine sayilir: sirasi burst hattinda SERP
+    # API'sinden geliyor, burada onemli olan arama ve tiklamanin ayni
+    # IP'den cikmasi. Yalnizca kisa govde (retry/support sayfasi) SERP
+    # sayilmaz, o zaman hit tiklamaya gecmez.
     if not hostlar:
-        sonuc["result"] = "not_found"
+        if len(html) < KABUK_ESIGI:
+            sonuc["result"] = "not_found"
+            sonuc["mesaj"] = "govde kisa, sonuc listesi yok"
+            return sonuc
+        sonuc["result"] = "ok"
+        sonuc["mesaj"] = "kabuk govde: sonuc listesi JS ile geliyor"
+        return sonuc
         return sonuc
     sonuc["result"] = "ok"
     if hedef_domain and kok(hedef_domain) in hostlar:
