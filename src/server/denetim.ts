@@ -6,6 +6,7 @@
  */
 import type { Request } from "express";
 import { yaz } from "./veritabani.js";
+import { gunluk } from "./gunluk.js";
 
 export async function denetim(
   istek: Request,
@@ -22,6 +23,7 @@ export async function denetim(
       id,
     ]);
   } catch (hata) {
-    console.error("[denetim]", (hata as Error).message);
+    gunluk.hata("[denetim]", (hata as Error).message);
   }
 }
+// console testi

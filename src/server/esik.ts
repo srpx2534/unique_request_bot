@@ -10,6 +10,7 @@
 import { kuyruk } from "./kuyruk.js";
 import { ayarOku } from "./ayar.js";
 import { sorgu, tek, yaz } from "./veritabani.js";
+import { gunluk } from "./gunluk.js";
 
 const TEKRAR_DK = 30; // dakika; aynı tür için sessizlik penceresi
 const YEDEK_ESIK = 30; // yüzde; yedek oranı bu değeri geçerse uyarı
@@ -57,6 +58,6 @@ export async function yedekOraniDenetle(): Promise<void> {
 
 /** İkisini sırayla çalıştırır; biri düşse diğeri koşar. */
 export async function esikDenetle(): Promise<void> {
-  await kuyrukDenetle().catch((hata: Error) => console.error("[esik] kuyruk", hata.message));
-  await yedekOraniDenetle().catch((hata: Error) => console.error("[esik] yedek", hata.message));
+  await kuyrukDenetle().catch((hata: Error) => gunluk.hata("[esik] kuyruk", hata.message));
+  await yedekOraniDenetle().catch((hata: Error) => gunluk.hata("[esik] yedek", hata.message));
 }

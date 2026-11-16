@@ -34,6 +34,11 @@ KURALLAR = (
 # Yorum satirlari ve doküman metni kuraldan muaftir.
 YORUM = re.compile(r"^\s*(#|//|\*|--)")
 
+# console yalnizca gunluk modulunde kullanilir; baska modul dogrudan yazmaz.
+# Test dosyalari muaftir: cikti yakalamak icin console'u taklit ederler.
+CONSOLE = re.compile(r"\bconsole\.")
+GUNLUK_DOSYASI = "gunluk.ts"
+
 
 def dosyalar() -> list[Path]:
     """Taranacak kaynak dosyalari toplar."""
@@ -61,9 +66,19 @@ def main() -> int:
                     goreli = yol.relative_to(KOK)
                     print(f"{goreli}:{numara} · {ad} · {satir.strip()[:90]}")
                     ihlal += 1
+            # console kurali yalniz uretim TS dosyalarina uygulanir.
+            # tools/ CLI araclari insan okusun diye duz satir basar.
+            uretim = (yol.suffix in {".ts", ".tsx"}
+                      and not yol.name.endswith(".test.ts")
+                      and "tools" not in yol.relative_to(KOK).parts)
+            if uretim and yol.name != GUNLUK_DOSYASI and CONSOLE.search(satir):
+                goreli = yol.relative_to(KOK)
+                print(f"{goreli}:{numara} · console dogrudan · {satir.strip()[:90]}")
+                ihlal += 1
     print(f"ihlal: {ihlal}")
     return 1 if ihlal else 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

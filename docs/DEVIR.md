@@ -56,6 +56,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - Migration geri alma (E5): `tools/migrate.py --geri <n>` plan basar, `--uygula` ile koşar. 46 migration'ın tamamı için `db/migrations/geri/` altında geri dosyası var; tam geri-ileri turu ve `verify` temiz. `tools/test_migrate_geri.py` yedi test.
 - Tek örnek kilidi (E7): panel `veri/panel.pid` almadan dinlemez; canlı sahipte ikinci süreç 1 ile çıkar, ölü sahipte devralır. `src/server/tek_ornek.test.ts` altı test, canlı iki süreç denemesi geçti.
 - Test giriş kimliği kodda sabit değil: `TEST_EPOSTA` / `TEST_PAROLA` ortamdan okunur (`src/server/test_kimlik.ts`), `.env` ve CI adım env bloğu taşır. Geçici yönetici silinirse yalnız `kullanici:ekle` ile yeniden kurulur, kod değişmez.
+- Yapılandırılmış günlük (E2): `gunluk.ts` tek satır JSON yazar, `console` başka modülde yasak (lint). Seviye `GUNLUK_SEVIYE` ile. `gunluk.test.ts` altı test.
 
 ## Açık altyapı notları
 
@@ -72,6 +73,7 @@ EKSIKLER sırası geçerli. Ağ gerektirmeyen sıradaki maddeler: 60 (liste uçl
 - `src/server/bolum.ts` başlığında `§105` yazıyor; sözleşmede karşılığı yok, `§10.5` olabilir. Ayrı madde.
 - Decodo SERP kotası dolu, proxy sağlayıcıları pasif; ağ gerektiren maddeler bu yüzden bekliyor.
 - 22.704 çerez canlılık ölçümünden geçmedi; `tools/cerez_olcum.py` proxy açılınca `olcum_proxy=1` ile koşulacak.
+
 
 
 

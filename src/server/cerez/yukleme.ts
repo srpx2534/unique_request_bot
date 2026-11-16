@@ -7,6 +7,7 @@ import multer from "multer";
 import { islem, sorgu, tek, yaz } from "../veritabani.js";
 import { isle } from "./aktarim.js";
 import { durum, yukleyenKimlik } from "./ortak.js";
+import { gunluk } from "../gunluk.js";
 import {
   AZAMI_BOYUT, PARTI_BAYT, PARTI_DOSYA, YUKLEME_KOK, dosyalariTopla, guvenliYol,
 } from "./yollar.js";
@@ -127,7 +128,7 @@ yonlendirici.post("/:id/parti", yukle.array("dosyalar", PARTI_DOSYA), async (ist
     yazilan += 1;
   }
   durum.toplam += yazilan;
-  void isle(kayit.klasor).catch((hata) => console.error("[cerez] kuyruk:", hata));
+  void isle(kayit.klasor).catch((hata) => gunluk.hata("[cerez] kuyruk:", hata));
   await yaz(
     "UPDATE cerez_yukleme SET dosya_sayisi = dosya_sayisi + ?, boyut = boyut + ? WHERE id = ?",
     [yazilan, toplamBayt, id],

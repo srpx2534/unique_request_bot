@@ -7,10 +7,11 @@
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { redisBaglanti } from "./redis_baglanti.js";
+import { gunluk } from "./gunluk.js";
 
 
 export const baglanti = new Redis({ ...redisBaglanti(), maxRetriesPerRequest: null });
-baglanti.on("error", (hata) => console.error("[kuyruk]", hata.message));
+baglanti.on("error", (hata) => gunluk.hata("[kuyruk]", hata.message));
 
 export type Is = {
   campaignId: number;
@@ -30,3 +31,4 @@ export const kuyruk = new Queue<Is>("olcum", {
     removeOnFail: 1_000,
   },
 });
+

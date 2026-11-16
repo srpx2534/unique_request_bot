@@ -9,6 +9,7 @@
  */
 import { Redis } from "ioredis";
 import { redisBaglanti, redisEtiket } from "./redis_baglanti.js";
+import { gunluk } from "./gunluk.js";
 
 const baglanti = redisBaglanti();
 
@@ -24,10 +25,11 @@ export const redis = new Redis({
 redis.on("error", (hata) => {
   if (hata.message === sonHata) return;
   sonHata = hata.message;
-  console.error("[redis]", hata.message);
+  gunluk.hata("[redis]", hata.message);
 });
 
 redis.on("ready", () => {
   sonHata = "";
-  console.log("[redis] bağlı:", redisEtiket(baglanti));
+  gunluk.bilgi("[redis] bağlı:", redisEtiket(baglanti));
 });
+

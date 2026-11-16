@@ -1,6 +1,7 @@
 /** Hit yazimi ve kelime durdurma denetimleri. */
 import { sorgu, tek, yaz } from "./veritabani.js";
 import { SAHIP } from "./kilit.js";
+import { gunluk } from "./gunluk.js";
 
 export type MotorHiti = {
   result: string;
@@ -77,7 +78,7 @@ export async function hedefYokDenetle(keywordId: number, geoId: number): Promise
   await yaz("INSERT INTO alert (kind, message) VALUES ('hedef_yok', ?)", [
     `${esik} burst ust uste hedef bulamadi, kelime durdu`,
   ]);
-  console.log(`[isci] hedef bulunamadi, kelime durdu: ${keywordId}`);
+  gunluk.bilgi(`[isci] hedef bulunamadi, kelime durdu: ${keywordId}`);
 }
 
 /** Hacim hedefi dolduysa kelimeyi durdurur. */
@@ -100,7 +101,7 @@ export async function hedefDenetle(keywordId: number): Promise<void> {
     "UPDATE campaign SET stopped_at = NOW(3) WHERE keyword_id = ? AND stopped_at IS NULL",
     [keywordId],
   );
-  console.log(`[isci] hacim doldu, kelime durdu: ${keywordId}`);
+  gunluk.bilgi(`[isci] hacim doldu, kelime durdu: ${keywordId}`);
 }
 /** Satiri beklemede birakir ve kisa cooldown verir. */
 export async function geriAl(geoId: number, sebep: string): Promise<void> {
@@ -108,5 +109,6 @@ export async function geriAl(geoId: number, sebep: string): Promise<void> {
     "UPDATE keyword_geo SET state = 'pending', kilit_dugum = NULL, kilit_at = NULL, cooldown_until = DATE_ADD(NOW(3), INTERVAL 2 MINUTE) WHERE id = ? AND (kilit_dugum IS NULL OR kilit_dugum = ?)",
     [geoId, SAHIP],
   );
-  console.error("[isci]", sebep);
+  gunluk.hata("[isci]", sebep);
 }
+

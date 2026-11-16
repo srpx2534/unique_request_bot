@@ -9,6 +9,7 @@ import session from "express-session";
 import { RedisStore } from "connect-redis";
 import type { RequestHandler } from "express";
 import { redis } from "./redis.js";
+import { gunluk } from "./gunluk.js";
 
 const SURE_MS = 12 * 60 * 60 * 1000; // 12 saat; tam oturum ömrü
 const BOSLUK_MS = 8 * 60 * 60 * 1000; // 8 saat; hareketsizlik sınırı
@@ -16,7 +17,7 @@ const BOSLUK_MS = 8 * 60 * 60 * 1000; // 8 saat; hareketsizlik sınırı
 const gizli = process.env.SESSION_SECRET;
 if (!gizli) throw new Error(".env içinde SESSION_SECRET boş");
 // Kısa sır zayıf imza demek; üretimi durdurmaz ama görünür olsun.
-if (gizli.length < 32) console.warn("[oturum] SESSION_SECRET 32 karakterden kısa");
+if (gizli.length < 32) gunluk.uyari("[oturum] SESSION_SECRET 32 karakterden kısa");
 
 export const oturum: RequestHandler = session({
   store: new RedisStore({ client: redis, prefix: "oturum:" }),
@@ -56,3 +57,4 @@ export const gerekli: RequestHandler = (istek, yanit, sonraki) => {
   }
   sonraki();
 };
+

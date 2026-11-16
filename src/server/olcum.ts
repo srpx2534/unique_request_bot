@@ -15,6 +15,7 @@ import { sorgu, yaz } from "./veritabani.js";
 import { createHmac } from "node:crypto";
 import { ayarOku, serpSecim } from "./ayar.js";
 import { dugumSec } from "./dugum_sec.js";
+import { gunluk } from "./gunluk.js";
 
 // Sağlayıcı uçları (§8): Decodo birincil, Serper ve SearchApi yedek.
 const UCLAR: Record<string, string> = {
@@ -177,7 +178,7 @@ export async function olcumYap(): Promise<number> {
   const bAday = liste[0];
   if (bAday && yazilan > 0 && Date.now() - basladi < TUR_BUTCE_MS) {
     await olcumBTry(bAday).catch((hata: Error) =>
-      console.error("[olcum-b]", hata.message),
+      gunluk.hata("[olcum-b]", hata.message),
     );
   }
   return yazilan;

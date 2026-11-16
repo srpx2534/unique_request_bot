@@ -22,6 +22,7 @@ import raporYonlendirici from "./rapor.js";
 import dugumYonlendirici, { kalpIsleyici } from "./dugum.js";
 import cerezYonlendirici from "./cerez/index.js";
 import { imzaDogrula } from "./worker_imza.js";
+import { gunluk } from "./gunluk.js";
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -91,7 +92,7 @@ uygulama.use((istek, yanit) => {
 
 uygulama.use(
   (hata: Error, _istek: express.Request, yanit: express.Response, sonraki: express.NextFunction) => {
-    console.error("[hata]", hata.message);
+    gunluk.hata("[hata]", hata.message);
     // Yanıtın bir kısmı gitmişse başlıklar yeniden yazılamaz; Express'e bırakılır.
     if (yanit.headersSent) {
       sonraki(hata);
@@ -102,3 +103,4 @@ uygulama.use(
 );
 
 export default uygulama;
+

@@ -17,6 +17,7 @@ import { esikDenetle } from "./esik.js";
 import { saklamaDenetle } from "./saklama.js";
 import { bolumDenetle } from "./bolum.js";
 import { bayatDenetle, cakismaYaz, kilitSuresiDk, sahiplen } from "./kilit.js";
+import { gunluk } from "./gunluk.js";
 
 const TIK_MS = 60_000;
 const TUR_SINIRI = 200;
@@ -63,7 +64,7 @@ async function bakim(): Promise<void> {
     await bolumDenetle();
     await bayatDenetle();
   } catch (hata) {
-    console.error("[bakim]", (hata as Error).message);
+    gunluk.hata("[bakim]", (hata as Error).message);
   } finally {
     calisiyorBakim = false;
   }
@@ -124,12 +125,12 @@ async function tara(): Promise<void> {
       atilan += 1;
     }
 
-    if (atilan > 0) console.log(`[zamanlayici] ${atilan} iş kuyruğa atıldı`);
+    if (atilan > 0) gunluk.bilgi(`[zamanlayici] ${atilan} iş kuyruğa atıldı`);
 
     // Ölçüm her dakika denenir; kendi 15 dakika kapısı var (C12).
     await olcumYap();
   } catch (hata) {
-    console.error("[zamanlayici]", (hata as Error).message);
+    gunluk.hata("[zamanlayici]", (hata as Error).message);
   } finally {
     calisiyor = false;
   }
@@ -139,9 +140,9 @@ export function zamanlayiciBaslat(): void {
   if (zaman) return;
   zaman = setInterval(() => void tara(), TIK_MS);
   bakimZamani = setInterval(() => void bakim(), BAKIM_MS);
-  console.log("[zamanlayici] başladı");
+  gunluk.bilgi("[zamanlayici] başladı");
   // Uzun kapalılıktan sonra geçmiş günler telafi edilir; tur beklemeden.
-  void toparla(7).catch((hata: Error) => console.error("[traffic]", hata.message));
+  void toparla(7).catch((hata: Error) => gunluk.hata("[traffic]", hata.message));
 }
 
 export function zamanlayiciDurdur(): void {

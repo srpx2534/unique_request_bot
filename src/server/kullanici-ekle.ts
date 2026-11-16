@@ -7,17 +7,18 @@
 import bcrypt from "bcryptjs";
 import "dotenv/config";
 import { yaz } from "./veritabani.js";
+import { gunluk } from "./gunluk.js";
 
 const TUR = 12; // bcrypt maliyet turu; 12 altı zayıf sayılır
 
 async function main(): Promise<void> {
   const [eposta, sifre] = process.argv.slice(2);
   if (!eposta || !sifre) {
-    console.error("kullanım: npm run kullanici:ekle -- eposta@ornek.com parola");
+    gunluk.hata("kullanım: npm run kullanici:ekle -- eposta@ornek.com parola");
     process.exit(1);
   }
   if (sifre.length < 8) {
-    console.error("parola en az 8 karakter olmalı");
+    gunluk.hata("parola en az 8 karakter olmalı");
     process.exit(1);
   }
 
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
     + " ON DUPLICATE KEY UPDATE sifre_hash = VALUES(sifre_hash), aktif = 1",
     [eposta, ozet],
   );
-  console.log(`kullanıcı hazır: ${eposta}`);
+  gunluk.bilgi(`kullanıcı hazır: ${eposta}`);
   process.exit(0);
 }
 

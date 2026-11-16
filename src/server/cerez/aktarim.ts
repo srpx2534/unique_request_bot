@@ -8,6 +8,7 @@ import {
   type Cerez, aileBul, durum, icerikOzeti, modaliteBul, ulkeBul,
 } from "./ortak.js";
 import { AZAMI_BOYUT, KIRALAMA_DK, PAKET, YUKLEME_KOK } from "./yollar.js";
+import { gunluk } from "../gunluk.js";
 
 /**
  * Tek dosyayi aktarir ve defter satirini yerinde kapatir.
@@ -170,7 +171,7 @@ export async function kuyrukBaslat(): Promise<void> {
   const ilk = await tek<{ yol: string }>(
     "SELECT yol FROM cookie_dosya WHERE durum IN ('bekliyor','isleniyor') ORDER BY id LIMIT 1",
   ).catch(() => null);
-  console.log(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
+  gunluk.bilgi(`[cerez] yarim kalan kuyruk suruyor: ${bekleyen.sayi} dosya`);
   void isle(ilk?.yol ? path.dirname(ilk.yol) : YUKLEME_KOK);
 }
 /** Calisan aktarim turu varsa bitmesini bekler; kapanista cagrilir. */

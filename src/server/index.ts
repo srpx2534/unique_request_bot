@@ -11,6 +11,7 @@ import { isci } from "./isci.js";
 import { zamanlayiciBaslat, zamanlayiciDurdur } from "./zamanlayici.js";
 import { kuyrukBaslat, kuyrukKapat } from "./cerez/index.js";
 import { kilitAl, kilitBirak } from "./tek_ornek.js";
+import { gunluk } from "./gunluk.js";
 
 const PORT = Number(process.env.PANEL_PORT ?? 8080);
 // Konteynerde 127.0.0.1 yalnizca konteyner icinden erisilir; host ezilebilir.
@@ -21,21 +22,21 @@ const HOST = process.env.PANEL_HOST ?? "127.0.0.1";
 try {
   kilitAl();
 } catch (hata) {
-  console.error(`[panel] ${(hata as Error).message}`);
+  gunluk.hata(`[panel] ${(hata as Error).message}`);
   process.exit(1);
 }
 
 const sunucu = uygulama.listen(PORT, HOST, () => {
-  console.log(`panel dinliyor: ${HOST}:${PORT}`);
+  gunluk.bilgi(`panel dinliyor: ${HOST}:${PORT}`);
   redis
     .ping()
-    .then(() => console.log("[redis] oturum deposu hazır"))
-    .catch(() => console.error("[redis] erişilemiyor: giriş 500 verir"));
+    .then(() => gunluk.bilgi("[redis] oturum deposu hazır"))
+    .catch(() => gunluk.hata("[redis] erişilemiyor: giriş 500 verir"));
 
   // Zamanlayıcı ve kuyruk tüketicisi yalnızca sunucu sürecinde başlar;
   // testler uygulamayı doğrudan yüklediği için ikisi de dışarıda kalır.
   zamanlayiciBaslat();
-  void kuyrukBaslat().catch((hata: Error) => console.error("[panel] kuyruk:", hata));
+  void kuyrukBaslat().catch((hata: Error) => gunluk.hata("[panel] kuyruk:", hata));
 });
 
 // Yukleme uzun surer; varsayilan govde suresi ve keep-alive yetmez.
@@ -46,9 +47,9 @@ sunucu.keepAliveTimeout = 65 * 1000;
 // Port doluysa ikinci süreç sessizce ölmesin: hangi sürecin çalıştığı belli olsun.
 sunucu.on("error", (hata: NodeJS.ErrnoException) => {
   if (hata.code === "EADDRINUSE") {
-    console.error(`[panel] ${HOST}:${PORT} dolu, başka bir panel süreci çalışıyor`);
+    gunluk.hata(`[panel] ${HOST}:${PORT} dolu, başka bir panel süreci çalışıyor`);
   } else {
-    console.error(`[panel] dinleme hatası: ${hata.message}`);
+    gunluk.hata(`[panel] dinleme hatası: ${hata.message}`);
   }
   process.exit(1);
 });
@@ -72,11 +73,12 @@ async function kapat(): Promise<void> {
 
 // Beklenmeyen hata sureci oldurmesin: panel ayakta kalsin, sebep loglansin.
 process.on("unhandledRejection", (sebep) => {
-  console.error("[panel] islenmeyen reddetme:", sebep);
+  gunluk.hata("[panel] islenmeyen reddetme:", sebep);
 });
 process.on("uncaughtException", (hata) => {
-  console.error("[panel] yakalanmayan istisna:", hata);
+  gunluk.hata("[panel] yakalanmayan istisna:", hata);
 });
 
 process.on("SIGINT", () => void kapat());
 process.on("SIGTERM", () => void kapat());
+

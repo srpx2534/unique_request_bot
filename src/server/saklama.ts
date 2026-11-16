@@ -12,6 +12,7 @@
  * Kullanım: src/server/zamanlayici.ts.
  */
 import { sorgu, tek, yaz } from "./veritabani.js";
+import { gunluk } from "./gunluk.js";
 
 const ARALIK_DK = 60; // dakika; iki saklama turu arası
 const PARCA = 20_000; // satır; tek DELETE boyu
@@ -115,8 +116,8 @@ export async function saklamaDenetle(): Promise<void> {
   sonCalisma = simdi;
   try {
     const silinen = await saklamaYap();
-    if (silinen > 0) console.log(`[saklama] ${silinen} satır silindi`);
+    if (silinen > 0) gunluk.bilgi(`[saklama] ${silinen} satır silindi`);
   } catch (hata) {
-    console.error("[saklama]", (hata as Error).message);
+    gunluk.hata("[saklama]", (hata as Error).message);
   }
 }
