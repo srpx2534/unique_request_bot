@@ -1,9 +1,12 @@
-/** Canlı akış: tarih, site, kelime ve hata filtresi, sayfalı. */
+/** Canlı akış: tarih, site, kelime ve hata filtresi, sayfalı; süzgeçle silme. */
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Kart } from "@/bilesen/ui/kart";
+import { Dugme } from "@/bilesen/ui/dugme";
 import { Girdi } from "@/bilesen/ui/girdi";
 import { Etiket } from "@/bilesen/ui/etiket";
+import { Onay } from "@/bilesen/ui/onay";
+import { useBildirim } from "@/bilesen/ui/bildirim";
 import { FiltreCubugu, type Aralik } from "@/bilesen/filtre";
 import { Sayfalayici } from "@/bilesen/sayfalayici";
 import { ApiHatasi, iste } from "@/lib/api";
@@ -37,20 +40,33 @@ function ozet(stats: string): { metin: string; hata: boolean } {
 }
 
 export default function Loglar() {
+  const istemci = useQueryClient();
+  const bildir = useBildirim();
   const [aralik, setAralik] = useState<Aralik>("bugun");
   const [site, setSite] = useState("");
   const [kelime, setKelime] = useState("");
   const [sadeceHata, setSadeceHata] = useState(false);
   const [sayfa, setSayfa] = useState(1);
   const [adet, setAdet] = useState(50);
+  const [silinecek, setSilinecek] = useState(false);
+
+  // Süzgeç metni tek yerde kurulur: liste ve silme aynı kümeyi hedefler.
+  const suzgec = `aralik=${aralik}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}${sadeceHata ? "&sadece_hata=1" : ""}`;
 
   const liste = useQuery<Cevap, ApiHatasi>({
     queryKey: ["log", aralik, site, kelime, sadeceHata, sayfa, adet],
-    queryFn: () =>
-      iste(
-        `/log?aralik=${aralik}${site ? `&site=${encodeURIComponent(site)}` : ""}${kelime ? `&kelime=${encodeURIComponent(kelime)}` : ""}${sadeceHata ? "&sadece_hata=1" : ""}&sayfa=${sayfa}&adet=${adet}`,
-      ),
+    queryFn: () => iste(`/log?${suzgec}&sayfa=${sayfa}&adet=${adet}`),
     refetchInterval: 5_000,
+  });
+
+  const sil = useMutation<{ silinen: number }, ApiHatasi>({
+    mutationFn: () => iste(`/log?${suzgec}`, { method: "DELETE" }),
+    onSuccess: (sonuc) => {
+      setSilinecek(false);
+      setSayfa(1);
+      void istemci.invalidateQueries({ queryKey: ["log"] });
+      bildir(`${sonuc.silinen} log kaydı silindi`);
+    },
   });
 
   const satirlar = liste.data?.satirlar ?? [];
@@ -68,6 +84,10 @@ export default function Loglar() {
           className="ml-auto h-8 rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-2 text-xs">
           {ADETLER.map((a) => <option key={a} value={a}>{a}/sayfa</option>)}
         </select>
+        <Dugme gorunum="ikincil" className="h-8 px-2 text-xs" disabled={!liste.data?.toplam}
+          onClick={() => setSilinecek(true)}>
+          logları sil
+        </Dugme>
         <span className="text-xs text-solgun">5 sn</span>
       </FiltreCubugu>
 
@@ -96,6 +116,16 @@ export default function Loglar() {
           <Sayfalayici sayfa={sayfa} toplam={liste.data?.toplam ?? 0} adet={adet} degistir={setSayfa} />
         </div>
       </Kart>
+
+      <Onay
+        acik={silinecek}
+        baslik="Logları sil"
+        dugmeEtiketi="Sil"
+        metin={`Seçili süzgeçteki ${liste.data?.toplam ?? 0} burst ve bağlı hit kayıtları silinir. Kampanya, kelime ve sıralama kayıtları etkilenmez.`}
+        kapat={() => setSilinecek(false)}
+        bekle={sil.isPending}
+        onayla={() => sil.mutate()}
+      />
     </div>
   );
 }

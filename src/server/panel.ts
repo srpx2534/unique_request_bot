@@ -5,8 +5,8 @@
  * burada toplanır. Yazma uçları kendi dosyalarında; burada yalnızca
  * panelin tükettiği hafif sorgular var.
  */
-import { Router } from "express";
-import { sorgu, tek } from "./veritabani.js";
+import { Router, type Request } from "express";
+import { islem, sorgu, tek } from "./veritabani.js";
 import { adetOku, aralikKosulu, sayfaOku } from "./panel_ortak.js";
 import { yonlendirici as ayarYonlendirici } from "./panel_ayar.js";
 import { yonlendirici as uyariYonlendirici } from "./panel_uyari.js";
@@ -71,8 +71,13 @@ yonlendirici.get("/provider", async (istek, yanit) => {
   yanit.json(satirlar);
 });
 
-
-yonlendirici.get("/log", async (istek, yanit) => {
+/**
+ * Log süzgecini koşula çevirir.
+ *
+ * Liste ve silme aynı süzgeci kullanır; iki yerde ayrışırsa silinen satır
+ * ekranda görünene eşit olmaz.
+ */
+function logKosulu(istek: Request): { nerede: string; degerler: unknown[] } {
   const kosullar: string[] = [];
   const degerler: unknown[] = [];
 
@@ -93,7 +98,11 @@ yonlendirici.get("/log", async (istek, yanit) => {
   const aralik = aralikKosulu(istek.query.aralik as string | undefined, "b.started_at");
   if (aralik) kosullar.push(aralik);
 
-  const nerede = kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "";
+  return { nerede: kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "", degerler };
+}
+
+yonlendirici.get("/log", async (istek, yanit) => {
+  const { nerede, degerler } = logKosulu(istek);
   const adet = adetOku(istek.query.adet, 50);
   const sayfa = sayfaOku(istek.query.sayfa);
   const toplam =
@@ -125,6 +134,32 @@ yonlendirici.get("/log", async (istek, yanit) => {
     [...degerler, adet, (sayfa - 1) * adet],
   );
   yanit.json({ satirlar, toplam, sayfa, adet });
+});
+
+yonlendirici.delete("/log", async (istek, yanit) => {
+  const { nerede, degerler } = logKosulu(istek);
+  // Hit tablosunda FK yok; once hit, sonra burst silinir. Ikisi tek islemde.
+  const silinen = await islem(async (baglanti) => {
+    await baglanti.query(
+      `DELETE h FROM hit h
+         JOIN burst b ON b.id = h.burst_id
+         JOIN keyword_geo g ON g.id = b.keyword_geo_id
+         JOIN keyword k ON k.id = g.keyword_id
+         JOIN site s ON s.id = k.site_id
+         ${nerede}`,
+      degerler,
+    );
+    const [sonuc] = await baglanti.query(
+      `DELETE b FROM burst b
+         JOIN keyword_geo g ON g.id = b.keyword_geo_id
+         JOIN keyword k ON k.id = g.keyword_id
+         JOIN site s ON s.id = k.site_id
+         ${nerede}`,
+      degerler,
+    );
+    return (sonuc as { affectedRows: number }).affectedRows;
+  });
+  yanit.json({ silinen });
 });
 
 yonlendirici.use("/uyari", uyariYonlendirici);

@@ -42,8 +42,9 @@ yonlendirici.get("/rapor", async (istek, yanit) => {
   }
   const kelime = (istek.query.kelime as string | undefined)?.trim();
   if (kelime) {
-    kosullar.push("k.text LIKE ?");
-    degerler.push(`%${kelime}%`);
+    // Rapor filtresi secmeli: kelime metni tam eslesir.
+    kosullar.push("k.text = ?");
+    degerler.push(kelime);
   }
   const nerede = `WHERE ${kosullar.join(" AND ")}`;
 

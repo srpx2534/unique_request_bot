@@ -5,7 +5,6 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Download } from "lucide-react";
 import { Kart } from "@/bilesen/ui/kart";
 import { Dugme } from "@/bilesen/ui/dugme";
-import { Girdi } from "@/bilesen/ui/girdi";
 import { FiltreCubugu, type Aralik } from "@/bilesen/filtre";
 import { ApiHatasi, iste } from "@/lib/api";
 
@@ -14,6 +13,8 @@ type SiteSatir = { domain: string; hit: number; ok: number; captcha: number; son
 type KelimeSatir = { kelime: string; domain: string; il_adi: string | null; hit: number; ok: number; captcha: number; son: string | null };
 type Gun = { gun: string; hit: number; ok: number; captcha: number };
 type Rapor = { ozet: Ozet; siteler: SiteSatir[]; kelimeler: KelimeSatir[]; gunluk: Gun[] };
+type SiteSecenek = { id: number; domain: string };
+type KelimeSecenek = { id: number; text: string };
 
 function yuzde(pay: number, toplam: number): string {
   if (!toplam) return "—";
@@ -43,8 +44,21 @@ function csvIndir(ad: string, satirlar: (string | number | null)[][], basliklar:
 
 export default function Rapor() {
   const [aralik, setAralik] = useState<Aralik>("hafta");
-  const [site, setSite] = useState("");
+  const [siteId, setSiteId] = useState("");
   const [kelime, setKelime] = useState("");
+
+  // Rapor filtresi aramali degil secmelidir: secenekler panelden gelir.
+  // Site secilince kelime listesi o siteye daralir.
+  const siteler = useQuery<{ satirlar: SiteSecenek[] }, ApiHatasi>({
+    queryKey: ["rapor-site-secenek"],
+    queryFn: () => iste("/site"),
+  });
+  const kelimeler = useQuery<{ satirlar: KelimeSecenek[] }, ApiHatasi>({
+    queryKey: ["rapor-kelime-secenek", siteId],
+    queryFn: () => iste(`/kelime?site=${siteId}&adet=200`),
+    enabled: Boolean(siteId),
+  });
+  const site = siteler.data?.satirlar.find((x) => String(x.id) === siteId)?.domain ?? "";
 
   const rapor = useQuery<Rapor, ApiHatasi>({
     queryKey: ["rapor", aralik, site, kelime],
@@ -58,8 +72,16 @@ export default function Rapor() {
   return (
     <div className="space-y-4">
       <FiltreCubugu aralik={aralik} aralikDegistir={setAralik}>
-        <Girdi value={site} onChange={(e) => setSite(e.target.value)} placeholder="site" className="h-8 max-w-[12rem]" />
-        <Girdi value={kelime} onChange={(e) => setKelime(e.target.value)} placeholder="kelime" className="h-8 max-w-[12rem]" />
+        <select value={siteId} onChange={(e) => { setSiteId(e.target.value); setKelime(""); }}
+          className="h-8 max-w-[14rem] rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-2 text-xs">
+          <option value="">tum siteler</option>
+          {(siteler.data?.satirlar ?? []).map((x) => <option key={x.id} value={x.id}>{x.domain}</option>)}
+        </select>
+        <select value={kelime} onChange={(e) => setKelime(e.target.value)} disabled={!siteId}
+          className="h-8 max-w-[14rem] rounded-[var(--radius-kutu)] border border-kenar bg-yuzey px-2 text-xs disabled:opacity-50">
+          <option value="">{siteId ? "tum kelimeler" : "once site sec"}</option>
+          {(kelimeler.data?.satirlar ?? []).map((x) => <option key={x.id} value={x.text}>{x.text}</option>)}
+        </select>
       </FiltreCubugu>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -291,6 +291,8 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C84 — Canlı çerez işareti iki kanaldan yazılır: esas kanal ölçüm turudur (`tools/cerez_olcum.py`), ikinci kanal çerezle başarılı hit'tir (hit `ok` ise profil `canli = 1` yazılır). Canlı çerez daima önde olduğu için ölçülmemişler hiç kullanılmıyordu; bu yüzden `cerez_olcum_orani` (varsayılan 20, 0-100 aralığına kırpılır) kadar hit kademeyi çevirir ve ölçülmemiş çerezi öne alır. Oran 0 iken eski davranış geçerlidir. Kanıt: `worker/test_havuz.py`.
 - C85 — Ulusal kelimede il hiçbir kayda yazılmaz: `hit.geo_code` NULL kalır, `/api/log` satırında `geo_code` ve `il_adi` NULL döner ve satır `geo_scope` taşır. `keyword_geo` satırı 81 ile dağıtılmış olsa da rotasyon defteridir, hedefleme değildir (§6.1). İl yalnız il kapsamlı kelimede görünür. Kanıt: `worker/test_app.py`, `src/server/panel_sayfa.test.ts`.
 - C86 — Decodo `/search` gövdesi geo ve locale'i her istekte sabit taşır: `geo` ülke adıdır (`Turkey`), `locale` küçük harfli `dil-ulke` (`tr-tr`), `proxy_pool` açıkça `premium`'dur. Ülke kodu ad eşlemesinde yoksa olduğu gibi yazılır. Serper ve SearchApi `gl`/`hl` ile çalışır, `proxy_pool` almaz. Kanıt: `worker/test_serp.py`.
+- C87 — `DELETE /api/log` seçili süzgeçteki burst satırlarını ve bağlı hit'lerini tek işlemde siler; süzgeç liste ucuyla ortak `logKosulu` yardımcısından gelir, iki yerde ayrışmaz. `hit` tablosunda FK yoktur, bu yüzden önce hit sonra burst silinir. Kampanya, kelime, sıralama ve `traffic_daily` etkilenmez. Panel silmeyi onayla sorar ve süzgeçte kayıt yokken düğme kapalıdır. Kanıt: `src/server/panel_sayfa.test.ts`.
+- C88 — Rapor filtresi aramalı değil seçmelidir: site `GET /api/site` listesinden, kelime seçili siteye daraltılmış `GET /api/kelime?site=` listesinden seçilir ve kelime metni tam eşleşir (`k.text = ?`). Site seçilmeden kelime seçilemez; site değişince kelime sıfırlanır. Kanıt: `src/server/rapor.ts`, `src/web/sayfa/rapor.tsx`.
 C7, C8, C9, C10, C11, C12 ve C15 pilot kabulünde ölçülür.
 ## 12. Kilometre taşları
 - M1 — Migration seti, geo seed, uule üretici, CI iskeleti (3 gün)
@@ -411,6 +413,8 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.15 — Canlı çerez işareti çerezle başarılı hitte de yazılıyor; `cerez_olcum_orani` ile ölçülmemiş çerez öne alınıyor (C84).
 - 1.8.16 — Ulusal kelimede il hit kaydından ve log satırından kaldırıldı, `geo_scope` taşınıyor (C85).
 - 1.8.17 — Decodo gövdesi `geo: Turkey` ve `locale: tr-tr` ile sabitlendi, `proxy_pool` açıkça premium (C86).
+- 1.8.18 — Loglara süzgeçli silme eklendi: burst ve hit satırları tek işlemde gider (C87).
+- 1.8.19 — Rapor filtresi seçmeli oldu; kelime tam eşleşir (C88).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe
 - Her dosyanın başında, dosyanın ne işe yaradığını ve nerede kullanıldığını anlatan en az üç satırlık Türkçe blok bulunur.

@@ -124,3 +124,38 @@ describe("hit modalitesi", () => {
     expect(satir?.tur).toBeNull();
   });
 });
+
+describe("log silme", () => {
+  it("suzgecle silinen burst ve hit gider, kelime kalir", async () => {
+    const d = `${damga}-sil`;
+    const sId = await ekle("INSERT INTO site (domain) VALUES (?)", [`sil-${d}.test`]);
+    const kId = await ekle(
+      "INSERT INTO keyword (site_id, text, geo_scope) VALUES (?, ?, 'national')",
+      [sId, `sil testi ${d}`],
+    );
+    const gId = await ekle("INSERT INTO keyword_geo (keyword_id, geo_code) VALUES (?, 34)", [kId]);
+    const cId = await ekle("INSERT INTO campaign (keyword_id, config) VALUES (?, '{}')", [kId]);
+    const bId = await ekle(
+      "INSERT INTO burst (campaign_id, keyword_geo_id, step, target_count, phase, stats) VALUES (?, ?, 1, 5, 'core', '{}')",
+      [cId, gId],
+    );
+    await hitYaz(bId, null, [
+      { result: "ok", saglayici_id: null, geo_mode: "tr_fallback", tur: null,
+        http_status: 200, latency_ms: 100, bytes: 10 },
+    ]);
+
+    const sil = await ajan.delete(`/api/log?site=sil-${d}.test&aralik=hepsi`).set(baslik);
+    expect(sil.status).toBe(200);
+    expect(sil.body.silinen).toBe(1);
+    expect(await tek("SELECT id FROM burst WHERE id = ?", [bId])).toBeNull();
+    expect(await tek("SELECT id FROM hit WHERE burst_id = ?", [bId])).toBeNull();
+    expect(await tek("SELECT id FROM keyword WHERE id = ?", [kId])).not.toBeNull();
+    await yaz("DELETE FROM site WHERE id = ?", [sId]);
+  });
+
+  it("eslesmeyen suzgec sifir siler", async () => {
+    const sil = await ajan.delete(`/api/log?site=yok-${damga}.test&aralik=hepsi`).set(baslik);
+    expect(sil.status).toBe(200);
+    expect(sil.body.silinen).toBe(0);
+  });
+});
