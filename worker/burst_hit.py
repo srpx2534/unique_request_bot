@@ -53,8 +53,9 @@ def tek_hit(
         izlenim = serp.serp_getir_html(sorgu, uule=uule, proxy=proxy_adres,
                                        onceki_profil=profil, oturum=oturum)
         kayit["izlenim"] = izlenim["result"]
-        # Duvara carptiysa ya da SERP bos donduyse tiklama denenmez.
-        if izlenim["result"] in ("captcha", "not_found"):
+        # Yalnizca CAPTCHA duvari tiklamayi engeller: hedef adres burst
+        # basinda zaten cozuldu, izlenimin bos donmesi hedefi yok saymaz (C9).
+        if izlenim["result"] == "captcha":
             kayit["result"] = izlenim["result"]
             kayit["http_status"] = izlenim["http_status"]
             kayit["bytes"] = izlenim["bytes"]

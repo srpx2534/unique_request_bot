@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+# Iki etiketli uzantilar: yalniz son iki etiket alinirsa "com.tr" gibi bir
+# parca kalir ve o uzanti altindaki butun siteler birbiriyle eslesir.
+IKI_ETIKET = frozenset({
+    "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "av.tr", "bel.tr",
+    "biz.tr", "info.tr", "tv.tr", "gen.tr", "web.tr", "name.tr", "k12.tr",
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "co.nz", "com.br",
+})
+
 
 def kok(adres: str) -> str:
     """Adresten kok alan adini cikarir.
@@ -17,11 +25,16 @@ def kok(adres: str) -> str:
     ham = adres.strip().lower()
     if "://" in ham:
         ham = urlparse(ham).netloc
-    ham = ham.split("/")[0]
+    ham = ham.split("/")[0].split(":")[0]
     if ham.startswith("www."):
         ham = ham[4:]
     etiketler = [e for e in ham.split(".") if e]
-    return ".".join(etiketler[-2:]) if len(etiketler) >= 2 else ham
+    if len(etiketler) < 2:
+        return ham
+    son_iki = ".".join(etiketler[-2:])
+    if son_iki in IKI_ETIKET and len(etiketler) >= 3:
+        return ".".join(etiketler[-3:])
+    return son_iki
 
 
 def bos_sonuc() -> dict:

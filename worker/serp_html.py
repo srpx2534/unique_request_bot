@@ -19,8 +19,10 @@ from worker.serp_ortak import bos_sonuc, kok
 
 ZAMAN_ASIMI = 25  # saniye
 # Kabuk govde esigi: 2025'ten beri Google sonuclari JS ile basiyor, govde
-# ~90 KB'lik bos kabuk oluyor. Bundan kisa govde gercek SERP degildir.
+# ~90 KB'lik bos kabuk oluyor. Bundan kisa govde tek basina guvenilmez.
 KABUK_ESIGI = 20_000
+DENEME = 2  # 429/503'te kac kez denenir
+TEKRAR_BEKLEME = 1.8  # saniye; 429 cogu zaman kisa sureli
 ARAMA_URL = "https://www.google.com/search"
 CEREZLER = {
     "SOCS": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
@@ -33,6 +35,10 @@ BASLIKLAR = {"Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"}
 ELENEN = ("google.", "gstatic.", "googleusercontent.", "policies.google")
 DESEN_YONLENDIRME = re.compile(r"/url\?q=([^&\"']+)")
 DESEN_DUZ = re.compile(r"<a[^>]+href=\"(https?://[^\"]+)\"")
+# Google govdesi izleri. Kisa govde bunlardan birini tasiyorsa sayfa gercekten
+# Google'dir (kabuk ya da bos sonuc); tasimiyorsa gateway bes baytlik sahte
+# bir govde dondurmus olabilir ve basari sayilmamalidir.
+GOOGLE_IZ = ("af_initdatacallback", "gstatic", "google search")
 
 
 def sonuclari_ayikla(html: str) -> list[str]:
@@ -59,6 +65,11 @@ def captcha_mi(son_url: str, html: str) -> bool:
     return "recaptcha" in kucuk or "unusual traffic" in kucuk
 
 
+def _google_govdesi(html: str) -> bool:
+    """Govdenin Google'a ait oldugunu soyler."""
+    kucuk = html[:80_000].lower()
+    return any(iz in kucuk for iz in GOOGLE_IZ)
+
 def serp_getir_html(
     sorgu: str,
     hedef_domain: str | None = None,
@@ -78,7 +89,7 @@ def serp_getir_html(
         oturum: Acik oturum. None ise yenisi acilir ve kapatilir.
 
     Returns:
-        Sonuc sozlugu. result: ok, captcha, not_found, timeout, error.
+        Sonuc sozlugu. result: ok, captcha, error, timeout.
     """
     sonuc = bos_sonuc()
     sonuc["kaynak"] = "html"
@@ -93,17 +104,26 @@ def serp_getir_html(
     oturum = oturum or requests.Session(impersonate=profil)
 
     basladi = time.perf_counter()
+    yanit = None
     try:
-        yanit = oturum.get(
-            ARAMA_URL, params=parametreler, headers=BASLIKLAR,
-            cookies=CEREZLER, timeout=ZAMAN_ASIMI,
-            proxies={"https": proxy, "http": proxy} if proxy else None,
-        )
-    except Exception as hata:  # noqa: BLE001
-        sonuc["elapsed_ms"] = int((time.perf_counter() - basladi) * 1000)
-        sonuc["result"] = "timeout" if "timed out" in str(hata).lower() else "error"
-        sonuc["mesaj"] = str(hata)[:200]
-        return sonuc
+        # 429/503 hiz siniridir, kalici engel degildir: bir kez bekleyip
+        # yeniden denenir. Ikinci deneme de duserse hata olarak doner.
+        for deneme in range(1, DENEME + 1):
+            try:
+                yanit = oturum.get(
+                    ARAMA_URL, params=parametreler, headers=BASLIKLAR,
+                    cookies=CEREZLER, timeout=ZAMAN_ASIMI,
+                    proxies={"https": proxy, "http": proxy} if proxy else None,
+                )
+            except Exception as hata:  # noqa: BLE001
+                sonuc["elapsed_ms"] = int((time.perf_counter() - basladi) * 1000)
+                sonuc["result"] = "timeout" if "timed out" in str(hata).lower() else "error"
+                sonuc["mesaj"] = str(hata)[:200]
+                return sonuc
+            if yanit.status_code in (429, 503) and deneme < DENEME:
+                time.sleep(TEKRAR_BEKLEME)
+                continue
+            break
     finally:
         if kendi:
             oturum.close()
@@ -116,25 +136,23 @@ def serp_getir_html(
 
     if yanit.status_code != 200:
         sonuc["result"] = "error"
+        sonuc["mesaj"] = f"http {yanit.status_code}"
         return sonuc
     if captcha_mi(sonuc["url"], html):
         sonuc["result"] = "captcha"
         return sonuc
 
     hostlar = sonuclari_ayikla(html)
-    hostlar = sonuclari_ayikla(html)
-    # Govdede host yoksa izlenim yine sayilir: sirasi burst hattinda SERP
-    # API'sinden geliyor, burada onemli olan arama ve tiklamanin ayni
-    # IP'den cikmasi. Yalnizca kisa govde (retry/support sayfasi) SERP
-    # sayilmaz, o zaman hit tiklamaya gecmez.
+    # Govdede host yoksa sirasi burst hattinda SERP API'sinden geliyor; burada
+    # onemli olan arama ve tiklamanin ayni IP'den cikmasi. Ama taninmayan kisa
+    # govde (gateway'in bes baytlik sahte yaniti) gercek SERP degildir.
     if not hostlar:
-        if len(html) < KABUK_ESIGI:
-            sonuc["result"] = "not_found"
-            sonuc["mesaj"] = "govde kisa, sonuc listesi yok"
+        if _google_govdesi(html) or sonuc["bytes"] >= KABUK_ESIGI:
+            sonuc["result"] = "ok"
+            sonuc["mesaj"] = "kabuk govde: sonuc listesi JS ile geliyor"
             return sonuc
-        sonuc["result"] = "ok"
-        sonuc["mesaj"] = "kabuk govde: sonuc listesi JS ile geliyor"
-        return sonuc
+        sonuc["result"] = "error"
+        sonuc["mesaj"] = f"govde taninmadi ({sonuc['bytes']} bayt)"
         return sonuc
     sonuc["result"] = "ok"
     if hedef_domain and kok(hedef_domain) in hostlar:

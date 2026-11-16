@@ -63,16 +63,17 @@ class _Yanit:
     status_code = 200
     url = "https://www.google.com/search?q=haber"
 
-    def __init__(self, boy: int) -> None:
-        self.content = b"<html><title>Google Search</title>" + b"x" * boy
+    def __init__(self, boy: int, on: str = "<html><title>Google Search</title>") -> None:
+        self.content = on.encode("utf-8") + b"x" * boy
 
 
 class _Oturum:
-    def __init__(self, boy: int) -> None:
+    def __init__(self, boy: int, on: str = "<html><title>Google Search</title>") -> None:
         self.boy = boy
+        self.on = on
 
     def get(self, *_a, **_k):
-        return _Yanit(self.boy)
+        return _Yanit(self.boy, self.on)
 
     def close(self) -> None:
         pass
@@ -86,10 +87,22 @@ def test_kabuk_govde_izlenim_sayilir() -> None:
     assert "kabuk" in sonuc["mesaj"]
 
 
-def test_kisa_govde_not_found() -> None:
-    """Kisa govde gercek SERP degildir; hit tiklamaya gecmez."""
-    sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(2_000))
-    assert sonuc["result"] == "not_found"
+def test_taninmayan_kisa_govde_error() -> None:
+    """Google izi tasimayan kisa govde not_found degil error sayilir."""
+    sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(2_000, "<html>"))
+    assert sonuc["result"] == "error"
+
+
+def test_bes_baytlik_govde_error() -> None:
+    """Gateway'in bes baytlik sahte govdesi basari sayilmaz."""
+    sonuc = serp_html.serp_getir_html("haber", oturum=_Oturum(0, "false"))
+    assert sonuc["result"] == "error"
+
+
+def test_kok_iki_etiketli_uzanti_korunur() -> None:
+    """com.tr uzanti kokun parcasi kalir, com.tr'ye inmez."""
+    assert serp._kok("https://www.hurriyet.com.tr/x") == "hurriyet.com.tr"
+    assert serp._kok("https://armut.com.tr") == "armut.com.tr"
 
 
 def test_decodo_govdesi_ulke_ve_locale_tasir() -> None:
@@ -112,3 +125,30 @@ def test_serper_govdesi_gl_hl_kullanir() -> None:
     assert govde["gl"] == "tr"
     assert govde["hl"] == "tr"
     assert "proxy_pool" not in govde
+
+class _Tekrarli:
+    """Sirayla verilen durum kodlarini doner."""
+
+    url = "https://www.google.com/search?q=haber"
+
+    def __init__(self, *kodlar: int) -> None:
+        self.kodlar = list(kodlar)
+        self.cagri = 0
+
+    def get(self, *_a, **_k):
+        kod = self.kodlar[min(self.cagri, len(self.kodlar) - 1)]
+        self.cagri += 1
+        yanit = _Yanit(90_000)
+        yanit.status_code = kod
+        return yanit
+
+    def close(self) -> None:
+        pass
+
+
+def test_429_bir_kez_tekrar_denenir() -> None:
+    """429 ilk denemede gelirse istek yinelenir, ikinci 200 ise ok doner."""
+    oturum = _Tekrarli(429, 200)
+    sonuc = serp_html.serp_getir_html("haber", oturum=oturum)
+    assert sonuc["result"] == "ok"
+    assert oturum.cagri == 2

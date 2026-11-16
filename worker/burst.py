@@ -134,10 +134,20 @@ def burst_yap(
                 # sec_mod ucuncu eleman olarak hangi yoldan gidildigini verir.
                 # Paylasilan son_mod globali eszamanli burst'te karisirdi.
                 secim = havuz.sec_mod(geo_slug, mobil_acik, "mobile" if mobil_hedef else None)
-                proxy_adres = secim[1] if secim else None
-                saglayici_id = secim[0] if secim else None
-                geo_mod = secim[2] if secim else None
-                tur = secim[3] if secim else None
+                if secim is None:
+                    # Havuz bos kaldiysa hit sessizce proxy'siz cikmasin: Google
+                    # sunucu IP'sini 429'lar ve 5-10 baytlik govde sahte ok yazar.
+                    time.sleep(0.5)
+                    secim = havuz.sec_mod(geo_slug, mobil_acik, "mobile" if mobil_hedef else None)
+                if secim is None:
+                    kayit = {"profil": None, "izlenim": None, "tik": None, "pogo": None,
+                             "result": "error", "http_status": None, "bytes": None,
+                             "latency_ms": 0, "mesaj": "proxy yok"}
+                    break
+                proxy_adres = secim[1]
+                saglayici_id = secim[0]
+                geo_mod = secim[2]
+                tur = secim[3]
 
             # Cerez yalnizca ayni ulke IP'siyle anlamli: yabanci hitte yuklenmez.
             cerez_profil: int | None = None
