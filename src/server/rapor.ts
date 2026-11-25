@@ -57,7 +57,9 @@ yonlendirici.get("/rapor", async (istek, yanit) => {
     JOIN keyword_geo g ON g.id = b.keyword_geo_id
     JOIN keyword k ON k.id = g.keyword_id
     JOIN site s ON s.id = k.site_id
-    LEFT JOIN geo il ON il.code = g.geo_code`;
+    -- Il yalniz il kapsamli kelimede yazilir: ulusal kelimenin 81 keyword_geo
+    -- satiri var, il join'i yapilirsa ayni kelime 81 satir cikiyordu (C85).
+    LEFT JOIN geo il ON il.code = g.geo_code AND k.geo_scope = 'province'`;
   const taban = `${birlesim} ${nerede}`;
   const tabanHit = `${birlesim} LEFT JOIN hit h ON h.burst_id = b.id ${nerede}`;
 

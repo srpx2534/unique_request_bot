@@ -13,6 +13,22 @@ IKI_ETIKET = frozenset({
 })
 
 
+# Cok parcali uzantilar: son iki etiket tek basina kok vermez, ucuncu etiket
+# de kokun parcasi olur. Aksi halde "site.com.tr" ile her ".com.tr" rakip
+# eslesiyor ve yanlis sira yaziliyordu.
+COK_PARCALI_UZANTI = frozenset((
+    "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "av.tr", "bel.tr",
+    "k12.tr", "gen.tr", "web.tr", "co.uk", "org.uk", "ac.uk", "com.br",
+    "com.au", "co.jp", "com.de", "com.ru",
+))
+
+
+# Ulke uule'si: "Turkey" adinin uzunluk harfli kodlamasi (6 bayt -> G).
+# Ulusal kelimede il secimi yoktur ama ulke sabiti sarttir; yoksa Google
+# ulke-notr kompozit sayfa dondurur ve yerel arama ile tutmaz.
+ULKE_UULE = "w+CAIQICIGVHVya2V5"
+
+
 def kok(adres: str) -> str:
     """Adresten kok alan adini cikarir.
 

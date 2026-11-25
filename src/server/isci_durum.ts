@@ -27,8 +27,11 @@ export async function hitYaz(
   geoKodu: number | null,
   hits: MotorHiti[],
 ): Promise<void> {
+  // Saglayici hic secilemediyse cikis dogrudan baglanti olur; o durumda mod
+  // "tr_fallback" degil "yabanci" olarak yazilir, yoksa mod sayaci sisiyordu.
   const satirlar = hits.map((h) => [
-    burstId, h.saglayici_id, geoKodu, h.geo_mode ?? "tr_fallback", h.tur ?? null,
+    burstId, h.saglayici_id, geoKodu,
+    h.geo_mode ?? (h.saglayici_id ? "tr_fallback" : "yabanci"), h.tur ?? null,
     h.result, h.http_status, h.latency_ms, h.bytes,
   ]);
   for (let i = 0; i < satirlar.length; i += HIT_PARCASI) {

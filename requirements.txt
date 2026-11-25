@@ -13,3 +13,4 @@ psutil==6.1.0
 # icin cryptography ister. Eksikse baglanti "cryptography package is required"
 # hatasiyla duser.
 cryptography==43.0.3
+playwright>=1.48

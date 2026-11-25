@@ -168,9 +168,10 @@ async function calistir(is: Is): Promise<void> {
       body: govdeMetni,
       signal: AbortSignal.timeout(ZAMAN_ASIMI_MS),
     });
-    if (!yanit.ok) throw new Error(`motor ${yanit.status}`);
     // Boşaltma ya da durdurma 503'ü hata değildir: burst kapanır, iş kısa süre
     // sonra yeniden denenir; sağlayıcı sağlık sayacı bu yüzden artmaz (E4).
+    // 503 kontrolü `!yanit.ok`'tan ÖNCE gelir: 503 de `ok` değildir, aksi
+    // hâlde aşağıdaki blok ölü kod kalıyor ve iş hata gibi kapanıyordu.
     if (yanit.status === 503) {
       const govde503 = (await yanit.json().catch(() => ({}))) as { hata?: string };
       const sebep = govde503.hata ?? "düğüm meşgul";
@@ -181,6 +182,8 @@ async function calistir(is: Is): Promise<void> {
       return;
     }
 
+    // 503 disindaki basarisiz yanit gercek hatadir; 503 yukarida ele alindi.
+    if (!yanit.ok) throw new Error(`motor ${yanit.status}`);
     const govde = (await yanit.json()) as MotorCevabi;
     // Ulusal kelimede il kolonu bos kalir; il yalniz il kapsaminda yazilir.
     await hitYaz(burstId, satir.geo_scope === "province" ? satir.geo_code : null, govde.hits ?? []);

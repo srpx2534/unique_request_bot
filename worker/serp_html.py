@@ -57,6 +57,32 @@ def sonuclari_ayikla(html: str) -> list[str]:
     return sira
 
 
+def sonuc_kayitlari(html: str) -> list[dict]:
+    """HTML'den sira ve baglanti tasiyan kayitlari cikarir.
+
+    `sonuclari_ayikla` yalniz kok dondurur ve baglanti kaybolur; B kanali
+    tiklamak icin tam adrese ihtiyac duyar. Ayni kok ikinci kez yazilmaz.
+
+    Args:
+        html: SERP govdesi.
+
+    Returns:
+        {"position": 1 tabanli sira, "link": tam adres} sozlukleri.
+    """
+    adresler = [unquote(m) for m in DESEN_YONLENDIRME.findall(html)]
+    adresler += DESEN_DUZ.findall(html)
+    gorulen: set[str] = set()
+    kayitlar: list[dict] = []
+    for adres in adresler:
+        if any(e in adres for e in ELENEN):
+            continue
+        k = kok(adres)
+        if k and k not in gorulen:
+            gorulen.add(k)
+            kayitlar.append({"position": len(kayitlar) + 1, "link": adres})
+    return kayitlar
+
+
 def captcha_mi(son_url: str, html: str) -> bool:
     """Yanitin CAPTCHA duvari olup olmadigini soyler."""
     if "/sorry/" in son_url:

@@ -98,7 +98,51 @@ Devir paketi tamam: README, `.env.example`, `docker-compose.yml`, `.gitattribute
 
 E1–E7 tamamlandı: yedek/geri yükleme, metrik ucu, E2 günlük, E3 düğüm sağlığı, E4 zarif boşaltma, E5 migration geri alma, E7 tek örnek kilidi.
 
+## O. Olcum dogrulugu — EN ACIL (yerel arama ile ayni sonuc)
 
+Bu bolumun kabul olcutu: ayni kelime, ayni dakika, ayni TR residential IP sinifi uzerinden API sonucu ile gercek tarayici sonucu ilk 20 sonuc kumesi en az %90 ortusur. Bu saglanmadan hicbir madde kapanmis sayilmaz ve proje ilerlemis sayilmaz.
 
+Ulusal kelime kurali: il secilmemisse il ile alakali hicbir islem yapilmaz. Ne Decodo govdesinde il/uule-il, ne proxy kullanici adinda `-city-`. Buna karsilik ulke sabiti her ulusal olcumde vardir: `gl=tr`, `hl=tr`, ulke uule'si, TR residential cikis. Il kapsamli kelimede ayni alanlar il uule'siyle doldurulur.
 
+66. Ulusal olcumde ulke uule'si gonderilir (`w+CAIQICIGVHVya2V5`), hem olcum hattinda hem burst izleniminde. Bugun ulusal kelimede uule hic gonderilmiyor, sonuc ulke-notr kompozit sayfa oluyor; yerel arama ile tutmamasinin birinci sebebi budur. Il kapsamli kelimede davranis degismez: il uule'si gonderilir. (Onay: §5, §9, C20)
+67. `tools/gen_uule.py` kanonik v2 bicimine cekilir: `latlng{ latitude_e7:<lat*1e7> longitude_e7:<lon*1e7> } radius:<m>`, standart base64 (`+` `/` korunur), kirpma yok. Bugunku `latlng:lat,lon` bicimi ve `urlsafe` alfabesi bozuk uule uretiyor; bozuk uule sessizce yok sayilir. 004 yeniden uretilir, `db/migrations/geri` dosyasi da guncellenir.
+68. Ulusal kelimede il sizmasina karsi bekci test: Decodo govdesinde `uule` il uule'si olmamali, proxy dizesinde `-city-` gecmemeli. `worker/test_serp.py` ve `worker/test_proxy.py` bu iki durumu sabitler.
+69. Olcum istegi control plane'in kendi IP'sinden degil, TR residential proxy uzerinden atilir; Decodo govdesine `proxy_pool: "premium"` yazilir. Bugun `olcum.ts` proxy kullanmiyor, datacenter IP'den gidiyor; cift SERP'in en guvenilir tetikleyicisi budur.
+70. Decodo yanitindaki `search_parameters.gl` ile gonderilen `geo_location` karsilastirilir. Taninmayan `geo` sessizce US'e dusuyor ve 200 donuyor; uyusmazsa `position` yazilmaz, `serp_hatasi` uyarisi duser.
+71. Supheli (zehirlenmis) SERP denetimi ve tek tekrar: sonuc listesi 10'dan kisa, kelimenin ana terimini icermiyor ya da son temiz olcumden kume olarak uzaksa kaydedilmez, tek kez yeniden sorulur. Ikinci deneme de supheli ise `rank = NULL` ve `serp_hatasi` uyarisi.
+72. Olcum tek kod yoluna toplanir. Bugun `src/server/olcum.ts` ile `worker/serp.py` ayni isi iki ayri ve sapan bicimde yapiyor (`geo`, `locale`, `proxy_pool`, `uule`, sayfa beklemesi). Olcum de imzali worker ucundan (`/worker/olcum_a`) kosar; `olcum.ts` yalnizca orkestrasyon yapar.
+73. `locale` degeri sozlesmeye uygun kucuk harf `tr-tr` olur; `panel_ayar.ts` icindeki `serp-dene` ucu da ayni bicime cekilir (bugun `tr-TR` ve `geo: "tr"`).
+74. Mobil isaretli kelimede olcum mobil profil ve mobil cikisla yapilir. Decodo `/search` `device` parametresi almiyor; mobil kelime bugun masaustu sayfasindan olculuyor (C48 ile celisir). Karar: mobil kelimede mobil proxy + android profil zorunlu, olcum sonucu `hit.tur` gibi isaretlenir.
+75. `kok()` alan adi cozumlemesi duzeltilir: son iki etiket yerine bilinen cok parcali uzantilar (`com.tr`, `net.tr`, `org.tr`, `gov.tr`, `edu.tr`, `co.uk`, `com.br`) korunur. Bugun `site.com.tr` -> `com.tr` oluyor ve o kelimede ilk `.com.tr` rakip hedef sanilip yanlis sira yaziliyor. Ayni duzeltme `worker/serp_ortak.py` ve `src/server/olcum.ts` icinde birlikte yapilir.
+76. B kanali onarilir: `serp_getir_html` `organik` listesini doldurur, `olcum_b` bu listeyi kullanir. Bugun `organik` hic dolmadigi icin B kanali rank bulamiyor, tiklama yapmiyor ve `position`'a `post_click` + `NULL` yaziyor.
+77. `position` yaziminda 200 disi yanit basarili olcum sayilmaz. Bugun yalnizca 429 turu kesiyor; 500/502 `rank = NULL` satiri yazip "ilk 100'de yok" gibi gorunuyor.
+78. `position` satirina `serp_provider` yazilir; hangi saglayicidan geldigi sonradan gorulebilsin.
+79. Olcumde sayfalar arasi bekleme ve tur butcesi: 10 sayfa tek nefeste gidiyor, hiz siniri riski var.
+80. Kabul kaniti araci: `tools/serp_karsilastir.py`. Ayni kelimeyi API ile ve gercek tarayici yoluyla (TR residential + Chromium) ceker, ilk 20 kume ortusmesini yuzde olarak basar. Bu bolumun kapanis olcusu bu aracin ciktisidir.
 
+## P. Veri butunlugu
+
+81. `src/server/isci.ts`: `if (!yanit.ok) throw` satiri 503 dalindan once calistigi icin 503 blogu olu kod. Zarif bosaltmada burst hata istatistigiyle kapaniyor, sebep yazilmiyor (C76/E4). Once 503 kontrolu, sonra `!yanit.ok`.
+82. `hitYaz` icinde `h.geo_mode ?? "tr_fallback"` yabanci cikista modu bozuyor; worker degeri ne ise o yazilir, null ise null.
+83. `rapor.ts`: ulusal kelime `GROUP BY ... il.name` yuzunden 81 satir cikiyor; il yalniz `geo_scope = 'province'` iken gruplanir.
+84. `rapor.ts`: hit sayisi `SUM(b.target_count)` yerine gercek `hit` sayimindan gelir; erken biten burst sayaci sisiriyor.
+85. `havuz.cerez_sec` her hit'te iki toplu `UPDATE cookie_profil` calistiriyor; `durum` indeksi eklenir ve kilit dusurme turu seyreltilir.
+86. `saglik_db.uyari` kelime-site eslesmesini metinle ve `LIMIT 1` ile yapiyor; ayni metin iki sitede varsa uyari yanlis siteye baglaniyor. Kimlik tasinir.
+87. `veritabani.ts` `islem()` icinde `baglanti.query` yerine `baglanti.execute` kullanilir (parametre kacisi).
+88. `proxy.py` `_geonode` il slug'ini dogrulamadan kullanici adina ekliyor; Geonode'un bekledigi deger (il adi/slug) teyit edilir, yanlissa 407 sessizce saglayiciyi kapatir.
+
+## Q. Panel, arayuz ve yapi (otonom yapilir)
+
+89. `saglayicilar.tsx` oran kaydinda `onError` yok; sunucu 400'u kullaniciya gorunmuyor.
+90. `panel.ts` log suzgeci ile `rapor.ts` suzgeci ayni yardimcidan gecmez; iki yerde ayrisirsa silinen satir ekranda gorunene esit olmaz.
+91. `serp_html.py` icindeki mukerrer satirlar (`sonuclari_ayikla` iki kez, `return sonuc` iki kez) ve kullanilmayan importlar temizlenir.
+92. `olcum.ts` icindeki kaymis docstring'ler duzeltilir, imza uretimi tek yere toplanir.
+93. DEVIR.md ve DURUM.md guncellenir: oran ucu bitti, siradaki is bu bolumdur; `hit.tur`/`olcum_b` durumu yazilir.
+94. Sozlesmeye islenir: §5 ulusal/il uule ayrimi, §9 olcum bekleme sabitleri, C20 guncellemesi, C86 duzeltmesi, yeni C89 (olcum dogrulugu: API ile gercek tarayici ilk 20 ortusmesi >= %90) ve C90 (ulusal kelimede il sizmasi yok, ulke uule'si var). (Onay gerekir)
+
+## R. Kabul olcutu — bu bolumun kapanisi
+
+- `tools/serp_karsilastir.py` 20 kelimede kosar, ortalama ortusme >= %90.
+- Ayni kelimede `position` ile gercek tarayici sirasi arasinda 2 farktan buyuk sapma kalmaz.
+- `provider_geo`/`hit` kayitlarinda mod istatistigi dogru: ulusal hit `geo_code = NULL`, `geo_mode` gercek cikisi yansitir.
+- Bozuk uule uretimi kalmaz: `tools/uule.py --dogrula` tum 81 ili cozer.

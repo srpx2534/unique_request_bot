@@ -339,6 +339,9 @@ def test_canli_kademesi_tarihin_onunde(monkeypatch) -> None:
     _hazirla(monkeypatch, sahte)
     sahte.imlec.fetchone = lambda: None
     monkeypatch.setattr(havuz, "_secim_sorgusu", secim_sorgusu)
+    # Olcum kademesi rastgele secilir (cerez_olcum_orani); burada sabitlenir,
+    # yoksa test %20 olasilikla ters sira gorup kiriliyordu. C84 ayri testte.
+    monkeypatch.setattr(havuz, "cerez_olcum_orani", lambda: 0)
 
     havuz.cerez_sec(34, "a.com", "kelime", False)
 

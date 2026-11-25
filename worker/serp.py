@@ -65,7 +65,7 @@ DESEN_DUZ = re.compile(r"<a[^>]+href=\"(https?://[^\"]+)\"")
 
 
 def _govde_kur(saglayici: str, sorgu: str, sayfa: int, dil: str, ulke: str,
-               uule: str | None) -> dict:
+               uule: str | None, mobil: bool = False) -> dict:
     """Sağlayıcının beklediği istek gövdesini kurar.
 
     Üç sağlayıcının alan adları farklıdır; ortak gövde tek yerde tutulmaz.
@@ -83,8 +83,10 @@ def _govde_kur(saglayici: str, sorgu: str, sayfa: int, dil: str, ulke: str,
     # Geo ve locale her istekte sabittir: TR sonucu ulke adi ve kucuk harfli
     # locale ile istenir. proxy_pool premium hedef sablonun varsayilanidir,
     # acikca yazilir ki plan degisince sessizce dusmesin.
+    # `device` Decodo'ya ozeldir; Serper/SearchApi govdesine yazilmaz.
     govde = {"query": sorgu, "page": sayfa, "locale": f"{dil}-{ulke}".lower(),
-             "geo": ULKE_ADLARI.get(ulke, ulke), "proxy_pool": "premium"}
+             "geo": ULKE_ADLARI.get(ulke, ulke), "proxy_pool": "premium",
+             "device": "mobile" if mobil else "desktop"}
     if uule:
         govde["uule"] = uule
     return govde
@@ -100,14 +102,14 @@ def _basliklar(saglayici: str, anahtar: str) -> dict:
 
 
 def _sayfa_cek(sorgu: str, sayfa: int, anahtar: str, dil: str, ulke: str,
-               uule: str | None, saglayici: str = "decodo"
+               uule: str | None, saglayici: str = "decodo", mobil: bool = False
                ) -> tuple[list[dict], dict]:
     """Tek sayfayı API'den çeker.
 
     Returns:
         (organik liste, ham yanıt bilgisi) demeti.
     """
-    govde = _govde_kur(saglayici, sorgu, sayfa, dil, ulke, uule)
+    govde = _govde_kur(saglayici, sorgu, sayfa, dil, ulke, uule, mobil)
 
     basladi = time.perf_counter()
     try:
@@ -142,6 +144,13 @@ def _sayfa_cek(sorgu: str, sayfa: int, anahtar: str, dil: str, ulke: str,
         bilgi["durum"], bilgi["mesaj"] = "error", "gövde JSON değil"
         return [], bilgi
 
+    # Google hangi ulkeden arandigini kendi soyler: `gl` gercek ulke,
+    # `geo_location` gonderilen deger. Ikisi karsilastirilip geo'nun taninip
+    # taninmadigi anlasilir; taninmayan geo sessizce US'e dusuyor (70).
+    parametreler = veri.get("search_parameters") or {}
+    bilgi["gl"] = str(parametreler.get("gl") or "")
+    bilgi["geo_location"] = str(parametreler.get("geo_location") or "")
+
     organik = (veri.get("organic")
                or veri.get("organic_results")
                or veri.get("results", {}).get("organic") or [])
@@ -158,6 +167,7 @@ def serp_getir(
     dil: str = "tr",
     ulke: str = "tr",
     azami_sayfa: int = AZAMI_SAYFA,
+    mobil: bool = False,
 ) -> dict:
     """SERP sonuçlarını sayfa sayfa API'den alır.
 
@@ -194,18 +204,21 @@ def serp_getir(
     toplam_ms = 0
 
     for sayfa in range(1, azami_sayfa + 1):
-        organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici)
+        organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici, mobil)
         # Sonraki sayfa 503/429 ile düşerse bir kez, kısa beklemeden sonra
         # tekrar denenir. 503 burada hız sınırıdır, kalıcı engel değildir.
         if bilgi["durum"] in ("captcha", "error") and sayfa > 1:
             time.sleep(SAYFA_ARASI_MAX)
-            organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici)
+            organik, bilgi = _sayfa_cek(sorgu, sayfa, anahtar, dil, ulke, uule, saglayici, mobil)
         toplam_ms += bilgi["ms"]
         sonuc["elapsed_ms"] = toplam_ms
         sonuc["http_status"] = bilgi["http"]
         sonuc["bytes"] += bilgi["boy"]
         if bilgi.get("url"):
             sonuc["url"] = bilgi["url"]
+        if bilgi.get("gl") is not None:
+            sonuc["gl"] = bilgi["gl"]
+            sonuc["geo_location"] = bilgi["geo_location"]
 
         if bilgi["durum"] != "ok":
             # İlk sayfa düştüyse hata; sonraki sayfa düştüyse elimizdekiyle döneriz.

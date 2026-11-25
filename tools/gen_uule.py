@@ -32,6 +32,12 @@ BEKLENEN_IL = 81
 def uule_uret(lat: str, lon: str) -> str:
     """Verilen koordinat icin uule dizesi dondurur.
 
+    Bicim Google'in koordinat varyantidir: cozulen metin
+    `latlng{ latitude_e7:... longitude_e7:... }` olur ve koordinat 10^7 ile
+    carpilir. Onceki `latlng:lat,lon` yazimi ile urlsafe alfabe Google
+    tarafindan cozulmuyordu; bozuk uule sessizce yok sayiliyor, il olcumu
+    konumsuz kaliyordu.
+
     Args:
         lat: Enlem, ondalik metin.
         lon: Boylam, ondalik metin.
@@ -41,11 +47,14 @@ def uule_uret(lat: str, lon: str) -> str:
     """
     # Zaman damgasi milisaniye; Google tazelik kontrolunde kullanir.
     zaman = int(time.time() * 1000)
+    enlem = int(round(float(lat) * 10_000_000))
+    boylam = int(round(float(lon) * 10_000_000))
     govde = (
         f"role:1 producer:12 provenance:6 timestamp:{zaman} "
-        f"latlng:{lat},{lon} radius:{YARICAP_M}"
+        f"latlng{{ latitude_e7:{enlem} longitude_e7:{boylam} }} radius:{YARICAP_M}"
     )
-    kodlu = base64.urlsafe_b64encode(govde.encode("utf-8")).decode().rstrip("=")
+    # Standart base64: Google "+" ve "/" bekler, urlsafe alfabeyi cozmez.
+    kodlu = base64.b64encode(govde.encode("utf-8")).decode().rstrip("=")
     return "w+CAIQICI" + kodlu
 
 

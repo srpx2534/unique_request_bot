@@ -187,8 +187,10 @@ def test_il_kelimede_slug_cozulur(monkeypatch) -> None:
 
 
 
-def test_ulusal_kelimede_uule_gonderilmez(monkeypatch) -> None:
-    """Ulusal kelimede UULE il sinyali tasimaz."""
+def test_ulusal_kelimede_ulke_uulesi_gonderilir(monkeypatch) -> None:
+    """Ulusal kelimede il uule'si degil ulke uule'si gonderilir (66)."""
+    from worker.serp_ortak import ULKE_UULE
+
     yakalanan: dict = {}
 
     def sahte(*_a, **k):
@@ -201,7 +203,8 @@ def test_ulusal_kelimede_uule_gonderilmez(monkeypatch) -> None:
              "geo_code": 34, "geo_scope": "national", "uule": "abc123",
              "ts": int(time.time())}
     app.Isleyici.do_POST(_govdeli(monkeypatch, govde))
-    assert yakalanan.get("uule") is None
+    # Govdede il uule'si gelse bile ulusal kelimede ulke uule'si kullanilir.
+    assert yakalanan.get("uule") == ULKE_UULE
 
 
 def test_il_kelimede_uule_gonderilir(monkeypatch) -> None:

@@ -12,6 +12,7 @@ import json
 from curl_cffi import requests
 
 from worker import click, cookie, fingerprint, serp
+from worker.serp_ortak import kok
 from worker import ayar_db
 
 KULLANIM_SINIRI = 3
@@ -151,8 +152,10 @@ def olcum_b_yap(kelime: str, domain: str, geo_kodu: int | None = None, kelime_id
         )
         sonuc["result"] = izlenim.get("result", "error")
         sonuc["mesaj"] = izlenim.get("mesaj", "")
+        hedef_kok = kok(domain)
         for kayit in izlenim.get("organik") or []:
-            if kayit.get("link") and domain in str(kayit["link"]):
+            # Alt alan adi ve ".com.tr" gibi cok parcali uzanti kokle eslesir.
+            if kayit.get("link") and kok(str(kayit["link"])) == hedef_kok:
                 sonuc["rank"] = kayit.get("position")
                 tik = click.tikla(
                     str(kayit["link"]), izlenim.get("url"), None,

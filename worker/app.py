@@ -28,7 +28,8 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from worker import ayar, burst, durum, kalp, havuz, olcum_b
+from worker import ayar, burst, durum, kalp, havuz, olcum_a, olcum_b
+from worker.serp_ortak import ULKE_UULE
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -143,7 +144,7 @@ class Isleyici(BaseHTTPRequestHandler):
     def _post(self) -> None:
         """/worker/burst ve /worker/olcum_b uçlarını işler."""
         yol = self.path.split("?")[0]
-        if yol not in ("/worker/burst", "/worker/olcum_b"):
+        if yol not in ("/worker/burst", "/worker/olcum_a", "/worker/olcum_b"):
             self._json(404, {"hata": "bilinmeyen uç"})
             return
         if not self._yetkili():
@@ -170,6 +171,9 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(401, {"hata": "ts penceresi dışında"})
             return
 
+        if yol == "/worker/olcum_a":
+            self._olcum_a(govde)
+            return
         if yol == "/worker/olcum_b":
             self._olcum_b(govde)
             return
@@ -194,10 +198,11 @@ class Isleyici(BaseHTTPRequestHandler):
             geo_slug = govde.get("geo_slug") or (
                 havuz.slug_bul(int(govde["geo_code"])) if govde.get("geo_code") else None
             )
-        # Ulusal kelimede UULE gonderilmez: il sinyali ne proxy'de ne UULE'de
-        # kalir, Google TR genelinden yanit verir.
-        if kapsam == "province":
-            uule = govde.get("uule")
+        # Ulusal kelimede il ile alakali hicbir sey yazilmaz: proxy'ye il
+        # gitmez, govdedeki il uule'si kullanilmaz. Buna karsilik ulke
+        # uule'si her ulusal istekte gonderilir; yoksa Google ulke-notr
+        # kompozit sayfa donuyor ve yerel arama ile tutmuyordu (66).
+        uule = govde.get("uule") if kapsam == "province" else ULKE_UULE
         # target_url verilmişse domain türetilir, çözüm için API'ye gidilmez.
         hedef_url = govde.get("target_url")
         domain = govde.get("target_domain") or ""
@@ -225,6 +230,20 @@ class Isleyici(BaseHTTPRequestHandler):
             "durduruldu": sonuc["durduruldu"],
         })
 
+
+    def _olcum_a(self, govde: dict) -> None:
+        """/worker/olcum_a: ulusal, ulke uule'si sabitli, suphe denetimli olcum."""
+        kelime = str(govde.get("keyword") or "").strip()
+        domain = str(govde.get("target_domain") or "").strip()
+        if not kelime or not domain:
+            self._json(400, {"hata": "keyword ve target_domain zorunlu"})
+            return
+        kelime_id = govde.get("keyword_id")
+        with _semafor:
+            sonuc = olcum_a.olcum_a_yap(
+                kelime, domain, int(kelime_id) if kelime_id else None
+            )
+        self._json(200, sonuc)
 
     def _olcum_b(self, govde: dict) -> None:
         """/worker/olcum_b: kalici jar'li B kanali olcumu (C20)."""
