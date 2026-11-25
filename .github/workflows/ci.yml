@@ -65,15 +65,19 @@ jobs:
           TEST_EPOSTA: yonetici@ornek.com
           TEST_PAROLA: PanelParola2026!
         run: |
-          # Veritabani ve Redis isteyen testler yalnizca veritabani isinde kosar.
+          # Veritabani isteyen testler yalnizca veritabani isinde kosar; burada
+          # beyaz liste tutulur, DB'ye giden yeni test sessizce buraya sizmaz.
           npx vitest run \
-            --exclude "src/server/api.test.ts" \
-            --exclude "src/server/panel_ayar.test.ts" \
-            --exclude "src/server/panel_saglayici.test.ts" \
-            --exclude "src/server/panel_sayfa.test.ts" \
-            --exclude "src/server/panel_metrik.test.ts" \
-            --exclude "src/server/silme.test.ts" \
-            --exclude "src/server/dugum_olay.test.ts"
+            src/server/bolum.test.ts \
+            src/server/dugum_sec.test.ts \
+            src/server/geo.test.ts \
+            src/server/gunluk.test.ts \
+            src/server/isci.test.ts \
+            src/server/kilit.test.ts \
+            src/server/olcum.test.ts \
+            src/server/redis_baglanti.test.ts \
+            src/server/tek_ornek.test.ts \
+            src/server/worker_imza.test.ts
 
       - name: Pytest
         shell: bash
@@ -84,6 +88,10 @@ jobs:
           kod=$?
           tail -n 40 pytest.log
           if [ $kod -ne 0 ]; then
+            # Kirik testler giris gerektirmeyen bildirim olarak dusulur.
+            grep -E '^(FAILED|ERROR)' pytest.log | while IFS= read -r satir; do
+              echo "::error::$satir"
+            done
             { echo '## Pytest kirildi'; echo '```'; tail -n 150 pytest.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit $kod
@@ -176,6 +184,10 @@ jobs:
           kod=$?
           tail -n 40 pytest.log
           if [ $kod -ne 0 ]; then
+            # Kirik testler giris gerektirmeyen bildirim olarak dusulur.
+            grep -E '^(FAILED|ERROR)' pytest.log | while IFS= read -r satir; do
+              echo "::error::$satir"
+            done
             { echo '## Pytest kirildi'; echo '```'; tail -n 150 pytest.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit $kod
