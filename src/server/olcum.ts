@@ -1,7 +1,7 @@
 /**
  * Sıralama ölçüm hattı — yalnız orkestrasyon.
  *
- * Ölçümün kendisi worker'da koşar (`worker/olcum_a.py`): ülke uule'si, premium
+ * Ölçümün kendisi worker'da koşar (`worker/olcum_a.py`): gerçek tarayıcı, premium
  * havuz, `gl` doğrulaması ve şüpheli sayfa tekrarı tek yerde durur. Böylece
  * burada ikinci bir SERP istemcisi tutulmaz ve iki yol birbirinden sapmaz.
  *

@@ -29,8 +29,8 @@ def test_click_gezinti_basliklari_dolu() -> None:
 
 
 def test_dwell_sinirlari_sozlesmeye_uygun() -> None:
-    """Dwell 5-12 saniye araliginda (sozlesme §9)."""
-    assert (click.DWELL_MIN, click.DWELL_MAX) == (5, 12)
+    """Dwell log-normal dagilir; medyan 30 saniye, 8-180 arasinda kirpilir."""
+    assert (click.DWELL_EN_AZ, click.DWELL_EN_COK) == (8, 180)
 
 
 def test_pogo_sinirlari_sozlesmeye_uygun() -> None:

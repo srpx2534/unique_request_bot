@@ -12,6 +12,7 @@ Kullanim: worker/burst.py, src/server/olcum.ts.
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Saat -> agirlik. 20-23 aksam tepesi, 00-07 gece dibi.
 SAAT_AGIRLIK = {
@@ -32,7 +33,7 @@ def agirlik(saat: int | None = None) -> float:
         0.2 ile 1.0 arasi agirlik.
     """
     if saat is None:
-        saat = datetime.now().hour
+        saat = datetime.now(ZoneInfo("Europe/Istanbul")).hour
     return SAAT_AGIRLIK.get(int(saat) % 24, 0.5)
 
 

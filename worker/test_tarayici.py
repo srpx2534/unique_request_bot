@@ -152,3 +152,47 @@ def test_guven_yoksa_onay_cerezleri_eklenir(monkeypatch, tmp_path):
     tarayici._baglam_ac(p, True, None, tarayici.MASUSTU, tarayici.MASUSTU_UA)
     adlar = [c["name"] for c in p.eklenen]
     assert "SOCS" in adlar and "CONSENT" in adlar
+
+
+class SahteIstek:
+    """Baglam istek tasiyicisi yerine gecen sahte nesne."""
+
+    def __init__(self, sonuc=""):
+        self.sonuc = sonuc
+
+    def get(self, adres, **fazla):
+        if isinstance(self.sonuc, Exception):
+            raise self.sonuc
+        return type("Yanit", (), {"url": self.sonuc})()
+
+
+class BaglamIstek:
+    def __init__(self, sonuc=""):
+        self.request = SahteIstek(sonuc)
+
+
+def test_goto_gercek_adrese_cozulur():
+    b = BaglamIstek("https://hedef.com.tr/derin")
+    assert tarayici._goto_coz(b, "https://www.google.com/goto?url=X") == "https://hedef.com.tr/derin"
+
+
+def test_goto_google_kalirsa_bos_doner():
+    b = BaglamIstek("https://www.google.com/sorry/index")
+    assert tarayici._goto_coz(b, "https://www.google.com/goto?url=X") == ""
+
+
+def test_goto_hatasinda_bos_doner():
+    b = BaglamIstek(RuntimeError("ag"))
+    assert tarayici._goto_coz(b, "https://www.google.com/goto?url=X") == ""
+
+
+def test_temizle_cozucuyu_kullanir():
+    adresler = [{"cite": "https://hedef.com.tr", "baslik": "a", "href": "https://www.google.com/goto?url=X"}]
+    kayitlar = tarayici._temizle(adresler, lambda h: "https://hedef.com.tr/derin/sayfa")
+    assert kayitlar[0]["link"] == "https://hedef.com.tr/derin/sayfa"
+
+
+def test_temizle_cozemezse_cite_kalir():
+    adresler = [{"cite": "https://hedef.com.tr", "baslik": "a", "href": "https://www.google.com/goto?url=X"}]
+    kayitlar = tarayici._temizle(adresler, lambda h: "")
+    assert kayitlar[0]["link"] == "https://hedef.com.tr"

@@ -1,11 +1,11 @@
-"""Olcum-A kanali: SERP API'sinden ulusal, ulke uule'si sabitli olcum.
+"""Olcum-A kanali: ulusal kelimeyi gercek tarayiciyla olcer, API yedek.
 
-Olcum control plane'te degil burada kosar. Gerekce: uule sabiti, saglayici
+Olcum control plane'te degil burada kosar. Gerekce: tarayici, saglayici
 secimi ve supheli sayfa tekrar karari ayni yerde durur; iki ayri kod yolu
 (`olcum.ts` ve `serp.py`) birbirinden sapmaz (72).
 
-Ulusal kelimede il ile alakali hicbir sey yoktur; il uule'si gonderilmez,
-ulke uule'si gonderilir (66). Saglayici secimi de il istemez.
+Ulusal kelimede il ile alakali hicbir sey yoktur; uule hic gonderilmez (66).
+IP cografyasi yeterli sinyaldir, uule listeyi baska kumeye dusuruyor.
 
 Yanit `search_parameters.gl` ile dogrulanir: taninmayan geo sessizce US'e
 duser ve 200 doner, bu yuzden gl bos ya da TR degilse olcum suphelidir (70).
@@ -26,7 +26,7 @@ import time
 import pymysql
 
 from worker import ayar_db, havuz, saglik_db, serp, tarayici
-from worker.serp_ortak import ULKE_UULE, kok
+from worker.serp_ortak import kok
 
 KUME_UZUNLUK = 10  # sonuc kumesi; ilk 10 sira karsilastirilir
 ASGARI_SONUC = 5  # altinda liste ince sayilir
@@ -161,7 +161,7 @@ def _serp_oku(kelime: str, domain: str, mobil: bool) -> dict:
                 else:
                     cevap["result"] = "not_found"
             return cevap
-    return serp.serp_getir(kelime, hedef_domain=domain, uule=ULKE_UULE, mobil=mobil)
+    return serp.serp_getir(kelime, hedef_domain=domain, mobil=mobil)
 
 
 def olcum_a_yap(kelime: str, domain: str, kelime_id: int | None = None) -> dict:

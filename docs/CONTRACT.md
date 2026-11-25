@@ -223,7 +223,7 @@ Kelime listesinde `son_sira` sütunu durur; ölçüm yoksa `—`, ilk 100'de yok
 - C17 — Şehir hedefleyen sağlayıcı yokken iş durmaz, ulusal moda düşer.
 - C18 — Sağlayıcı ve il çiftinde CAPTCHA %35'i geçerse 60 dakika `exhausted_until` uygulanır.
 - C19 — `burst_count` 3'ün altındayken core tier, sonrasında broad faz kullanılır.
-- C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür. Yalnız `channel = 'clean'` yazılır, API'ye il verilmez.
+- C20 — Ölçüm daima ulusal ve clean kanaldan yapılır; oran %100'dür. Yalnız `channel = 'clean'` yazılır, API'ye il verilmez. Ulusal ölçümde ve ulusal hitte `uule` gönderilmez: uule'li ve uule'siz ölçüm aynı IP'de karşılaştırıldı, uule listeyi başka kümeye düşürüyordu. IP coğrafyası yeterlidir. Kanıt: `tools/oylama_dene.py`.
 - C21 — `stop` sonrası yeni hit atılmaz.
 - C22 — Tüm `DATETIME` değerleri UTC'dir; oran %100'dür.
 - C23 — `uule` 81 ilin tamamında doludur.
@@ -416,6 +416,7 @@ Yüklenici — Ad, tarih, imza: ................................................
 - 1.8.17 — Decodo gövdesi `geo: Turkey` ve `locale: tr-tr` ile sabitlendi, `proxy_pool` açıkça premium (C86).
 - 1.8.18 — Loglara süzgeçli silme eklendi: burst ve hit satırları tek işlemde gider (C87).
 - 1.8.19 — Rapor filtresi seçmeli oldu; kelime tam eşleşir (C88).
+- 1.8.20 — Ulusal ölçümde ve ulusal hitte `uule` kaldırıldı; IP coğrafyası yeterli sayıldı (C20).
 - 1.8.20 — Rapor sayaçları hit satırlarından toplandı, `not_found` kendi kartına ayrıldı; kanıt testi `src/server/rapor.test.ts` (C89).
 ## 23. Kodlama kuralları (bağlayıcı)
 ### 23.1 Yorum zorunluluğu — Türkçe

@@ -29,7 +29,6 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from worker import ayar, burst, durum, kalp, havuz, olcum_a, olcum_b
-from worker.serp_ortak import ULKE_UULE
 
 ESZAMANLI = 12  # eşzamanlı burst sınırı (§9)
 GOVDE_TAVANI = 8_192  # bayt; burst gövdesi küçüktür, büyüğü reddedilir
@@ -199,10 +198,10 @@ class Isleyici(BaseHTTPRequestHandler):
                 havuz.slug_bul(int(govde["geo_code"])) if govde.get("geo_code") else None
             )
         # Ulusal kelimede il ile alakali hicbir sey yazilmaz: proxy'ye il
-        # gitmez, govdedeki il uule'si kullanilmaz. Buna karsilik ulke
-        # uule'si her ulusal istekte gonderilir; yoksa Google ulke-notr
-        # kompozit sayfa donuyor ve yerel arama ile tutmuyordu (66).
-        uule = govde.get("uule") if kapsam == "province" else ULKE_UULE
+        # gitmez, govdedeki il uule'si kullanilmaz. Ulke uule'si de artik
+        # gonderilmez: uule'li ve uule'siz olcum ayni IP'de karsilastirildi,
+        # uule listeyi baska kumeye dusuruyordu; IP cografyasi yeterli (66).
+        uule = govde.get("uule") if kapsam == "province" else None
         # target_url verilmişse domain türetilir, çözüm için API'ye gidilmez.
         hedef_url = govde.get("target_url")
         domain = govde.get("target_domain") or ""
@@ -232,7 +231,7 @@ class Isleyici(BaseHTTPRequestHandler):
 
 
     def _olcum_a(self, govde: dict) -> None:
-        """/worker/olcum_a: ulusal, ulke uule'si sabitli, suphe denetimli olcum."""
+        """/worker/olcum_a: ulusal, uule'siz, suphe denetimli olcum."""
         kelime = str(govde.get("keyword") or "").strip()
         domain = str(govde.get("target_domain") or "").strip()
         if not kelime or not domain:
