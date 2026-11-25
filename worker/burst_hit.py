@@ -9,9 +9,15 @@ yalnizca metinde gorunur ve cagiran taraf karari buna gore verir (C81).
 
 from __future__ import annotations
 
+import random
+
 from curl_cffi import requests
 
 from worker import click, cookie, serp
+
+# Hit'lerin bir kismi ana sayfaya girer: her ziyaretci tam sonuc adresine
+# gitmez, siteye kokten giren de olur.
+ENTRY_ANA_ORANI = 15  # yuzde
 
 
 def sayaclar() -> dict:
@@ -64,7 +70,10 @@ def tek_hit(
             kayit["mesaj"] = izlenim.get("mesaj", "")
             return kayit
 
-        tik = click.tikla(hedef_url, referer=serp_url, proxy=proxy_adres,
+        giris = hedef_url
+        if random.randrange(100) < ENTRY_ANA_ORANI:
+            giris = click._origin(hedef_url)
+        tik = click.tikla(giris, referer=serp_url, proxy=proxy_adres,
                           onceki_profil=profil, oturum=oturum,
                           profil_id=cerez_profil)
         kayit["tik"] = tik["result"]
@@ -78,16 +87,24 @@ def tek_hit(
             kayit["mesaj"] = tik.get("mesaj", "")
             return kayit
 
-        pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
-                         onceki_profil=profil, oturum=oturum,
-                         hedef_url=hedef_url)
-        kayit["pogo"] = pog["result"]
         kayit["http_status"] = tik["http_status"]
         kayit["bytes"] = tik["bytes"]
-        kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
-        if pog["result"] != "ok":
-            kayit["mesaj"] = pog.get("mesaj", "")
+        # Gercek trafikte cogu ziyaretci SERP'e donmez: pogo her hit'te
+        # yapilmaz, atlanmasi hit'i basarisiz da saymaz.
+        if random.randrange(100) < click.POGO_ORANI:
+            pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
+                             onceki_profil=profil, oturum=oturum,
+                             hedef_url=hedef_url)
+            kayit["pogo"] = pog["result"]
+            kayit["latency_ms"] = max(0, ag_ms + pog["elapsed_ms"])
+            if pog["result"] != "ok":
+                # Denenen pogo dustuyse hit saglikli sayilmaz.
+                kayit["result"] = "error"
+                return kayit
+                kayit["mesaj"] = pog.get("mesaj", "")
+        else:
+            kayit["pogo"] = "atlandi"
+            kayit["latency_ms"] = max(0, ag_ms)
 
-    # Pogo basarisizsa hit "ok" sayilmaz.
-    kayit["result"] = "ok" if pog is not None and pog["result"] == "ok" else "error"
+    kayit["result"] = "ok"
     return kayit

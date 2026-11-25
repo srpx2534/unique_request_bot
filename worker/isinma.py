@@ -146,6 +146,7 @@ def http(
     oturum,
     rastgele: random.Random | None = None,
     aralik: tuple[int, int] | None = None,
+    adet: int | None = None,
 ) -> dict:
     """Tarayicisiz yolda curl_cffi oturumuyla isinma yapar.
 
@@ -153,6 +154,7 @@ def http(
         oturum: Proxy'ye bagli curl_cffi oturumu.
         rastgele: Test icin tohumlanmis uretici.
         aralik: Bekleme araligi; verilmezse ayardan okunur.
+        adet: Acilacak sayfa sayisi; verilmezse ayardan okunur.
 
     Returns:
         result, sayfa, bekleme_ms ve mesaj alanlari.
@@ -161,6 +163,9 @@ def http(
         return _sonuc("atlandi", 0, 0, "isinma kapali")
     r = rastgele or random
     aralik = aralik or bekleme()
+    secilecek = sayfa_sec(r)
+    if adet:
+        secilecek = secilecek[:max(1, adet)]
     acilan = 0
     toplam = 0
     for adres in sayfa_sec(r):

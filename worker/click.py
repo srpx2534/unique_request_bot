@@ -10,24 +10,30 @@ Tıklama, SERP isteğini atan proxy üzerinden ve `Referer` SERP adresi olacak
 Dwell boyunca bağlantı açık tutulmaz, yalnızca beklenir; pogo ise SERP'e
 geri dönüştür.
 
-Süreler sözleşme §9'dan gelir: dwell 5-12 saniye, pogo 3-6 saniye sonra.
+Dwell log-normal dagilir (medyan 30 saniye); pogo ise her hit'te degil,
 
 Kullanım: worker/burst.py, tools/click_dene.py.
 """
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from urllib.parse import urlparse
 
 from curl_cffi import requests
 
-from worker import fingerprint, ga_beacon
+from worker import fingerprint, ga_beacon, kaynak
 
 ZAMAN_ASIMI = 25  # saniye; hedef site yavaşsa tıklamayı bırak
-DWELL_MIN = 5  # saniye; tık sayılsın yeter, hız öncelikli (§9)
-DWELL_MAX = 12  # saniye; üstü burst'ü gereksiz uzatır
+# Dwell log-normal: gercek okuma suresi saga carpik, sabit aralik en kolay
+# yakalanan sahtelik. Medyan 30 saniye, kuyruk 180'e kadar uzar.
+DWELL_MEDYAN = 30  # saniye
+DWELL_SIGMA = 0.7
+DWELL_EN_AZ = 8  # saniye; alt kirpma
+DWELL_EN_COK = 180  # saniye; ust kirpma
+POGO_ORANI = 20  # yuzde; her hit'te SERP'e donulmez
 POGO_MIN = 3  # saniye; hemen dönmek bot gibi görünür
 POGO_MAX = 6  # saniye; üstü pogo penceresini kaçırır
 
@@ -54,6 +60,7 @@ def _temel_sonuc() -> dict:
         "dwell_ms": 0,
         "pogo": False,
         "ga": None,
+        "kaynak": 0,
         "profil": None,
         "mesaj": "",
     }
@@ -78,6 +85,16 @@ def _origin(adres: str) -> str:
     if not parca.scheme or not parca.netloc:
         return adres
     return f"{parca.scheme}://{parca.netloc}/"
+
+
+def _dwell_sn() -> float:
+    """Log-normal dwell suresi uretir ve sinirlarda kirpar.
+
+    Returns:
+        DWELL_EN_AZ ile DWELL_EN_COK arasinda saniye.
+    """
+    sure = random.lognormvariate(math.log(DWELL_MEDYAN), DWELL_SIGMA)
+    return min(DWELL_EN_COK, max(DWELL_EN_AZ, sure))
 
 
 def _proxy_sozlugu(proxy: str | None) -> dict | None:
@@ -136,10 +153,15 @@ def tikla(
         sonuc["http_status"] = yanit.status_code
         sonuc["bytes"] = len(yanit.content)
 
+        if yanit.status_code < 400:
+            # Sayfa yuklemesi tek istek degil: alt kaynaklar da cekilir.
+            kayitlar = kaynak.adresler(yanit.content.decode("utf-8", "replace"), hedef_url)
+            sonuc["kaynak"] = kaynak.cek(oturum, kayitlar, proxy)
+
         # Dwell yalnızca sayfa açıldıysa uygulanır; 4xx/5xx'te beklemek
         # gereksiz, Google'a "girip çıktı" sinyali vermenin anlamı yok.
         if dwell and yanit.status_code < 400:
-            sure = random.uniform(DWELL_MIN, DWELL_MAX)
+            sure = _dwell_sn()
             time.sleep(sure)
             sonuc["dwell_ms"] = int(sure * 1000)
             # Google Analytics ancak burada gorunur: JS calismadigi icin sitenin

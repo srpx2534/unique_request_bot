@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from worker import burst, click, serp
+from worker import burst, burst_hit, click, serp
 
 
 @pytest.fixture
@@ -43,6 +43,7 @@ def taklit(monkeypatch):
     monkeypatch.setattr(serp, "serp_getir_html", sahte_serp)
     monkeypatch.setattr(click, "tikla", sahte_tik)
     monkeypatch.setattr(click, "pogo", sahte_pogo)
+    monkeypatch.setattr(click, "POGO_ORANI", 100)
     monkeypatch.setattr(burst.time, "sleep", lambda _s: None)
     # Sağlık yazımı veritabanına gider; birim testi kirletmesin diye susturulur.
     monkeypatch.setattr(burst.saglik_db, "uyari", lambda *_a, **_k: None)
@@ -186,6 +187,31 @@ def test_pogo_duserse_hit_hata_sayilir(taklit, monkeypatch) -> None:
                 "bekleme_ms": 0, "mesaj": "düştü"}
 
     monkeypatch.setattr(click, "pogo", sahte_pogo)
+    monkeypatch.setattr(click, "POGO_ORANI", 100)
     sonuc = burst.burst_yap("a", "a.com", 1)
     assert sonuc["error"] == 1
     assert sonuc["ok"] == 0
+
+def test_pogo_atlanirsa_hit_ok_sayilir(taklit, monkeypatch) -> None:
+    """Pogo olasiligi sifirsa SERP'e donulmez ama hit basarili kalir."""
+    monkeypatch.setattr(click, "POGO_ORANI", 0)
+    sonuc = burst.burst_yap("a", "a.com", 1)
+    assert sonuc["ok"] == 1
+    assert sonuc["hits"][0]["pogo"] == "atlandi"
+    assert taklit["pogo"] == 0
+
+
+def test_arada_ana_sayfadan_girilir(taklit, monkeypatch) -> None:
+    """Hitlerin bir kismi siteye kokten girer, tam adresten degil."""
+    gelen: list = []
+
+    def sahte_tik(url, **_k):
+        gelen.append(url)
+        return {"result": "ok", "http_status": 200, "elapsed_ms": 1, "bytes": 1,
+                "dwell_ms": 0, "profil": "chrome124", "url": None, "mesaj": ""}
+
+    monkeypatch.setattr(click, "tikla", sahte_tik)
+    monkeypatch.setattr(burst_hit, "ENTRY_ANA_ORANI", 100)
+
+    burst.burst_yap("a", "a.com", 1, hedef_url="https://a.com/derin/sayfa")
+    assert gelen == ["https://a.com/"]

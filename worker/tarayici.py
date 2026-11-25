@@ -60,7 +60,8 @@ ZAMAN_ASIMI_MS = 45_000
 BEKLEME_MS = 4_000
 DUVAR_BEKLEME_MS = 10_000  # duvar sonrasi ilk bekleme; her denemede katlanir
 DUVAR_DENEME = 3
-IP_DENEME = 2  # zehirli sayfa ya da duvarda kac IP denenir  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
+IP_DENEME = 2  # zehirli sayfa ya da duvarda kac IP denenir
+COZUM_SINIRI = 12  # sayfa basina en fazla kac /goto adresi cozulur  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
 # Onay duvarini atlar; cerezler oturum boyunca korunur.
 ONAY_CEREZLERI = [
     {"name": "SOCS", "value": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
@@ -139,7 +140,32 @@ def _gercek_adres(adres: str) -> str:
     return adres
 
 
-def _temizle(adresler: list[str]) -> list[dict]:
+def _goto_coz(baglam, adres: str) -> str:
+    """`/goto?url=` sarmalini gercek adrese cozer.
+
+    Google sonuc baglantilarini sifreli bir yonlendirmeye sarar; sarmalin
+    icinde hedef yoktur. Ayni baglamin istek tasiyicisi cerezleri paylastigi
+    icin yonlendirme kovalanip gercek adres alinir. Cozulemezse bos doner ve
+    cagiran taraf `cite` ile yetinir.
+
+    Args:
+        baglam: Acik tarayici baglami.
+        adres: `/goto` adresi.
+
+    Returns:
+        Gercek adres; cozulemezse bos metin.
+    """
+    try:
+        yanit = baglam.request.get(adres, timeout=ZAMAN_ASIMI_MS, max_redirects=5)
+    except Exception:  # noqa: BLE001
+        return ""
+    son = str(getattr(yanit, "url", "") or "")
+    if not son.startswith("http") or "google." in son:
+        return ""
+    return son
+
+
+def _temizle(adresler: list[str], cozucu=None) -> list[dict]:
     """Adres listesini benzersiz kok ve 1 tabanli siraya cevirir.
 
     Args:
@@ -150,6 +176,7 @@ def _temizle(adresler: list[str]) -> list[dict]:
     """
     gorulen: set[str] = set()
     kayitlar: list[dict] = []
+    cozulen = 0
     for kayit in adresler:
         if isinstance(kayit, dict):
             cite = str(kayit.get("cite") or "").strip()
@@ -159,7 +186,12 @@ def _temizle(adresler: list[str]) -> list[dict]:
             cite, ham, baslik = "", str(kayit), ""
         # `/goto?url=CAES...` yerel cozulemiyor; sonuc satirinda gorunen adres
         # (`cite`) zaten hedef koku veriyor, ek istek gerekmiyor.
-        adres = cite if cite else _gercek_adres(ham)
+        adres = ""
+        if cozucu and "/goto?" in ham and cozulen < COZUM_SINIRI:
+            cozulen += 1
+            adres = cozucu(ham)
+        if not adres:
+            adres = cite if cite else _gercek_adres(ham)
         if not adres or "google." in adres or "gstatic." in adres:
             continue
         k = kok(adres)
@@ -233,6 +265,7 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
     Returns:
         Guncellenmis sonuc sozlugu.
     """
+    cozucu = (lambda h: _goto_coz(baglam, h)) if hasattr(baglam, "request") else None
     sayfa = baglam.new_page()
     # Arama isitilmis kimlikten cikmali: taze proxy IP'sinde Google dogrudan
     # acilirsa duvar ya da baska kelimenin listesi gelebiliyor.
@@ -279,7 +312,7 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
         if not adresler:
             break
         onceki = len(sonuc["organik"])
-        for kayit in _temizle(adresler):
+        for kayit in _temizle(adresler, cozucu):
             sonuc["organik"].append(
                 {"position": onceki + kayit["position"], "link": kayit["link"]}
             )

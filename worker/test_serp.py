@@ -7,6 +7,8 @@ bu yüzden davranış burada kilitlenir.
 
 from __future__ import annotations
 
+import pytest
+
 from worker import serp, serp_html
 
 
@@ -152,3 +154,9 @@ def test_429_bir_kez_tekrar_denenir() -> None:
     sonuc = serp_html.serp_getir_html("haber", oturum=oturum)
     assert sonuc["result"] == "ok"
     assert oturum.cagri == 2
+
+@pytest.fixture(autouse=True)
+def isinma_sus(monkeypatch):
+    """Isinma ve cerez seti aga cikmasin; sayac arama isteklerini saysin."""
+    monkeypatch.setattr(serp_html.isinma, "http", lambda *a, **k: {"result": "atlandi"})
+    monkeypatch.setattr(serp_html.guven, "kavanoza", lambda *a: 0)

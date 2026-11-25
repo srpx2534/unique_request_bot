@@ -54,7 +54,7 @@ def test_dwell_uygulanir(ortam: list) -> None:
     sonuc = click.tikla("https://hedef.test", referer="https://google.com/search?q=x")
     assert sonuc["result"] == "ok"
     assert sonuc["dwell_ms"] > 0
-    assert ("uniform", click.DWELL_MIN, click.DWELL_MAX) in ortam
+    assert click.DWELL_EN_AZ <= sonuc["dwell_ms"] <= click.DWELL_EN_COK * 1000
 
 
 def test_dwell_kapaliyken_uyumaz(ortam: list) -> None:
@@ -115,6 +115,14 @@ def test_pogo_adres_yoksa_kurar(ortam: list, monkeypatch: pytest.MonkeyPatch) ->
     assert "q=deneme" in oturum.cagrilar[0][0]
 
 
+def test_dwell_dagilimi_sinirda_kirpilir(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Asiri uzun ve cok kisa degerler kirpilir."""
+    monkeypatch.setattr(click.random, "lognormvariate", lambda *_: 1.0)
+    assert click._dwell_sn() == click.DWELL_EN_AZ
+    monkeypatch.setattr(click.random, "lognormvariate", lambda *_: 10_000.0)
+    assert click._dwell_sn() == click.DWELL_EN_COK
+
+
 def test_proxy_sozlugu() -> None:
     """Proxy yoksa None, varsa http/https anahtarlari doner."""
     assert click._proxy_sozlugu(None) is None
@@ -145,4 +153,23 @@ def test_ga_4xx_te_gonderilmez(ortam: list, monkeypatch: pytest.MonkeyPatch) -> 
     )
     sonuc = click.tikla("https://hedef.test")
     assert sonuc["ga"] is None
+    assert not cagri
+
+
+def test_alt_kaynaklar_cekilir(ortam: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sayfa acilinca alt kaynaklar da istenir."""
+    cagri: list = []
+    monkeypatch.setattr(click.kaynak, "cek", lambda *a: (cagri.append(a), 3)[1])
+    monkeypatch.setattr(click.ga_beacon, "gonder", lambda *a: {"result": "kapali", "mesaj": ""})
+    sonuc = click.tikla("https://hedef.test")
+    assert sonuc["kaynak"] == 3
+    assert cagri
+
+
+def test_4xx_te_alt_kaynak_cekilmez(ortam: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sayfa acilmadiysa alt kaynak da istenmez."""
+    cagri: list = []
+    monkeypatch.setattr(click.requests, "Session", lambda **_: SahteOturum(404))
+    monkeypatch.setattr(click.kaynak, "cek", lambda *a: cagri.append(a) or 0)
+    click.tikla("https://hedef.test")
     assert not cagri

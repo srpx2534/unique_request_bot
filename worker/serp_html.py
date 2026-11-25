@@ -14,7 +14,7 @@ from urllib.parse import unquote
 
 from curl_cffi import requests
 
-from worker import fingerprint
+from worker import fingerprint, guven, isinma
 from worker.serp_ortak import bos_sonuc, kok
 
 ZAMAN_ASIMI = 25  # saniye
@@ -122,12 +122,18 @@ def serp_getir_html(
     profil = onceki_profil or fingerprint.profil_sec()
     sonuc["profil"] = profil
 
-    parametreler = {"q": sorgu, "num": "100", "hl": "tr", "gl": "tr"}
+    # `pws=0` kisiselleştirmeyi, `nfpr=1` otomatik duzeltmeyi kapatir: siralama
+    # temiz okunur. Ikisi de kullanici adresine yazilmaz, Referer origin'dir.
+    parametreler = {"q": sorgu, "hl": "tr", "gl": "tr", "pws": "0", "nfpr": "1"}
     if uule:
         parametreler["uule"] = uule
 
     kendi = oturum is None
     oturum = oturum or requests.Session(impersonate=profil)
+    # Taze IP dogrudan Google'a girmesin: kisa isinma yapilir. Kabul gormus
+    # cerez seti varsa onay cerezleri yerine o yuklenir.
+    isinma.http(oturum, aralik=(2_000, 4_000), adet=1)
+    cerezler = None if guven.kavanoza(oturum) else CEREZLER
 
     basladi = time.perf_counter()
     yanit = None
@@ -138,7 +144,7 @@ def serp_getir_html(
             try:
                 yanit = oturum.get(
                     ARAMA_URL, params=parametreler, headers=BASLIKLAR,
-                    cookies=CEREZLER, timeout=ZAMAN_ASIMI,
+                    cookies=cerezler, timeout=ZAMAN_ASIMI,
                     proxies={"https": proxy, "http": proxy} if proxy else None,
                 )
             except Exception as hata:  # noqa: BLE001
