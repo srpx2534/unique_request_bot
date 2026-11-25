@@ -163,7 +163,7 @@ def burst_yap(
             mobil_profil = bool(mobil_hedef or (mobil_acik and tur == "mobile"))
             profil = fingerprint.profil_sec(haric=onceki_profil, aile=aile, mobil=mobil_profil)
             onceki_profil = profil
-            kayit = tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler)
+            kayit = tek_hit(sorgu, hedef_url, serp_url, proxy_adres, profil, uule, cerezler, cerez_profil)
             # Telemetri secimle birlikte tamamlanir; hit tablosu bunlari bekler.
             kayit["saglayici_id"] = saglayici_id
             kayit["geo_mode"] = geo_mod

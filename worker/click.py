@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 from curl_cffi import requests
 
-from worker import fingerprint
+from worker import fingerprint, ga_beacon
 
 ZAMAN_ASIMI = 25  # saniye; hedef site yavaşsa tıklamayı bırak
 DWELL_MIN = 5  # saniye; tık sayılsın yeter, hız öncelikli (§9)
@@ -53,9 +53,31 @@ def _temel_sonuc() -> dict:
         "bytes": 0,
         "dwell_ms": 0,
         "pogo": False,
+        "ga": None,
         "profil": None,
         "mesaj": "",
     }
+
+
+def _origin(adres: str) -> str:
+    """Adresi origin'e indirger.
+
+    Google sonuc sayfasinda `referrer-policy: origin-when-cross-origin`
+    gonderiyor: baska siteye gecerken tarayici yalniz origin'i yollar, arama
+    kelimesi Referer'da hic gorunmez. Tam adres gondermek kendi basina bot izi.
+
+    Args:
+        adres: Tam adres.
+
+    Returns:
+        Sema ve host; cozulemezse adres oldugu gibi.
+    """
+    if not adres:
+        return ""
+    parca = urlparse(adres)
+    if not parca.scheme or not parca.netloc:
+        return adres
+    return f"{parca.scheme}://{parca.netloc}/"
 
 
 def _proxy_sozlugu(proxy: str | None) -> dict | None:
@@ -72,6 +94,7 @@ def tikla(
     onceki_profil: str | None = None,
     dwell: bool = True,
     oturum: requests.Session | None = None,
+    profil_id: int | None = None,
 ) -> dict:
     """Hedef URL'ye tıklar ve dwell uygular.
 
@@ -82,6 +105,7 @@ def tikla(
         onceki_profil: Bir önceki istekte kullanılan profil.
         dwell: False ise bekleme yapılmaz (hızlı duman testi).
         oturum: Kullanılacak açık oturum. None ise yenisi açılır.
+        profil_id: Çerez profil kimliği; GA istemci kimliği bundan türetilir.
 
     Returns:
         result, url, http_status, elapsed_ms, bytes, dwell_ms, profil ve
@@ -94,7 +118,8 @@ def tikla(
 
     basliklar = dict(TIKLAMA_BASLIKLARI)
     if referer:
-        basliklar["Referer"] = referer
+        # Gercek trafikte Referer origin'den oteye gitmez.
+        basliklar["Referer"] = _origin(referer)
 
     kendi = oturum is None
     oturum = oturum or requests.Session(impersonate=profil)
@@ -117,6 +142,12 @@ def tikla(
             sure = random.uniform(DWELL_MIN, DWELL_MAX)
             time.sleep(sure)
             sonuc["dwell_ms"] = int(sure * 1000)
+            # Google Analytics ancak burada gorunur: JS calismadigi icin sitenin
+            # kendi etiketi ateslenmiyor, page_view dogrudan gonderilir.
+            sonuc["ga"] = ga_beacon.gonder(
+                urlparse(hedef_url).netloc, hedef_url, referer or "",
+                sonuc["dwell_ms"], profil_id, proxy,
+            )["result"]
     except Exception as hata:  # noqa: BLE001
         sonuc["elapsed_ms"] = int((time.perf_counter() - basladi) * 1000)
         sonuc["result"] = "timeout" if "timed out" in str(hata).lower() else "error"
@@ -137,6 +168,7 @@ def pogo(
     proxy: str | None = None,
     onceki_profil: str | None = None,
     oturum: requests.Session | None = None,
+    hedef_url: str | None = None,
 ) -> dict:
     """SERP'e geri döner.
 
@@ -146,6 +178,7 @@ def pogo(
         proxy: Tıklamayla aynı proxy olmalı, yoksa IP değişir.
         onceki_profil: Tıklamada kullanılan profil.
         oturum: Tıklamayla aynı oturum. None ise yenisi açılır.
+        hedef_url: Terk edilen sayfa; Referer onun origin'i olur.
 
     Returns:
         result, http_status, elapsed_ms, bekleme_ms ve mesaj alanları.
@@ -161,7 +194,8 @@ def pogo(
     adres = serp_url or f"https://www.google.com/search?q={sorgu}"
     basliklar = {
         "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-        "Referer": urlparse(adres).geturl(),
+        # Geri donuste Referer, terk edilen sayfanin origin'idir.
+        "Referer": _origin(hedef_url or "") or _origin(adres),
         "Sec-Fetch-Mode": "navigate",
     }
 

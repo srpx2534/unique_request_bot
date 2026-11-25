@@ -71,12 +71,20 @@ def test_4xx_dwell_uygulanmaz(ortam: list, monkeypatch: pytest.MonkeyPatch) -> N
     assert sonuc["dwell_ms"] == 0
 
 
-def test_referer_tasinir(ortam: list, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Google tiklamayi Referer ile esler."""
+def test_referer_origine_indirgenir(ortam: list) -> None:
+    """Gercek trafikte Referer origin'den oteye gitmez."""
     oturum = SahteOturum()
-    click.tikla("https://hedef.test", referer="https://google.com/search?q=x", oturum=oturum)
+    click.tikla("https://hedef.test", referer="https://www.google.com/search?q=x", oturum=oturum)
     basliklar = oturum.cagrilar[0][1]["headers"]
-    assert basliklar["Referer"] == "https://google.com/search?q=x"
+    assert basliklar["Referer"] == "https://www.google.com/"
+
+
+def test_pogo_refereri_hedef_origin(ortam: list) -> None:
+    """Geri donuste Referer, terk edilen sayfanin origin'i olur."""
+    oturum = SahteOturum()
+    click.pogo("https://www.google.com/search?q=x", "x", oturum=oturum,
+               hedef_url="https://hedef.test/sayfa")
+    assert oturum.cagrilar[0][1]["headers"]["Referer"] == "https://hedef.test/"
 
 
 def test_verilen_oturum_kapatilmaz(ortam: list) -> None:
@@ -113,3 +121,28 @@ def test_proxy_sozlugu() -> None:
     assert click._proxy_sozlugu("http://a:b@h:1") == {
         "https": "http://a:b@h:1", "http": "http://a:b@h:1"
     }
+
+def test_ga_beacon_basariyla_gonderilir(ortam: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Basarili tikta page_view Google'a iletilir."""
+    cagri: list = []
+    monkeypatch.setattr(
+        click.ga_beacon, "gonder",
+        lambda *a: (cagri.append(a), {"result": "ok", "mesaj": ""})[1],
+    )
+    sonuc = click.tikla("https://hedef.test/x", referer="https://www.google.com/", profil_id=5)
+    assert sonuc["ga"] == "ok"
+    assert cagri[0][0] == "hedef.test"
+    assert cagri[0][4] == 5
+
+
+def test_ga_4xx_te_gonderilmez(ortam: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sayfa acilmadiysa beacon da atilmaz."""
+    cagri: list = []
+    monkeypatch.setattr(click.requests, "Session", lambda **_: SahteOturum(404))
+    monkeypatch.setattr(
+        click.ga_beacon, "gonder",
+        lambda *a: (cagri.append(a), {"result": "ok", "mesaj": ""})[1],
+    )
+    sonuc = click.tikla("https://hedef.test")
+    assert sonuc["ga"] is None
+    assert not cagri

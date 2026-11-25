@@ -32,6 +32,7 @@ def tek_hit(
     profil: str,
     uule: str | None,
     cerezler: list[dict] | None = None,
+    cerez_profil: int | None = None,
 ) -> dict:
     """Bir hit'i uctan uca dener.
 
@@ -64,7 +65,8 @@ def tek_hit(
             return kayit
 
         tik = click.tikla(hedef_url, referer=serp_url, proxy=proxy_adres,
-                          onceki_profil=profil, oturum=oturum)
+                          onceki_profil=profil, oturum=oturum,
+                          profil_id=cerez_profil)
         kayit["tik"] = tik["result"]
         # Tiklama suresi dwell'i de olcer; dwell dusulerek ag suresi bulunur.
         ag_ms = izlenim["elapsed_ms"] + tik["elapsed_ms"] - tik["dwell_ms"]
@@ -77,7 +79,8 @@ def tek_hit(
             return kayit
 
         pog = click.pogo(serp_url, sorgu, proxy=proxy_adres,
-                         onceki_profil=profil, oturum=oturum)
+                         onceki_profil=profil, oturum=oturum,
+                         hedef_url=hedef_url)
         kayit["pogo"] = pog["result"]
         kayit["http_status"] = tik["http_status"]
         kayit["bytes"] = tik["bytes"]

@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from worker import havuz
+from worker import guven, havuz, isinma, zehir
 from worker.serp_ortak import ULKE_UULE, kok
 
 try:  # pragma: no cover - kurulum ortamina bagli
@@ -59,7 +59,8 @@ AZAMI_SAYFA = 10  # ilk 100 sira
 ZAMAN_ASIMI_MS = 45_000
 BEKLEME_MS = 4_000
 DUVAR_BEKLEME_MS = 10_000  # duvar sonrasi ilk bekleme; her denemede katlanir
-DUVAR_DENEME = 3  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
+DUVAR_DENEME = 3
+IP_DENEME = 2  # zehirli sayfa ya da duvarda kac IP denenir  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
 # Onay duvarini atlar; cerezler oturum boyunca korunur.
 ONAY_CEREZLERI = [
     {"name": "SOCS", "value": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
@@ -84,7 +85,7 @@ AYIKLA_JS = """
       const kutu = a.closest('div.g') || a.closest('div.MjjYud') ||
                    a.closest('div[data-hveid]') || a.parentElement;
       const cite = kutu ? kutu.querySelector('cite') : null;
-      return { cite: cite ? cite.innerText : '', href: a.href };
+      return { cite: cite ? cite.innerText : '', baslik: (a.querySelector('h3') || {}).innerText || '', href: a.href };
     });
 }
 """
@@ -153,8 +154,9 @@ def _temizle(adresler: list[str]) -> list[dict]:
         if isinstance(kayit, dict):
             cite = str(kayit.get("cite") or "").strip()
             ham = str(kayit.get("href") or "")
+            baslik = str(kayit.get("baslik") or "").strip()
         else:
-            cite, ham = "", str(kayit)
+            cite, ham, baslik = "", str(kayit), ""
         # `/goto?url=CAES...` yerel cozulemiyor; sonuc satirinda gorunen adres
         # (`cite`) zaten hedef koku veriyor, ek istek gerekmiyor.
         adres = cite if cite else _gercek_adres(ham)
@@ -166,6 +168,7 @@ def _temizle(adresler: list[str]) -> list[dict]:
         gorulen.add(k)
         kayitlar.append({
             "position": len(kayitlar) + 1,
+            "baslik": baslik,
             "link": adres if "://" in adres else f"https://{adres}",
         })
     return kayitlar
@@ -208,7 +211,10 @@ def _baglam_ac(p, headless: bool, proxy_ayar, olcek, ua):
         ignore_default_args=["--enable-automation"],
     )
     baglam.add_init_script(GIZLE_JS)
-    baglam.add_cookies(ONAY_CEREZLERI)
+    # Kabul gormus Google cerez seti varsa onay cerezleri yerine o yuklenir:
+    # arama isitilmis kimlikten cikar ve her IP icin tarayici isitmasi gerekmez.
+    if not guven.uygula(baglam):
+        baglam.add_cookies(ONAY_CEREZLERI)
     return baglam
 
 
@@ -228,6 +234,9 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
         Guncellenmis sonuc sozlugu.
     """
     sayfa = baglam.new_page()
+    # Arama isitilmis kimlikten cikmali: taze proxy IP'sinde Google dogrudan
+    # acilirsa duvar ya da baska kelimenin listesi gelebiliyor.
+    sonuc["isinma"] = isinma.tarayicida(sayfa)["result"]
     for sira in range(azami):
         basla = sira * SAYFA_BASI
         adres = (f"{ARAMA_URL}?q={quote(sorgu)}&start={basla}&hl=tr&gl=tr"
@@ -292,59 +301,88 @@ def serp_oku(
     Once gizli denenir; duvara carparsa ayni profille gorunur pencereye gecilir
     ve kullaniciya cozme suresi verilir. Duvari asmanin guvenilir yolu budur.
 
+    Sayfa baska bir kelimenin listesini donduruyorsa (zehirlenmis SERP) sonuc
+    kaydedilmez: yeni bir proxy IP'siyle bastan denenir. Zehirlenme IP'ye
+    baglidir, bu yuzden ayni IP'de tekrar denemek ise yaramaz.
+
     Args:
         sorgu: Aranacak kelime.
-        domain: Hedef alan adi; bulununca sayfa taramasi kesilir.
+        domain: Hedef alan adi; bulunursa tarama kesilir.
         mobil: True ise mobil pencere ve mobil UA kullanilir.
         azami: Taranacak en fazla sayfa sayisi.
 
     Returns:
         result, organik, url ve mesaj alanlarini tasiyan sozluk.
-        result: ok, captcha, not_found, error.
+        result: ok, captcha, zehirli, not_found, error.
     """
     sonuc: dict = {"result": "error", "organik": [], "url": "", "mesaj": ""}
     if sync_playwright is None:
         sonuc["mesaj"] = "playwright yok"
         return sonuc
 
-    secim = havuz.sec_mod(None, mobil_acik=False)
-    proxy_ayar = _proxy_sozlugu(secim[1] if secim else None)
     olcek = MOBIL if mobil else MASUSTU
     ua = (MOBIL_UA if mobil else MASUSTU_UA)
 
     try:
         with sync_playwright() as p:
-            # 1) gizli dene; sonuc geldiyse is biter.
-            baglam = _baglam_ac(p, True, proxy_ayar, olcek, ua)
-            try:
-                sonuc = _tara(baglam, sorgu, domain, azami, sonuc)
-            finally:
-                try:
-                    baglam.close()
-                except Exception:  # noqa: BLE001
-                    pass
-            if sonuc["result"] != "captcha" or sonuc["organik"]:
-                return sonuc
+            for deneme in range(1, IP_DENEME + 1):
+                # Her deneme yeni IP: ne zehirlenme ne duvar IP'ye yapisik kalir.
+                secim = havuz.sec_mod(None, mobil_acik=False)
+                proxy_ayar = _proxy_sozlugu(secim[1] if secim else None)
+                sonuc = {"result": "error", "organik": [], "url": "", "mesaj": ""}
 
-            # 2) duvarda gorunur pencere: elle cozulunce duvar kalkar.
-            try:
-                baglam = _baglam_ac(p, False, proxy_ayar, olcek, ua)
-            except Exception as hata:  # noqa: BLE001
-                # Sunucuda X yoksa gorunur pencere acilamaz; gizli sonucu don.
-                sonuc["mesaj"] = f"gorunur pencere acilmadi: {hata}"[:200]
-                return sonuc
-            try:
-                sonuc = _tara(baglam, sorgu, domain, azami, sonuc, elle=True)
-            finally:
+                # 1) gizli dene; sonuc geldiyse zehir denetimine gec.
                 try:
-                    baglam.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                    baglam = _baglam_ac(p, True, proxy_ayar, olcek, ua)
+                except Exception as hata:  # noqa: BLE001
+                    sonuc["mesaj"] = f"baglam acilmadi: {hata}"[:200]
+                    continue
+                try:
+                    sonuc = _tara(baglam, sorgu, domain, azami, sonuc)
+                    if sonuc["organik"]:
+                        # Kabul gormus seti tazele; sonraki IP'ler bundan baslar.
+                        guven.kaydet(baglam.cookies())
+                finally:
+                    try:
+                        baglam.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+
+                # 2) duvarda gorunur pencere: elle cozulunce duvar kalkar.
+                if sonuc["result"] == "captcha":
+                    try:
+                        baglam = _baglam_ac(p, False, proxy_ayar, olcek, ua)
+                    except Exception as hata:  # noqa: BLE001
+                        # Sunucuda X yoksa gorunur pencere acilamaz; gizli sonuc kalir.
+                        sonuc["mesaj"] = f"gorunur pencere acilmadi: {hata}"[:200]
+                    else:
+                        try:
+                            sonuc = _tara(baglam, sorgu, domain, azami, sonuc, elle=True)
+                            if sonuc["organik"]:
+                                guven.kaydet(baglam.cookies())
+                        finally:
+                            try:
+                                baglam.close()
+                            except Exception:  # noqa: BLE001
+                                pass
+
+                if sonuc["result"] == "captcha":
+                    # Set reddedildi: ust uste reddedilirse bayatlar, isitmaya donulur.
+                    guven.reddet()
+                if sonuc["result"] in ("captcha", "error"):
+                    if deneme < IP_DENEME:
+                        continue
+                    return sonuc
+
+                if sonuc["organik"] and zehir.zehirli_mi(sorgu, sonuc["organik"]):
+                    sonuc["result"] = "zehirli"
+                    sonuc["mesaj"] = "baska kelimenin listesi"
+                    if deneme < IP_DENEME:
+                        continue
+                    return sonuc
+
+                return sonuc
     except Exception as hata:  # noqa: BLE001
         sonuc["mesaj"] = str(hata)[:200]
         return sonuc
-
-    if sonuc["result"] == "captcha":
-        return sonuc
-    sonuc["result"] = "ok" if sonuc["organik"] else "not_found"
     return sonuc
