@@ -49,6 +49,23 @@ def taklit(monkeypatch):
     monkeypatch.setattr(burst.saglik_db, "uyari", lambda *_a, **_k: None)
     monkeypatch.setattr(burst.saglik_db, "kaydet", lambda *_a, **_k: None)
     monkeypatch.setattr(burst.saglik_db, "karantina_kontrol", lambda *_a, **_k: None)
+    # Proxy secimi ve kalan saglik yazimlari da veritabanina gider; birim
+    # testi DB olmadan (CI) kosabilsin diye hepsi sabitlenir.
+    monkeypatch.setattr(burst.havuz, "sec_mod",
+                        lambda *_a, **_k: (1, "http://proxy:1", "tr_fallback", "residential"))
+    monkeypatch.setattr(burst.havuz, "cerez_sec", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.havuz, "cerez_al", lambda *_a, **_k: [])
+    monkeypatch.setattr(burst.havuz, "cerez_canli", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.havuz, "cerez_birak", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.havuz, "kelime_mobil", lambda *_a, **_k: False)
+    monkeypatch.setattr(burst.havuz, "kod_bul", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "hedef_yok_islet", lambda *_a, **_k: (0, False))
+    monkeypatch.setattr(burst.saglik_db, "hedef_yok_sifirla", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "hata_sifirla", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "hata_isle", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "kota_isle", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "bayt_ekle", lambda *_a, **_k: None)
+    monkeypatch.setattr(burst.saglik_db, "saglayici_yok_dur", lambda *_a, **_k: None)
     return sayac
 
 
