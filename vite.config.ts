@@ -17,6 +17,9 @@ export default defineConfig({
   build: { outDir: "dist/web", emptyOutDir: true },
   server: {
     port: 5173,
+    // Tarayici profili Chrome tarafindan kilitleniyor; izlenirse EBUSY ile
+    // gelistirme sunucusu dusuyor. Sanal ortam ve derleme ciktisi da disarida.
+    watch: { ignored: ["**/veri/**", "**/.venv/**", "**/dist/**", "**/node_modules/**"] },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8080",

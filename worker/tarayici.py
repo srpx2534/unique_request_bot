@@ -250,6 +250,27 @@ def _baglam_ac(p, headless: bool, proxy_ayar, olcek, ua):
     return baglam
 
 
+def _git(sayfa, adres: str, deneme: int = 2):
+    """Sayfayi acar; gezinme baska bir gezinmeyle kesilirse tekrar dener.
+
+    Args:
+        sayfa: Acik sayfa.
+        adres: Gidilecek adres.
+        deneme: Toplam deneme sayisi.
+
+    Returns:
+        Goto yaniti; son denemede de duserse hata yukari birakilir.
+    """
+    for i in range(deneme):
+        try:
+            return sayfa.goto(adres, wait_until="domcontentloaded",
+                              timeout=ZAMAN_ASIMI_MS)
+        except Exception:  # noqa: BLE001
+            if i == deneme - 1:
+                raise
+    return None
+
+
 def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
           elle: bool = False) -> dict:
     """Sayfalari gezer ve organik kayitlari toplar.
@@ -266,17 +287,23 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
         Guncellenmis sonuc sozlugu.
     """
     cozucu = (lambda h: _goto_coz(baglam, h)) if hasattr(baglam, "request") else None
+    # Isinma ayri sayfada kosar: ayni sayfada kalirsa arama gezinmesi
+    # "interrupted by another navigation" ile dusuyordu. Cerezler baglamda
+    # ortak oldugu icin isitma etkisi korunur.
+    isinma_sayfasi = baglam.new_page()
+    sonuc["isinma"] = isinma.tarayicida(isinma_sayfasi)["result"]
+    try:
+        isinma_sayfasi.close()
+    except Exception:  # noqa: BLE001
+        pass
     sayfa = baglam.new_page()
-    # Arama isitilmis kimlikten cikmali: taze proxy IP'sinde Google dogrudan
-    # acilirsa duvar ya da baska kelimenin listesi gelebiliyor.
-    sonuc["isinma"] = isinma.tarayicida(sayfa)["result"]
     http_hatasi = False
     for sira in range(azami):
         basla = sira * SAYFA_BASI
         # Ulusal olcumde uule gonderilmez (66): IP cografyasi yeterli sinyal,
         # uule listeyi baska kumeye dusuruyordu. gl/hl dil ve ulke sinyalidir.
         adres = f"{ARAMA_URL}?q={quote(sorgu)}&start={basla}&hl=tr&gl=tr"
-        yanit = sayfa.goto(adres, wait_until="commit", timeout=ZAMAN_ASIMI_MS)
+        yanit = _git(sayfa, adres)
         sonuc["url"] = sayfa.url
         # Duvar kontrolu durum kodundan once gelir; duvar 429/503 ile geliyor.
         deneme = 0
@@ -284,7 +311,7 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
             deneme += 1
             if not _bekle(sayfa, DUVAR_BEKLEME_MS * deneme):
                 break
-            yanit = sayfa.goto(adres, wait_until="commit", timeout=ZAMAN_ASIMI_MS)
+            yanit = _git(sayfa, adres)
             sonuc["url"] = sayfa.url
         if "/sorry/" in sayfa.url and elle:
             # Gorunur pencerede kullanici kutuyu isaretler; cozulunce Google
