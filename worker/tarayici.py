@@ -61,7 +61,7 @@ BEKLEME_MS = 4_000
 DUVAR_BEKLEME_MS = 10_000  # duvar sonrasi ilk bekleme; her denemede katlanir
 DUVAR_DENEME = 3
 IP_DENEME = 2  # zehirli sayfa ya da duvarda kac IP denenir
-COZUM_SINIRI = 12  # sayfa basina en fazla kac /goto adresi cozulur  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
+COZUM_SINIRI = 4  # sayfa basina en fazla kac /goto adresi cozulur  # duvarda en fazla kac kez beklenip yeniden denenir  # sonuc listesi JS ile kurulur, kisa bekleme yetmez
 # Onay duvarini atlar; cerezler oturum boyunca korunur.
 ONAY_CEREZLERI = [
     {"name": "SOCS", "value": "CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMzE5LjA4X3AxGgJlbiACGgYIgLC_rwY",
@@ -86,7 +86,13 @@ AYIKLA_JS = """
       const kutu = a.closest('div.g') || a.closest('div.MjjYud') ||
                    a.closest('div[data-hveid]') || a.parentElement;
       const cite = kutu ? kutu.querySelector('cite') : null;
-      return { cite: cite ? cite.innerText : '', baslik: (a.querySelector('h3') || {}).innerText || '', href: a.href };
+      let gorunen = cite ? cite.innerText : '';
+      if (!gorunen && kutu) {
+        // Modern isaretlemede `cite` yok; adres satir metninde gorunuyor.
+        gorunen = (kutu.innerText || '').split('\\n').map(t => t.trim())
+          .find(t => /^https?:\/\/\S+/.test(t) || /^[\w-]+(\.[\w-]+)+(\s|$)/.test(t)) || '';
+      }
+      return { cite: gorunen, baslik: (a.querySelector('h3') || {}).innerText || '', href: a.href };
     });
 }
 """
@@ -140,6 +146,60 @@ def _gercek_adres(adres: str) -> str:
     return adres
 
 
+def _google_mu(adres: str) -> bool:
+    """Adres arama sayfasi ya da statik Google mi.
+
+    `sites.google.com` bir sonuc olarak sayilir; yalniz arama sayfasi ve
+    gstatic elenir.
+
+    Args:
+        adres: Denetlenecek adres.
+
+    Returns:
+        Elenmesi gerekiyorsa True.
+    """
+    try:
+        host = (urlparse(adres).hostname or "").lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host in ("gstatic.com",) or host.endswith(".gstatic.com"):
+        return True
+    return host in ("google.com", "www.google.com") or host.startswith("google.") \
+        or host.startswith("www.google.")
+
+
+def _cite_kok(cite: str) -> str:
+    """Sonuc satirindaki gorunen adresten kok alan adini cikarir.
+
+    Google `cite` alanini yol izi olarak veriyor (`www.site.com › alt`); ham
+    metin `kok()`'a verilirse `com` gibi anlamsiz kokler uretiyordu.
+
+    Args:
+        cite: Sonuc satirindan okunan gorunen adres.
+
+    Returns:
+        Kok alan adi; metin adres gibi degilse bos metin.
+    """
+    ham = (cite or "").strip()
+    if not ham:
+        return ""
+    if "://" in ham:
+        # Tam adres: host kismi alinir, yol atilir.
+        try:
+            ham = urlparse(ham).hostname or ""
+        except ValueError:
+            return ""
+    else:
+        for ayrac in ("›", ">", "/"):
+            ham = ham.split(ayrac)[0].strip()
+    ham = ham.removeprefix("www.")
+    if not ham or " " in ham or "." not in ham:
+        return ""
+    return ham
+
+
 def _goto_coz(baglam, adres: str) -> str:
     """`/goto?url=` sarmalini gercek adrese cozer.
 
@@ -191,8 +251,14 @@ def _temizle(adresler: list[str], cozucu=None) -> list[dict]:
             cozulen += 1
             adres = cozucu(ham)
         if not adres:
-            adres = cite if cite else _gercek_adres(ham)
-        if not adres or "google." in adres or "gstatic." in adres:
+            # Sirasiyla: cozulmus sarmal, duz adres, gorunen adres. Duz adres
+            # google'e cikiyorsa atlanir, cite'in host kismina dusulur.
+            duz = _gercek_adres(ham)
+            if duz and not _google_mu(duz):
+                adres = duz
+        if not adres:
+            adres = _cite_kok(cite)
+        if not adres or _google_mu(adres):
             continue
         k = kok(adres)
         if not k or k in gorulen:
@@ -341,7 +407,20 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
             break
         adresler = sayfa.eval_on_selector_all("a[href]", AYIKLA_JS)
         if not adresler:
-            break
+            # Bos sayfa taramayi erken kesiyordu (429 ya da gec yukleme): bir
+            # kez daha denenir, yine bossa durulur.
+            if not _bekle(sayfa, 2_500):
+                break
+            yanit = _git(sayfa, adres)
+            try:
+                sayfa.wait_for_selector("#rso", timeout=10_000)
+            except Exception:  # noqa: BLE001
+                pass
+            if not _bekle(sayfa, BEKLEME_MS):
+                break
+            adresler = sayfa.eval_on_selector_all("a[href]", AYIKLA_JS)
+            if not adresler:
+                break
         onceki = len(sonuc["organik"])
         for kayit in _temizle(adresler, cozucu):
             sonuc["organik"].append(

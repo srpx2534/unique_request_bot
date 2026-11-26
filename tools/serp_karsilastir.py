@@ -1,10 +1,9 @@
-"""Tarayici ve SERP API'sinin ilk 20 kumesini karsilastirir (80).
+"""Tarayici SERP'ini referans listeyle karsilastirir (80).
 
-Olcum dogrulugunun kapanis olcusu budur: ayni kelime, ayni dakika, ayni TR
-residential IP sinifi. Tarayici yolu gercek kullaniciyi temsil eder; API
-sonucu ondan uzaksa olcum guvenilir degildir.
+Referans, kullanicinin kendi tarayicisinda gordugu listedir. Olcumun basarisi
+"hedef site bulunabiliyor mu" sorusudur; siralama degil bulunabilirlik esastir.
 
-Kullanim: python tools/serp_karsilastir.py "erzurum escort" [--adet 20]
+Kullanim: python tools/serp_karsilastir.py "erzurum escort" [--referans dosya]
 """
 
 from __future__ import annotations
@@ -15,66 +14,70 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from worker import serp, tarayici  # noqa: E402
+from worker import tarayici  # noqa: E402
 from worker.serp_ortak import kok  # noqa: E402
 
-ADET = 20
-ESIK = 0.90
+REFERANS = Path(__file__).resolve().parent / "veri" / "serp_referans.txt"
 
 
-def kume(organik: list[dict], adet: int) -> list[str]:
-    """Organik kayitlardan benzersiz kok listesi cikarir."""
-    gorulen: list[str] = []
-    for kayit in organik:
-        k = kok(str(kayit.get("link") or ""))
-        if k and k not in gorulen:
-            gorulen.append(k)
-        if len(gorulen) >= adet:
-            break
-    return gorulen
-
-
-def oran(a: list[str], b: list[str]) -> float:
-    """Iki kumenin ortusme oranini verir; payda kisa kumedir."""
-    if not a or not b:
-        return 0.0
-    return len(set(a) & set(b)) / min(len(a), len(b))
+def liste_oku(yol: Path) -> list[str]:
+    """Referans dosyasini kok alan adlari listesine cevirir."""
+    adlar: list[str] = []
+    for satir in yol.read_text(encoding="utf-8").splitlines():
+        ham = satir.strip().lower()
+        if not ham or ham.startswith("#"):
+            continue
+        k = kok(ham)
+        if k and k not in adlar:
+            adlar.append(k)
+    return adlar
 
 
 def main() -> int:
-    """Iki yolu kosar, ortusmeyi yazar."""
-    ayar = argparse.ArgumentParser(description="SERP yolu karsilastirmasi")
+    """Tarayici listesini referansla karsilastirir."""
+    ayar = argparse.ArgumentParser(description="Referans listeye gore bulunabilirlik")
     ayar.add_argument("kelime")
-    ayar.add_argument("--adet", type=int, default=ADET)
+    ayar.add_argument("--referans", type=Path, default=REFERANS)
     secim = ayar.parse_args()
 
+    if not secim.referans.exists():
+        print(f"referans yok: {secim.referans}")
+        return 1
+    referans = liste_oku(secim.referans)
+    if not referans:
+        print("referans bos")
+        return 1
     if not tarayici.kullanilabilir():
         print("tarayici yok: playwright kurulu degil")
         return 1
 
-    tarayici_cevap = tarayici.serp_oku(secim.kelime)
-    if tarayici_cevap["result"] not in ("ok", "not_found"):
-        print(f"tarayici dustu: {tarayici_cevap['result']} · {tarayici_cevap['mesaj']}")
-        return 1
-    api_cevap = serp.serp_getir(secim.kelime)
-    if api_cevap["result"] not in ("ok", "not_found"):
-        print(f"api dustu: {api_cevap['result']} · {api_cevap.get('mesaj', '')}")
+    cevap = tarayici.serp_oku(secim.kelime)
+    print(f"kelime: {secim.kelime} · sonuc: {cevap['result']} · bulunan: {len(cevap['organik'])}")
+    if cevap["result"] not in ("ok", "not_found"):
+        print(f"mesaj: {cevap['mesaj'][:200]}")
         return 1
 
-    tarayici_kume = kume(tarayici_cevap["organik"], secim.adet)
-    api_kume = kume(api_cevap["organik"], secim.adet)
+    yerler: dict[str, int] = {}
+    for kayit in cevap["organik"]:
+        k = kok(str(kayit.get("link") or ""))
+        if k and k not in yerler:
+            yerler[k] = kayit["position"]
 
-    print(f"kelime: {secim.kelime}")
-    print(f"tarayici: {len(tarayici_kume)} sonuc · api: {len(api_kume)} sonuc")
-    for i, ad in enumerate(tarayici_kume, 1):
-        print(f"  T{i:02d} {ad}")
-    print("---")
-    for i, ad in enumerate(api_kume, 1):
-        print(f"  A{i:02d} {ad}")
+    print("--- tarayicida gorunenler ---")
+    for kayit in cevap["organik"][:20]:
+        print(f"  {kayit['position']:02d} {kayit['link']}")
 
-    yuzde = oran(tarayici_kume, api_kume)
-    print(f"ortusme: %{round(yuzde * 100, 1)} (esik %{round(ESIK * 100)})")
-    return 0 if yuzde >= ESIK else 2
+    print("--- referans ---")
+    bulunan = 0
+    for ad in referans:
+        yer = yerler.get(ad)
+        if yer:
+            bulunan += 1
+        print(f"  {'VAR' if yer else 'YOK'}  {ad}" + (f" · sira {yer}" if yer else ""))
+
+    oran = bulunan / len(referans)
+    print(f"bulunabilirlik: {bulunan}/{len(referans)} = %{round(oran * 100, 1)}")
+    return 0 if bulunan == len(referans) else 2
 
 
 if __name__ == "__main__":

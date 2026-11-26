@@ -223,6 +223,22 @@ def test_goto_hatasinda_bos_doner():
     assert tarayici._goto_coz(b, "https://www.google.com/goto?url=X") == ""
 
 
+def test_cite_yol_izinden_host_cikarilir():
+    """`cite` yol izi olsa da kok alan adi dogru cikar."""
+    assert tarayici._cite_kok("www.site.com.tr › alt › sayfa") == "site.com.tr"
+    assert tarayici._cite_kok("erzurumescortr.com") == "erzurumescortr.com"
+    assert tarayici._cite_kok("com › . › escort") == ""
+    assert tarayici._cite_kok("") == ""
+
+
+def test_temizle_cite_host_verir():
+    """Goto cozulemezse gorunen adresin host'u kullanilir, `com` degil."""
+    adresler = [{"cite": "www.hedef.com.tr › alt", "baslik": "a",
+                 "href": "https://www.google.com/goto?url=X"}]
+    kayitlar = tarayici._temizle(adresler, lambda h: "")
+    assert kayitlar[0]["link"] == "https://hedef.com.tr"
+
+
 def test_temizle_cozucuyu_kullanir():
     adresler = [{"cite": "https://hedef.com.tr", "baslik": "a", "href": "https://www.google.com/goto?url=X"}]
     kayitlar = tarayici._temizle(adresler, lambda h: "https://hedef.com.tr/derin/sayfa")
