@@ -72,11 +72,13 @@ def uyari(
         with baglanti.cursor() as imlec:
             kelime_id = site_id = None
             if kelime:
+                # Domain verilmezse site eslesmesi aranmaz: `s.domain = NULL`
+                # hicbir satiri tutmuyor ve uyari baglamsiz kaliyordu (86).
                 imlec.execute(
                     "SELECT k.id, k.site_id FROM keyword k"
                     " JOIN site s ON s.id = k.site_id"
-                    " WHERE k.text = %s AND s.domain = %s LIMIT 1",
-                    (kelime, domain),
+                    " WHERE k.text = %s AND (%s IS NULL OR s.domain = %s) LIMIT 1",
+                    (kelime, domain, domain),
                 )
                 satir = imlec.fetchone()
                 if satir:

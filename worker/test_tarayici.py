@@ -103,6 +103,43 @@ def test_isinma_hatasi_aramayi_durdurmaz(isinma_kur):
     assert sonuc["isinma"] == "error"
     assert sonuc["result"] == "ok"
     assert any("google.com/search" in adres for _, adres in olaylar)
+class SahteSayfaHata(SahteSayfa):
+    """HTTP 500 donen sayfa; govdede sonuc listesi yok."""
+
+    def goto(self, adres, **fazla):
+        self.olaylar.append(("goto", adres))
+        self.url = adres
+        return type("Yanit", (), {"status": 500})()
+
+
+class HataliBaglam(SahteBaglam):
+    """Her yeni sayfada HTTP 500 ureten baglam."""
+
+    def new_page(self):
+        return SahteSayfaHata(self.olaylar, self.patlat)
+
+
+def test_adres_uule_tasimaz(isinma_kur):
+    """Ulusal olcumde uule gonderilmez, gl/hl kalir (66)."""
+    isinma_kur()
+    olaylar: list = []
+    tarayici._tara(SahteBaglam(olaylar), "kelime", None, 1, _bos())
+
+    arama = olaylar[-1][1]
+    assert "uule=" not in arama
+    assert "gl=tr" in arama and "hl=tr" in arama
+
+
+def test_http_500_olcum_sayilmaz(isinma_kur):
+    """5xx yanit "ilk 100'de yok" sayilmaz, hata doner (77)."""
+    isinma_kur()
+    olaylar: list = []
+    sonuc = tarayici._tara(HataliBaglam(olaylar), "kelime", None, 1, _bos())
+
+    assert sonuc["result"] == "error"
+    assert sonuc["mesaj"] == "http 500"
+
+
 class SahteBaglamKurucu:
     """Baglam yerine gecen, eklenen cerezleri kaydeden sahte nesne."""
 

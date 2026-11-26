@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from worker import guven, havuz, isinma, zehir
-from worker.serp_ortak import ULKE_UULE, kok
+from worker.serp_ortak import kok
 
 try:  # pragma: no cover - kurulum ortamina bagli
     from playwright.sync_api import sync_playwright
@@ -270,10 +270,12 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
     # Arama isitilmis kimlikten cikmali: taze proxy IP'sinde Google dogrudan
     # acilirsa duvar ya da baska kelimenin listesi gelebiliyor.
     sonuc["isinma"] = isinma.tarayicida(sayfa)["result"]
+    http_hatasi = False
     for sira in range(azami):
         basla = sira * SAYFA_BASI
-        adres = (f"{ARAMA_URL}?q={quote(sorgu)}&start={basla}&hl=tr&gl=tr"
-                 f"&uule={quote(ULKE_UULE, safe='')}")
+        # Ulusal olcumde uule gonderilmez (66): IP cografyasi yeterli sinyal,
+        # uule listeyi baska kumeye dusuruyordu. gl/hl dil ve ulke sinyalidir.
+        adres = f"{ARAMA_URL}?q={quote(sorgu)}&start={basla}&hl=tr&gl=tr"
         yanit = sayfa.goto(adres, wait_until="commit", timeout=ZAMAN_ASIMI_MS)
         sonuc["url"] = sayfa.url
         # Duvar kontrolu durum kodundan once gelir; duvar 429/503 ile geliyor.
@@ -297,9 +299,11 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
             sonuc["result"] = "captcha"
             sonuc["mesaj"] = "duvar: /sorry/"
             return sonuc
-        # Sonraki sayfa 429 verse de elimizdeki liste gecerlidir.
+        # Sonraki sayfa 429 verse de elimizdeki liste gecerlidir; ama hic sonuc
+        # yokken gelen 5xx basarili olcum degildir (77).
         if yanit is not None and yanit.status >= 400 and not sonuc["organik"]:
             sonuc["mesaj"] = f"http {yanit.status}"
+            http_hatasi = True
             break
         try:
             sayfa.wait_for_selector("#rso", timeout=15_000)
@@ -322,7 +326,13 @@ def _tara(baglam, sorgu: str, domain: str | None, azami: int, sonuc: dict,
             return sonuc
         if len(sonuc["organik"]) >= 100:
             break
-    sonuc["result"] = "ok" if sonuc["organik"] else "not_found"
+    if sonuc["organik"]:
+        sonuc["result"] = "ok"
+    elif http_hatasi:
+        # 500/502 "ilk 100'de yok" gibi yazilip siralamayi bozmasin (77).
+        sonuc["result"] = "error"
+    else:
+        sonuc["result"] = "not_found"
     return sonuc
 
 

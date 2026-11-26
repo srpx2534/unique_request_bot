@@ -121,8 +121,11 @@ def _geonode(gateway: str, kullanici: str, sifre: str, ulke: str | None,
     # Taban kullanici adi zaten ulke tasiyorsa ikinci kez yazilmaz.
     if ulke and f"-country-{ulke.lower()}" not in ad.lower():
         ad += f"-country-{ulke.lower()}"
-    if geo_slug:
-        ad += f"-city-{geo_slug}"
+    # Geonode il adini kucuk harf ve harf/rakamla bekler; bos ya da bosluklu
+    # slug kullanici adini sessizce 407'ye dusuruyordu (88).
+    il = "".join(c for c in (geo_slug or "").lower() if c.isalnum())
+    if il and len(il) <= 24:
+        ad += f"-city-{il}"
     ad += "-type-residential"
     ad += f"-session-{oturum}"
     return f"http://{ad}:{sifre}@{_sticky(gateway)}"

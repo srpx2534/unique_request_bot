@@ -147,7 +147,7 @@ yonlendirici.delete("/log", async (istek, yanit) => {
          JOIN keyword k ON k.id = g.keyword_id
          JOIN site s ON s.id = k.site_id
          ${nerede}`,
-      degerler,
+      degerler as never[],
     );
     const [sonuc] = await baglanti.query(
       `DELETE b FROM burst b
@@ -155,7 +155,7 @@ yonlendirici.delete("/log", async (istek, yanit) => {
          JOIN keyword k ON k.id = g.keyword_id
          JOIN site s ON s.id = k.site_id
          ${nerede}`,
-      degerler,
+      degerler as never[],
     );
     return (sonuc as { affectedRows: number }).affectedRows;
   });
