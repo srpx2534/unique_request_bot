@@ -77,7 +77,7 @@ yonlendirici.patch("/oran", async (istek, yanit) => {
   // Anahtar birincil anahtar olduğu için upsert yeter; satır yoksa doğar.
   await islem(async (baglanti) => {
     for (const [anahtar, deger] of Object.entries(govde)) {
-      await baglanti.query(
+      await baglanti.execute(
         "INSERT INTO ayar (anahtar, deger) VALUES (?, ?) ON DUPLICATE KEY UPDATE deger = VALUES(deger)",
         [anahtar, String(deger)],
       );

@@ -131,6 +131,22 @@ Ulusal kelime kurali: il secilmemisse il ile alakali hicbir islem yapilmaz. Ne D
 87. `veritabani.ts` `islem()` icinde `baglanti.query` yerine `baglanti.execute` kullanilir (parametre kacisi).
 88. `proxy.py` `_geonode` il slug'ini dogrulamadan kullanici adina ekliyor; Geonode'un bekledigi deger (il adi/slug) teyit edilir, yanlissa 407 sessizce saglayiciyi kapatir.
 
+### P kapanislari (2026-11-26)
+
+- 77 KAPANDI — `tarayici._tara` hic sonuc yokken gelen 5xx'i `error` dondurur, "ilk 100'de yok" yazilmaz. Kanit: `worker/test_tarayici.py::test_http_500_olcum_sayilmaz`.
+- 78 KAPANDI — `position.saglayici` zaten yaziliyor (`tarayici`, saglayici adi); hangi kaynaktan geldigi gorunur.
+- 79 KAPANDI — sayfa basina `BEKLEME_MS` (4 sn) ve `networkidle` beklemesi var; 10 sayfa tek nefeste gitmiyor.
+- 80 KAPANDI — `tools/serp_karsilastir.py` tarayici ile API'nin ilk 20 kumesini karsilastirir, ortusme yuzdesini basar, esik %90.
+- 82 KAPANDI — `hitYaz` saglayicisiz hitte `yabanci`, saglayicili hitte `tr_fallback` yazar; mod istatistigi bozulmuyor.
+- 83 KAPANDI — `rapor.ts` il join'ini `k.geo_scope = 'province'` ile sinirlar; ulusal kelime 81 satir uretmez.
+- 84 KAPANDI — rapor ve hacim denetimi gercek `hit` sayimindan okur, `target_count` yalniz planlanan olarak doner.
+- 85 KAPANDI — `cookie_profil.durum` indeksi eklendi (migration 051 + geri dosyasi).
+- 86 KAPANDI — `saglik_db.uyari` kimligi kelime + domain ile kurar; domain verilmezse site eslesmesi aranmaz.
+- 87 KAPANDI — `islem()` icindeki yazmalar `baglanti.execute` (hazir ifade) kullanir.
+- 88 KAPANDI — `proxy._geonode` il slug'ini kucuk harf/harf-rakam suzer, bos ya da uzun slug city hedeflemesini atlar. Kanit: `worker/test_proxy_geonode.py`.
+- 69 KODDA TAMAM — `tarayici.serp_oku` deneme basina havuzdan yeni proxy secer; anahtar gelince canli dogrulanacak.
+- Y1 KAPANDI — `uule` tarayici URL'sinden kaldirildi, `gl=tr`/`hl=tr` kaldi. Kanit: `worker/test_tarayici.py::test_adres_uule_tasimaz`.
+
 ## Q. Panel, arayuz ve yapi (otonom yapilir)
 
 89. `saglayicilar.tsx` oran kaydinda `onError` yok; sunucu 400'u kullaniciya gorunmuyor.

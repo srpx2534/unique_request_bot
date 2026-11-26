@@ -1,0 +1,1 @@
+DROP INDEX idx_cookie_profil_durum ON cookie_profil;

@@ -140,7 +140,7 @@ yonlendirici.delete("/log", async (istek, yanit) => {
   const { nerede, degerler } = logKosulu(istek);
   // Hit tablosunda FK yok; once hit, sonra burst silinir. Ikisi tek islemde.
   const silinen = await islem(async (baglanti) => {
-    await baglanti.query(
+    await baglanti.execute(
       `DELETE h FROM hit h
          JOIN burst b ON b.id = h.burst_id
          JOIN keyword_geo g ON g.id = b.keyword_geo_id
@@ -149,7 +149,7 @@ yonlendirici.delete("/log", async (istek, yanit) => {
          ${nerede}`,
       degerler as never[],
     );
-    const [sonuc] = await baglanti.query(
+    const [sonuc] = await baglanti.execute(
       `DELETE b FROM burst b
          JOIN keyword_geo g ON g.id = b.keyword_geo_id
          JOIN keyword k ON k.id = g.keyword_id
