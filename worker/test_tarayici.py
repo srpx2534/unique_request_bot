@@ -18,16 +18,44 @@ class SahteSayfa:
         self.olaylar = olaylar
         self.patlat = set(patlat)
         self.url = ""
+        self.son_yanit = None
 
     def goto(self, adres, **fazla):
         self.olaylar.append(("goto", adres))
         if adres in self.patlat:
             raise RuntimeError("gitmedi")
         self.url = adres
-        return type("Yanit", (), {"status": 200})()
+        self.son_yanit = type("Yanit", (), {"status": 200})()
+        return self.son_yanit
 
     def wait_for_timeout(self, ms):
         pass
+
+    def fill(self, secici, deger):
+        self.olaylar.append(("fill", deger))
+
+    def click(self, secici, timeout=0):
+        self.olaylar.append(("click", secici))
+
+    class _Klavye:
+        def __init__(self, olaylar):
+            self.olaylar = olaylar
+
+        def press(self, tus):
+            self.olaylar.append(("press", tus))
+
+    @property
+    def keyboard(self):
+        return SahteSayfa._Klavye(self.olaylar)
+
+    def expect_navigation(self, **fazla):
+        return _Beklenen(self)
+
+    def wait_for_url(self, *fazla, **adli):
+        pass
+
+    def evaluate(self, js):
+        return self.son_yanit.status if self.son_yanit else 0
 
     def wait_for_selector(self, *fazla, **adli):
         pass
@@ -81,7 +109,7 @@ def test_arama_once_isinir(isinma_kur):
     assert sonuc["isinma"] == "ok"
     assert olaylar[0] == ("goto", isinma_sayfasi)
     assert "google" not in olaylar[0][1]
-    assert "google.com/search" in olaylar[1][1]
+    assert olaylar[1][1].startswith("https://www.google.com/")
 
 
 def test_isinma_kapaliyken_dogrudan_aranir(isinma_kur):
@@ -90,7 +118,7 @@ def test_isinma_kapaliyken_dogrudan_aranir(isinma_kur):
     sonuc = tarayici._tara(SahteBaglam(olaylar), "kelime", None, 1, _bos())
 
     assert sonuc["isinma"] == "atlandi"
-    assert "google.com/search" in olaylar[0][1]
+    assert olaylar[0][1].startswith("https://www.google.com/")
 
 
 def test_isinma_hatasi_aramayi_durdurmaz(isinma_kur):
@@ -102,14 +130,32 @@ def test_isinma_hatasi_aramayi_durdurmaz(isinma_kur):
 
     assert sonuc["isinma"] == "error"
     assert sonuc["result"] == "ok"
-    assert any("google.com/search" in adres for _, adres in olaylar)
+    assert any(adres.startswith("https://www.google.com/") for _, adres in olaylar)
+class _Beklenen:
+    """`expect_navigation` yerine gecen baglam yoneticisi."""
+
+    def __init__(self, sayfa):
+        self.sayfa = sayfa
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *fazla):
+        return False
+
+    @property
+    def value(self):
+        return self.sayfa.son_yanit
+
+
 class SahteSayfaHata(SahteSayfa):
     """HTTP 500 donen sayfa; govdede sonuc listesi yok."""
 
     def goto(self, adres, **fazla):
         self.olaylar.append(("goto", adres))
         self.url = adres
-        return type("Yanit", (), {"status": 500})()
+        self.son_yanit = type("Yanit", (), {"status": 500})()
+        return self.son_yanit
 
 
 class HataliBaglam(SahteBaglam):
@@ -125,9 +171,10 @@ def test_adres_uule_tasimaz(isinma_kur):
     olaylar: list = []
     tarayici._tara(SahteBaglam(olaylar), "kelime", None, 1, _bos())
 
-    arama = olaylar[-1][1]
-    assert "uule=" not in arama
-    assert "gl=tr" in arama and "hl=tr" in arama
+    adresler = [adres for _, adres in olaylar if adres.startswith("http")]
+    assert adresler
+    assert all("uule=" not in adres for adres in adresler)
+    assert any("hl=tr" in adres for adres in adresler)
 
 
 def test_http_500_olcum_sayilmaz(isinma_kur):
@@ -228,6 +275,8 @@ def test_cite_yol_izinden_host_cikarilir():
     assert tarayici._cite_kok("www.site.com.tr › alt › sayfa") == "site.com.tr"
     assert tarayici._cite_kok("erzurumescortr.com") == "erzurumescortr.com"
     assert tarayici._cite_kok("com › . › escort") == ""
+    assert tarayici._cite_kok("https://www.happyescorts.com › ... › Escort ›") == "happyescorts.com"
+    assert tarayici._cite_kok("https://w4.elitescorthatun.com › Ads") == "w4.elitescorthatun.com"
     assert tarayici._cite_kok("") == ""
 
 
@@ -239,7 +288,8 @@ def test_temizle_cite_host_verir():
     assert kayitlar[0]["link"] == "https://hedef.com.tr"
 
 
-def test_temizle_cozucuyu_kullanir():
+def test_temizle_cozucuyu_kullanir(monkeypatch):
+    monkeypatch.setattr(tarayici, "COZUM_SINIRI", 1)
     adresler = [{"cite": "https://hedef.com.tr", "baslik": "a", "href": "https://www.google.com/goto?url=X"}]
     kayitlar = tarayici._temizle(adresler, lambda h: "https://hedef.com.tr/derin/sayfa")
     assert kayitlar[0]["link"] == "https://hedef.com.tr/derin/sayfa"

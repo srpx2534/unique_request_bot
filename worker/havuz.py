@@ -235,7 +235,7 @@ def sec_mod(
                         cikis_ulke = "TR" if mod in ("city", "tr_fallback") else ulke
                         return saglayici_id, proxy.dize(
                             gateway, kullanici, sifre, cikis_ulke,
-                            geo_slug if kod else None, bicim=proxy.bicim_bul(ad)
+                            geo_slug, bicim=proxy.bicim_bul(ad)
                         ), mod, tur
     except Exception:  # noqa: BLE001
         return None
